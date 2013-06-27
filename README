@@ -1,0 +1,33 @@
+
+memtier_benchmark is a command line utility developed by Garantia Data Ltd.
+for load generation and bechmarking NoSQL databases.
+
+Currently memtier_benchmark supports Redis and Memcache protocols (text and
+binary).
+
+
+Building and installing memtier_benchmark
+=========================================
+
+After downloading the source tree, use standard autoconf/automake commands::
+
+    $ autoreconf -ivf
+    $ ./configure
+    $ make
+    $ make install
+
+The following libraries are required for building:
+
+* libevent 2.0.10 or newer.
+* libmemcached 0.8.0 or newer.
+
+
+Using memtier_benchmark
+=======================
+
+See the included manpage or run::
+
+    $ memtier_benchmark --help
+
+for command line options.
+
