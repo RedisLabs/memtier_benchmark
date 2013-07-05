@@ -1,2 +1,5 @@
+* Version 1.0.1
+    * Fix build problems on Ubuntu 10.04.
+
 * Version 1.0.0
     * Initial public release.

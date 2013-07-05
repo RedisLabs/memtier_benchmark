@@ -16,7 +16,7 @@ dnl You should have received a copy of the GNU General Public License
 dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 AC_PREREQ(2.59)
-AC_INIT(memtier_benchmark,1.0.0,yossigo@gmail.com)
+AC_INIT(memtier_benchmark,1.0.1,yossigo@gmail.com)
 AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
@@ -52,7 +52,7 @@ AC_CHECK_LIB([pthread], [pthread_create], , AC_MSG_ERROR([pthread is required.])
 AC_CHECK_LIB([socket], [gai_strerror])
 
 # libmemcached
-AC_CHECK_HEADERS([libmemcached/memcached/protocol_binary.h libmemcachedprotocol-0.0/binary.h])
+AC_CHECK_HEADERS([memcached/protocol_binary.h libmemcached/memcached/protocol_binary.h libmemcachedprotocol-0.0/binary.h])
 PKG_CHECK_MODULES(LIBMEMCACHED, libmemcached >= 0.8.0) AC_SUBST(LIBMEMCACHED_CFLAGS) AC_SUBST(LIBMEMCACHED_LIBS)
 PKG_CHECK_MODULES(LIBEVENT, libevent >= 2.0.10) AC_SUBST(LIBEVENT_CFLAGS) AC_SUBST(LIBEVENT_LIBS)
 
