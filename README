@@ -20,6 +20,7 @@ The following libraries are required for building:
 
 * libevent 2.0.10 or newer.
 * libmemcached 0.8.0 or newer.
+* libpcre 8.x.
 
 
 Using memtier_benchmark
