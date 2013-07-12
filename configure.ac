@@ -51,8 +51,7 @@ AC_CHECK_LIB([rt], [clock_gettime], , AC_MSG_ERROR([rt is required for libevent.
 AC_CHECK_LIB([pthread], [pthread_create], , AC_MSG_ERROR([pthread is required.]))
 AC_CHECK_LIB([socket], [gai_strerror])
 
-# libmemcached
-AC_CHECK_HEADERS([memcached/protocol_binary.h libmemcached/memcached/protocol_binary.h libmemcachedprotocol-0.0/binary.h])
+# libevent
 PKG_CHECK_MODULES(LIBEVENT,
     [libevent >= 2.0.10],
     AC_SUBST(LIBEVENT_CFLAGS) AC_SUBST(LIBEVENT_LIBS)
