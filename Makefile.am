@@ -21,7 +21,7 @@ EXTRA_DIST = README.md COPYING
 
 bin_PROGRAMS = memtier_benchmark
 
-memtier_benchmark_CPPFLAGS = $(LIBEVENT_CFLAGS) $(LIBMEMCACHED_CFLAGS)
+memtier_benchmark_CPPFLAGS = $(LIBEVENT_CFLAGS)
 memtier_benchmark_SOURCES = \
 	memtier_benchmark.cpp memtier_benchmark.h \
 	client.cpp client.h \
@@ -30,7 +30,7 @@ memtier_benchmark_SOURCES = \
 	item.cpp item.h \
 	file_io.cpp file_io.h \
 	config_types.cpp config_types.h
-memtier_benchmark_LDADD = $(LIBEVENT_LIBS) $(LIBMEMCACHED_LIBS)
+memtier_benchmark_LDADD = $(LIBEVENT_LIBS)
 
 dist_man1_MANS = memtier_benchmark.1
 

@@ -53,10 +53,12 @@ AC_CHECK_LIB([socket], [gai_strerror])
 
 # libmemcached
 AC_CHECK_HEADERS([memcached/protocol_binary.h libmemcached/memcached/protocol_binary.h libmemcachedprotocol-0.0/binary.h])
-PKG_CHECK_MODULES(LIBMEMCACHED, libmemcached >= 0.8.0) AC_SUBST(LIBMEMCACHED_CFLAGS) AC_SUBST(LIBMEMCACHED_LIBS)
-PKG_CHECK_MODULES(LIBEVENT, libevent >= 2.0.10) AC_SUBST(LIBEVENT_CFLAGS) AC_SUBST(LIBEVENT_LIBS)
+PKG_CHECK_MODULES(LIBEVENT,
+    [libevent >= 2.0.10],
+    AC_SUBST(LIBEVENT_CFLAGS) AC_SUBST(LIBEVENT_LIBS)
+)
 
 AC_CONFIG_FILES([
-	Makefile
+   	Makefile
 ])
 AC_OUTPUT

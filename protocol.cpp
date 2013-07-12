@@ -29,23 +29,7 @@
 
 #include "protocol.h"
 #include "memtier_benchmark.h"
-
-// from libmemcached
-#ifdef HAVE_MEMCACHED_PROTOCOL_BINARY_H
-#include "memcached/protocol_binary.h"
-#else
-#ifdef HAVE_LIBMEMCACHED_MEMCACHED_PROTOCOL_BINARY_H
-#include "libmemcached/memcached/protocol_binary.h"
-#else
-#ifdef HAVE_LIBMEMCACHEDPROTOCOL_0_0_BINARY_H
-#include "libmemcachedprotocol-0.0/binary.h"
-#endif
-#endif
-#endif
-
-#ifndef PROTOCOL_BINARY_RESPONSE_ETMPFAIL
-#define PROTOCOL_BINARY_RESPONSE_ETMPFAIL PROTOCOL_BINARY_RESPONSE_SUCCESS
-#endif
+#include "libmemcached_protocol/binary.h"
 
 /////////////////////////////////////////////////////////////////////////
 
