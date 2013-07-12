@@ -78,3 +78,7 @@ $ memtier_benchmark --help
 
 for command line options.
 
+
+
+[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/ce4c1161c17a84e88ed541d89e4edf5f "githalytics.com")](http://githalytics.com/GarantiaData/memtier_benchmark)
+

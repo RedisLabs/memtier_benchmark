@@ -1,3 +1,7 @@
+* Version 1.0.2
+    * Remove libmemcached dependency.
+    * Detailed instructions for building on Ubuntu and CentOS distributions.
+
 * Version 1.0.1
     * Fix build problems on Ubuntu 10.04.
 
