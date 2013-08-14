@@ -1,0 +1,26 @@
+The memtier_benchmark tool provides a --data-import option that allows reading
+data and optionally key names from file.
+
+The expected file is a comma delimited file (CSV), with the following
+columns:
+
+'dumpflags'     an integer bit-mask flags value which should generally be '0'.
+'time'          the time the item was inserted or modified, expressed in 
+                seconds since the memcached startup.
+'exptime'       item's expiration time, expressed in seconds since the 
+                memcached startup.                
+'nbytes'        length of item data, in bytes.
+'nsuffix'       length of flags+length string associated with the item, in bytes.
+'it_flags'      a flags bitmask value.
+'clsid'         item's slab class ID.
+'nkey'          length of key, in bytes.
+'key'           the key itself.
+'data'          the data itself.
+
+The 'key' and 'data' columns are enclosed in double quotes.  If data in these
+columns contains a double quote, it is quoted (i.e., a single " is encoded as
+"").
+
+The data column may contain binary data, including non-ASCII characters, NULLs,
+CRs and LFs.
+

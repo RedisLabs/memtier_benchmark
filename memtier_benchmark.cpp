@@ -102,6 +102,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "data_size_list = %s\n"
         "expiry_range = %u-%u\n"
         "data_import = %s\n"
+        "data_verify = %s\n"
+        "verify_only = %s\n"
         "generate_keys = %s\n"
         "key_prefix = %s\n"
         "key_minimum = %u\n"
@@ -110,7 +112,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "reconnect_interval = %u\n"
         "multi_key_get = %u\n"
         "authenticate = %s\n"
-        "select-db = %d\n",
+        "select-db = %d\n"
+        "no-expiry = %s\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -131,6 +134,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->data_size_list.print(tmpbuf, sizeof(tmpbuf)-1),
         cfg->expiry_range.min, cfg->expiry_range.max,
         cfg->data_import,
+        cfg->data_verify ? "yes" : "no",
+        cfg->verify_only ? "yes" : "no",
         cfg->generate_keys ? "yes" : "no",
         cfg->key_prefix,
         cfg->key_minimum,
@@ -139,7 +144,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->reconnect_interval,
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
-        cfg->select_db);
+        cfg->select_db,
+        cfg->no_expiry ? "yes" : "no");
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -184,6 +190,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_data_size_list,
         o_expiry_range,
         o_data_import,
+        o_data_verify,
+        o_verify_only,
         o_key_prefix,
         o_key_minimum,
         o_key_maximum,
@@ -193,7 +201,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_reconnect_interval,
         o_generate_keys,
         o_multi_key_get,
-        o_select_db
+        o_select_db,
+        o_no_expiry
     };
     
     static struct option long_options[] = {
@@ -218,6 +227,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "data-size-list",             1, 0, o_data_size_list },
         { "expiry-range",               1, 0, o_expiry_range },
         { "data-import",                1, 0, o_data_import },
+        { "data-verify",                0, 0, o_data_verify },
+        { "verify-only",                0, 0, o_verify_only },
         { "generate-keys",              0, 0, o_generate_keys },
         { "key-prefix",                 1, 0, o_key_prefix },
         { "key-minimum",                1, 0, o_key_minimum },
@@ -227,6 +238,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
+        { "no-expiry",                  0, 0, o_no_expiry },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { NULL,                         0, 0, 0 }
@@ -382,6 +394,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_data_import:
                     cfg->data_import = optarg;
                     break;
+                case o_data_verify:
+                    cfg->data_verify = 1;
+                    break;
+                case o_verify_only:
+                    cfg->verify_only = 1;
+                    cfg->data_verify = 1;   // Implied
+                    break;
                 case o_key_prefix:
                     cfg->key_prefix = optarg;
                     break;
@@ -439,6 +458,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_no_expiry:
+                    cfg->no_expiry = true;
+                    break;
                 default:
                     return -1;
                     break;
@@ -486,7 +508,10 @@ void usage() {
             "\n"
             "Imported Data Options:\n"
             "      --data-import=FILE         Read object data from file\n"
+            "      --data-verify              Enable data verification when test is complete\n"
+            "      --verify-only              Only perform --data-verify, without any other test\n"
             "      --generate-keys            Generate keys for imported objects\n"
+            "      --no-expiry                Ignore expiry information in imported data\n"
             "\n"
             "Key Options:\n"
             "      --key-prefix=PREFIX        Prefix for keys (default: \"memtier-\")\n"
@@ -719,6 +744,15 @@ int main(int argc, char *argv[])
     object_generator* obj_gen = NULL;
     imported_keylist* keylist = NULL;
     if (!cfg.data_import) {
+        if (cfg.data_verify) {
+            fprintf(stderr, "error: use data-verify only with data-import\n");
+            exit(1);
+        }
+        if (cfg.no_expiry) {
+            fprintf(stderr, "error: use no-expiry only with data-import\n");
+            exit(1);
+        }
+        
         obj_gen = new object_generator();
         assert(obj_gen != NULL);
     } else {
@@ -754,8 +788,8 @@ int main(int argc, char *argv[])
                 fprintf(stderr, " %u keys read.\n", keylist->size());
             }
         }
-        
-        obj_gen = new import_object_generator(cfg.data_import, keylist);
+
+        obj_gen = new import_object_generator(cfg.data_import, keylist, cfg.no_expiry);
         assert(obj_gen != NULL);
 
         if (dynamic_cast<import_object_generator*>(obj_gen)->open_file() != true) {
@@ -763,7 +797,7 @@ int main(int argc, char *argv[])
             exit(1);
         }
     }
-   
+
     if (strcmp(cfg.protocol, "redis") != 0 && cfg.authenticate) {
         fprintf(stderr, "error: authenticate can only be used with redis protocol.\n");
         usage();
@@ -803,17 +837,7 @@ int main(int argc, char *argv[])
     }
     obj_gen->set_expiry_range(cfg.expiry_range.min, cfg.expiry_range.max);
 
-    std::vector<run_stats> all_stats;
-    for (unsigned int run_id = 1; run_id <= cfg.run_count; run_id++) {
-        if (run_id > 1)
-            sleep(1);   // let connections settle
-        
-        run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
-
-        all_stats.push_back(stats);
-    }
-    
-    // Produce results
+    // Prepare output file
     FILE *outfile;
     if (cfg.out_file != NULL) {
         fprintf(stderr, "Writing results to %s...\n", cfg.out_file);
@@ -826,56 +850,92 @@ int main(int argc, char *argv[])
         outfile = stdout;
     }
 
-    // Print some run information
-    fprintf(outfile,
-           "%-9u Threads\n"
-           "%-9u Connections per thread\n"
-           "%-9u %s\n",
-           cfg.threads, cfg.clients, 
-           cfg.requests > 0 ? cfg.requests : cfg.test_time,
-           cfg.requests > 0 ? "Requests per thread"  : "Seconds");
+    if (!cfg.verify_only) {
+        std::vector<run_stats> all_stats;
+        for (unsigned int run_id = 1; run_id <= cfg.run_count; run_id++) {
+            if (run_id > 1)
+                sleep(1);   // let connections settle
+            
+            run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
 
-    // If more than 1 run was used, compute best, worst and average
-    if (cfg.run_count > 1) {
-        unsigned int min_ops_sec = (unsigned int) -1;
-        unsigned int max_ops_sec = 0;
-        run_stats* worst = NULL;
-        run_stats* best = NULL;        
-        for (std::vector<run_stats>::iterator i = all_stats.begin(); i != all_stats.end(); i++) {
-            unsigned int secs = (i->get_duration_usec() / 1000);
-            unsigned int ops_sec = (i->get_total_ops() / (secs > 0 ? secs : 1)) * 1000;
-            if (ops_sec < min_ops_sec) {
-                min_ops_sec = ops_sec;                
-                worst = &(*i);
-            }
-            if (ops_sec > max_ops_sec) {
-                max_ops_sec = ops_sec;
-                best = &(*i);
-            }
+            all_stats.push_back(stats);
         }
+        
+        // Print some run information
+        fprintf(outfile,
+               "%-9u Threads\n"
+               "%-9u Connections per thread\n"
+               "%-9u %s\n",
+               cfg.threads, cfg.clients, 
+               cfg.requests > 0 ? cfg.requests : cfg.test_time,
+               cfg.requests > 0 ? "Requests per thread"  : "Seconds");
+
+        // If more than 1 run was used, compute best, worst and average
+        if (cfg.run_count > 1) {
+            unsigned int min_ops_sec = (unsigned int) -1;
+            unsigned int max_ops_sec = 0;
+            run_stats* worst = NULL;
+            run_stats* best = NULL;        
+            for (std::vector<run_stats>::iterator i = all_stats.begin(); i != all_stats.end(); i++) {
+                unsigned int secs = (i->get_duration_usec() / 1000);
+                unsigned int ops_sec = (i->get_total_ops() / (secs > 0 ? secs : 1)) * 1000;
+                if (ops_sec < min_ops_sec) {
+                    min_ops_sec = ops_sec;                
+                    worst = &(*i);
+                }
+                if (ops_sec > max_ops_sec) {
+                    max_ops_sec = ops_sec;
+                    best = &(*i);
+                }
+            }
 
 
-        fprintf(outfile, "\n\n"
-                         "BEST RUN RESULTS\n"
-                         "========================================================================\n");        
-        best->print(outfile);
+            fprintf(outfile, "\n\n"
+                             "BEST RUN RESULTS\n"
+                             "========================================================================\n");        
+            best->print(outfile);
 
-        fprintf(outfile, "\n\n"
-                         "WORST RUN RESULTS\n"
-                         "========================================================================\n");        
-        worst->print(outfile);
+            fprintf(outfile, "\n\n"
+                             "WORST RUN RESULTS\n"
+                             "========================================================================\n");        
+            worst->print(outfile);
 
-        fprintf(outfile, "\n\n"
-                         "AGGREGATED AVERAGE RESULTS (%u runs)\n"
-                         "========================================================================\n", cfg.run_count);
+            fprintf(outfile, "\n\n"
+                             "AGGREGATED AVERAGE RESULTS (%u runs)\n"
+                             "========================================================================\n", cfg.run_count);
 
-        run_stats average;
-        average.aggregate_average(all_stats);
-        average.print(outfile);
-    } else {
-        all_stats.begin()->print(outfile);
+            run_stats average;
+            average.aggregate_average(all_stats);
+            average.print(outfile);
+        } else {
+            all_stats.begin()->print(outfile);
+        }
     }
-    
+
+    // If needed, data verification is done now...
+    if (cfg.data_verify) {
+        struct event_base *verify_event_base = event_base_new();
+        abstract_protocol *verify_protocol = protocol_factory(cfg.protocol);
+        verify_client *client = new verify_client(verify_event_base, &cfg, verify_protocol, obj_gen);
+
+        fprintf(outfile, "\n\nPerforming data verification...\n");
+
+        // Run client in verification mode
+        client->prepare();
+        event_base_dispatch(verify_event_base);
+
+        fprintf(outfile, "Data verification completed:\n"
+                        "%-10llu keys verified successfuly.\n"
+                        "%-10llu keys failed.\n",
+                        client->get_verified_keys(),
+                        client->get_errors());
+
+        // Clean up...
+        delete client;
+        delete verify_protocol;
+        event_base_free(verify_event_base);
+    }
+
     if (outfile != stdout) {
         fclose(outfile);
     }

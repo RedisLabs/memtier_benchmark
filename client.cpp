@@ -89,18 +89,9 @@ client::request::request(request_type type, unsigned int size, struct timeval* s
     }
 }
 
-client::client(client_group* group) : 
-    m_sockfd(-1), m_server_addr(NULL), m_unix_sockaddr(NULL), m_event(NULL), m_group(group), 
-    m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
-    m_authentication(auth_none), m_db_selection(select_none),
-    m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
-    m_reqs_processed(0),
-    m_set_ratio_count(0),
-    m_get_ratio_count(0)    
+bool client::setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *objgen)
 {
-
-    // Get configuration
-    m_config = group->get_config();
+    m_config = config;
     assert(m_config != NULL);
 
     if (m_config->unix_socket) {
@@ -119,34 +110,72 @@ client::client(client_group* group) :
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
 
-
         snprintf(port_str, sizeof(port_str)-1, "%u", m_config->port);
         int error = getaddrinfo(m_config->server, 
                         port_str, &hints, &m_server_addr);
         if (error != 0) {
             benchmark_error_log("%s:%u: failed to resolve: %s\n", 
                         m_config->server, m_config->port, gai_strerror(error));
-            return;
+            return false;
         }
     }
-    
+
     m_read_buf = evbuffer_new();
     assert(m_read_buf != NULL);
 
     m_write_buf = evbuffer_new();
     assert(m_write_buf != NULL);    
 
-    m_protocol = group->get_protocol()->clone();
+    m_protocol = protocol->clone();
     assert(m_protocol != NULL);
     m_protocol->set_buffers(m_read_buf, m_write_buf);
 
-    m_obj_gen = group->get_obj_gen()->clone();
+    m_obj_gen = objgen->clone();
     assert(m_obj_gen != NULL);
 
     m_keylist = new keylist(m_config->multi_key_get + 1);
     assert(m_keylist != NULL);
 
-    benchmark_debug_log("new client %p successfully constructed.\n", this);
+    return true;
+}
+
+client::client(client_group* group) : 
+    m_sockfd(-1), m_server_addr(NULL), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL), 
+    m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
+    m_authentication(auth_none), m_db_selection(select_none),
+    m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
+    m_reqs_processed(0),
+    m_set_ratio_count(0),
+    m_get_ratio_count(0)    
+{
+    m_event_base = group->get_event_base();
+
+    if (!setup_client(group->get_config(), group->get_protocol(), group->get_obj_gen())) {
+        return;
+    }
+    
+    benchmark_debug_log("new client %p successfully set up.\n", this);
+    m_initialized = true;
+}
+
+client::client(struct event_base *event_base,
+    benchmark_config *config,
+    abstract_protocol *protocol,
+    object_generator *obj_gen) : 
+    m_sockfd(-1), m_server_addr(NULL), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL), 
+    m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
+    m_authentication(auth_none), m_db_selection(select_none),
+    m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
+    m_reqs_processed(0),
+    m_set_ratio_count(0),
+    m_get_ratio_count(0)    
+{
+    m_event_base = event_base;
+    if (!setup_client(config, protocol, obj_gen)) {
+        return;
+    }
+    
+    benchmark_debug_log("new client %p successfully set up.\n", this);
     m_initialized = true;
 }
 
@@ -271,14 +300,14 @@ int client::connect(void)
 
     // set up event
     if (!m_event) {
-        m_event = event_new(m_group->get_event_base(), 
+        m_event = event_new(m_event_base,
             m_sockfd, EV_WRITE, client_event_handler, (void *)this);    
         assert(m_event != NULL);
     } else {
         int ret = event_del(m_event);
         assert(ret == 0);
 
-        ret = event_assign(m_event, m_group->get_event_base(), 
+        ret = event_assign(m_event, m_event_base,
             m_sockfd, EV_WRITE, client_event_handler, (void *)this);
         assert(ret == 0);
     }
@@ -381,7 +410,7 @@ void client::handle_event(short evtype)
     }
 
     if (new_evtype) {
-        int ret = event_assign(m_event, m_group->get_event_base(), 
+        int ret = event_assign(m_event, m_event_base,
             m_sockfd, new_evtype, client_event_handler, (void *)this);
         assert(ret == 0);
 
@@ -410,7 +439,7 @@ bool client::send_conn_setup_commands(void)
         if (m_authentication == auth_none) {
             benchmark_debug_log("sending authentication command.\n");
             m_protocol->authenticate(m_config->authenticate);
-            m_pipeline.push(client::request(rt_auth, 0, NULL, 0));
+            m_pipeline.push(new client::request(rt_auth, 0, NULL, 0));
             m_authentication = auth_sent;
             sent = true;
         }
@@ -419,7 +448,7 @@ bool client::send_conn_setup_commands(void)
         if (m_db_selection == select_none) {
             benchmark_debug_log("sending db selection command.\n");
             m_protocol->select_db(m_config->select_db);
-            m_pipeline.push(client::request(rt_select_db, 0, NULL, 0));
+            m_pipeline.push(new client::request(rt_select_db, 0, NULL, 0));
             m_db_selection = select_sent;
             sent = true;
         }
@@ -435,6 +464,77 @@ bool client::is_conn_setup_done(void)
      if (m_config->select_db && m_db_selection != select_done)
          return false;
      return true;
+}
+
+void client::create_request(void)
+{
+    // are we set or get? this depends on the ratio
+    if (m_set_ratio_count < m_config->ratio.a) {
+        // set command
+    
+        data_object *obj = m_obj_gen->get_object(m_config->key_pattern[0] == 'R' ? 0 : 1);
+        unsigned int key_len;
+        const char *key = obj->get_key(&key_len);
+        unsigned int value_len;
+        const char *value = obj->get_value(&value_len);
+        int cmd_size = 0;
+
+        m_set_ratio_count++;
+        benchmark_debug_log("SET key=[%.*s] value_len=%u expiry=%u\n",
+            key_len, key, value_len, obj->get_expiry());
+        cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
+            obj->get_expiry());
+
+        m_pipeline.push(new client::request(rt_set, cmd_size, NULL, 1));
+    } else if (m_get_ratio_count < m_config->ratio.b) {
+        // get command
+        int cmd_size = 0;
+        
+        if (m_config->multi_key_get > 0) {
+            unsigned int keys_count;                
+
+            keys_count = m_config->ratio.b - m_get_ratio_count;
+            if ((int)keys_count > m_config->multi_key_get)
+                keys_count = m_config->multi_key_get;
+
+            m_keylist->clear();
+            while (m_keylist->get_keys_count() < keys_count) {
+                unsigned int keylen;
+                const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+
+                assert(key != NULL);
+                assert(keylen > 0);
+                
+                m_keylist->add_key(key, keylen);
+            }
+
+            const char *first_key, *last_key;
+            unsigned int first_key_len, last_key_len;
+            first_key = m_keylist->get_key(0, &first_key_len);
+            last_key = m_keylist->get_key(m_keylist->get_keys_count()-1, &last_key_len);
+            
+            benchmark_debug_log("MGET %d keys [%.*s] .. [%.*s]\n", 
+                m_keylist->get_keys_count(), first_key_len, first_key, last_key_len, last_key);
+
+            cmd_size = m_protocol->write_command_multi_get(m_keylist);
+            m_get_ratio_count += keys_count;
+            m_pipeline.push(new client::request(rt_get, cmd_size, NULL, m_keylist->get_keys_count()));
+        } else {
+            unsigned int keylen;
+            const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+            assert(key != NULL);
+            assert(keylen > 0);
+            
+            benchmark_debug_log("GET key=[%.*s]\n", keylen, key);
+            cmd_size = m_protocol->write_command_get(key, keylen);
+
+            m_get_ratio_count++;
+            m_pipeline.push(new client::request(rt_get, cmd_size, NULL, 1));
+        }
+    } else {
+        // overlap counters
+        m_get_ratio_count = m_set_ratio_count = 0;
+    }        
 }
 
 void client::fill_pipeline(void)
@@ -457,75 +557,7 @@ void client::fill_pipeline(void)
                 return;
         }
 
-        // are we set or get? this depends on the ratio
-        if (m_set_ratio_count < m_config->ratio.a) {
-            // set command
-        
-            data_object *obj = m_obj_gen->get_object(m_config->key_pattern[0] == 'R' ? 0 : 1);
-            unsigned int key_len;
-            const char *key = obj->get_key(&key_len);
-            unsigned int value_len;
-            const char *value = obj->get_value(&value_len);
-            int cmd_size = 0;
-            
-            benchmark_debug_log("SET key=[%.*s] value_len=%u expiry=%u\n",
-                key_len, key, value_len, obj->get_expiry());
-            cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
-                obj->get_expiry());
-
-            m_set_ratio_count++;
-            m_pipeline.push(client::request(rt_set, cmd_size, NULL, 1));
-                
-        } else if (m_get_ratio_count < m_config->ratio.b) {
-            // get command
-            int cmd_size = 0;
-            
-            if (m_config->multi_key_get > 0) {
-                unsigned int keys_count;                
-
-                keys_count = m_config->ratio.b - m_get_ratio_count;
-                if ((int)keys_count > m_config->multi_key_get)
-                    keys_count = m_config->multi_key_get;
-
-                m_keylist->clear();
-                while (m_keylist->get_keys_count() < keys_count) {
-                    unsigned int keylen;
-                    const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
-
-                    assert(key != NULL);
-                    assert(keylen > 0);
-                    
-                    m_keylist->add_key(key, keylen);
-                }
-
-                const char *first_key, *last_key;
-                unsigned int first_key_len, last_key_len;
-                first_key = m_keylist->get_key(0, &first_key_len);
-                last_key = m_keylist->get_key(m_keylist->get_keys_count()-1, &last_key_len);
-                
-                benchmark_debug_log("MGET %d keys [%.*s] .. [%.*s]\n", 
-                    m_keylist->get_keys_count(), first_key_len, first_key, last_key_len, last_key);
-
-                cmd_size = m_protocol->write_command_multi_get(m_keylist);
-                m_get_ratio_count += keys_count;
-                m_pipeline.push(client::request(rt_get, cmd_size, NULL, m_keylist->get_keys_count()));
-            } else {
-                unsigned int keylen;
-                const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
-                assert(key != NULL);
-                assert(keylen > 0);
-                
-                benchmark_debug_log("GET key=[%.*s]\n", keylen, key);
-                cmd_size = m_protocol->write_command_get(key, keylen);
-
-                m_get_ratio_count++;
-                m_pipeline.push(client::request(rt_get, cmd_size, NULL, 1));
-            }
-        } else {
-            // overlap counters
-            m_get_ratio_count = m_set_ratio_count = 0;
-            continue;
-        }        
+        create_request();
     }
 }
 
@@ -552,58 +584,74 @@ void client::process_first_request(void)
     fill_pipeline();
 }
 
+void client::handle_response(request *request, protocol_response *response)
+{
+    switch (request->m_type) {
+        case rt_get:
+            m_stats.update_get_op(NULL, 
+                request->m_size + response->get_total_len(),
+                ts_diff_now(request->m_sent_time),
+                response->get_hits(),
+                request->m_keys - response->get_hits());
+            break;
+        case rt_set:
+            m_stats.update_set_op(NULL,
+                request->m_size + response->get_total_len(),
+                ts_diff_now(request->m_sent_time));
+            break;
+        default:
+            assert(0);
+            break;
+    }
+}
+
 void client::process_response(void)
 {
     int ret;
     bool responses_handled = false;
     
-    while ((ret = m_protocol->parse_response(false)) > 0) {
+    while ((ret = m_protocol->parse_response()) > 0) {
+        bool error = false;
         protocol_response *r = m_protocol->get_response();
 
-        client::request req = m_pipeline.front();
+        client::request* req = m_pipeline.front();
         m_pipeline.pop();
 
-        if (req.m_type == rt_auth) {
+        if (req->m_type == rt_auth) {
             if (strcmp(r->get_status(), "+OK") != 0) {
                 benchmark_error_log("authentication failed.\n");
-                return;
+                error = true;
+            } else {
+                m_authentication = auth_done;
+                benchmark_debug_log("authentication successful.\n");
             }
-            m_authentication = auth_done;
-            benchmark_debug_log("authentication successful.\n");
-            continue;
-        } else if (req.m_type == rt_select_db) {
+        } else if (req->m_type == rt_select_db) {
            if (strcmp(r->get_status(), "+OK") != 0) {
                 benchmark_error_log("database selection failed.\n");
-                return;
+                error = true;
+            } else {
+                benchmark_debug_log("database selection successful.\n");
+                m_db_selection = select_done;
             }
-            benchmark_debug_log("database selection successful.\n");
-            m_db_selection = select_done;
-            continue;
-        }
+        } else {
+            benchmark_debug_log("handled response (first line): %s, %d hits, %d misses\n",
+                r->get_status(),
+                r->get_hits(),
+                req->m_keys - r->get_hits());
 
-        benchmark_debug_log("handled response (first line): %s, %d hits, %d misses\n",
-            r->get_status(),
-            r->get_hits(),
-            req.m_keys - r->get_hits());
+            if (r->is_error()) {
+                benchmark_error_log("error response: %s\n", r->get_status());
+            }
 
-        if (r->is_error()) {
-            benchmark_error_log("error response: %s\n", r->get_status());
+            handle_response(req, r);
+                
+            m_reqs_processed++;
+            responses_handled = true;
         }
-        
-        switch (req.m_type) {
-            case rt_get:
-                m_stats.update_get_op(NULL, req.m_size + r->get_total_len(), ts_diff_now(req.m_sent_time), r->get_hits(), req.m_keys - r->get_hits());
-                break;
-            case rt_set:
-                m_stats.update_set_op(NULL, req.m_size + r->get_total_len(), ts_diff_now(req.m_sent_time));
-                break;
-            default:
-                assert(0);
-                break;
+        delete req;
+        if (error) {
+            return;
         }
-            
-        m_reqs_processed++;
-        responses_handled = true;
     }
 
     if (ret == -1) {
@@ -624,6 +672,147 @@ void client::process_response(void)
     }
 
     fill_pipeline();
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+verify_client::verify_request::verify_request(request_type type, 
+    unsigned int size, 
+    struct timeval* sent_time,
+    unsigned int keys,
+    const char *key,
+    unsigned int key_len,
+    const char *value,
+    unsigned int value_len) : 
+    client::request(type, size, sent_time, keys), 
+    m_key(NULL), m_key_len(0),
+    m_value(NULL), m_value_len(0)
+{
+    m_key_len = key_len;
+    m_key = (char *)malloc(key_len);
+    memcpy(m_key, key, m_key_len);
+
+    m_value_len = value_len;
+    m_value = (char *)malloc(value_len);
+    memcpy(m_value, value, m_value_len);
+}
+
+verify_client::verify_request::~verify_request(void)
+{
+    if (m_key != NULL) {
+        free((void *) m_key);
+        m_key = NULL;
+    }
+    if (m_value != NULL) {
+        free((void *) m_value);
+        m_value = NULL;
+    }
+}
+
+verify_client::verify_client(struct event_base *event_base,
+    benchmark_config *config,
+    abstract_protocol *protocol,
+    object_generator *obj_gen) : client(event_base, config, protocol, obj_gen),
+    m_finished(false), m_verified_keys(0), m_errors(0)
+{
+    m_protocol->set_keep_value(true);
+}
+
+unsigned long long int verify_client::get_verified_keys(void)
+{
+    return m_verified_keys;
+}
+
+unsigned long long int verify_client::get_errors(void)
+{
+    return m_errors;
+}
+
+void verify_client::create_request(void)
+{
+    // TODO: Refactor client::create_reqeust so this can be unified.
+    if (m_set_ratio_count < m_config->ratio.a) {
+        // Prepare a GET request that will be compared against a previous
+        // SET request.
+        data_object *obj = m_obj_gen->get_object(m_config->key_pattern[0] == 'R' ? 0 : 1);
+        unsigned int key_len;
+        const char *key = obj->get_key(&key_len);
+        unsigned int value_len;
+        const char *value = obj->get_value(&value_len);
+        unsigned int cmd_size;
+
+        m_set_ratio_count++;
+        cmd_size = m_protocol->write_command_get(key, key_len);
+
+        m_pipeline.push(new verify_client::verify_request(rt_get,
+            cmd_size, NULL, 1, key, key_len, value, value_len));
+    } else if (m_get_ratio_count < m_config->ratio.b) {
+        // We don't really care about GET operations, all we do here is keep
+        // the object generator synced.
+        if (m_config->multi_key_get > 0) {
+            unsigned int keys_count;
+
+            keys_count = m_config->ratio.b - m_get_ratio_count;
+            if ((int)keys_count > m_config->multi_key_get)
+                keys_count = m_config->multi_key_get;
+            m_keylist->clear();
+            while (m_keylist->get_keys_count() < keys_count) {
+                unsigned int keylen;
+                const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+
+                assert(key != NULL);
+                assert(keylen > 0);
+
+                m_keylist->add_key(key, keylen);
+            }
+
+            m_get_ratio_count += keys_count;
+        } else {
+            unsigned int keylen;
+            m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+            m_get_ratio_count++;
+        }
+
+        // We don't really send this request, but need to count it to be in sync.
+        m_reqs_processed++;
+    } else {
+        m_get_ratio_count = m_set_ratio_count = 0;
+    }
+}
+
+void verify_client::handle_response(request *request, protocol_response *response)
+{
+    unsigned int rvalue_len;
+    const char *rvalue = response->get_value(&rvalue_len);
+    verify_request *vr = static_cast<verify_request *>(request);
+
+    assert(vr->m_type == rt_get);
+    if (response->is_error()) {
+        benchmark_error_log("error: request for key [%.*s] failed: %s\n",
+            vr->m_key_len, vr->m_key, response->get_status());
+        m_errors++;
+    } else {
+        if (!rvalue || rvalue_len != vr->m_value_len || memcmp(rvalue, vr->m_value, rvalue_len) != 0) {
+            benchmark_error_log("error: key [%.*s]: expected [%.*s], got [%.*s]\n",
+                vr->m_key_len, vr->m_key,
+                vr->m_value_len, vr->m_value,
+                rvalue_len, rvalue);
+            m_errors++;
+        } else {
+            benchmark_debug_log("key: [%.*s] verified successfuly.\n",
+                vr->m_key_len, vr->m_key);
+            m_verified_keys++;
+        }
+    }
+}
+
+bool verify_client::finished(void)
+{
+    if (m_finished)
+        return true;
+    if (m_config->requests > 0 && m_reqs_processed >= m_config->requests)
+        return true;
+    return false;
 }
 
 ///////////////////////////////////////////////////////////////////////////

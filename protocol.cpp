@@ -34,7 +34,7 @@
 /////////////////////////////////////////////////////////////////////////
 
 abstract_protocol::abstract_protocol() :
-    m_read_buf(NULL), m_write_buf(NULL)
+    m_read_buf(NULL), m_write_buf(NULL), m_keep_value(false)
 {    
 }
 
@@ -46,6 +46,11 @@ void abstract_protocol::set_buffers(struct evbuffer* read_buf, struct evbuffer* 
 {
     m_read_buf = read_buf;
     m_write_buf = write_buf;
+}
+
+void abstract_protocol::set_keep_value(bool flag)
+{
+    m_keep_value = flag;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -150,7 +155,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
     virtual int write_command_get(const char *key, int key_len);
     virtual int write_command_multi_get(const keylist *keylist);
-    virtual int parse_response(bool want_value);
+    virtual int parse_response(void);
 };
 
 int redis_protocol::select_db(int db)
@@ -251,7 +256,7 @@ int redis_protocol::write_command_get(const char *key, int key_len)
     return size;
 }
 
-int redis_protocol::parse_response(bool want_value)
+int redis_protocol::parse_response(void)
 {
     char *line;
 
@@ -300,21 +305,21 @@ int redis_protocol::parse_response(bool want_value)
                 break;
             case rs_read_bulk:
                 if (evbuffer_get_length(m_read_buf) >= m_bulk_len + 2) {
-                    if (want_value && m_bulk_len > 0) {
+                    if (m_keep_value && m_bulk_len > 0) {
                         char *bulk_value = (char *) malloc(m_bulk_len);
                         assert(bulk_value != NULL);
                             
                         int ret = evbuffer_remove(m_read_buf, bulk_value, m_bulk_len);
-                        assert((unsigned int) ret == 0);
+                        assert(ret != -1);
 
                         // drain CRLF
                         ret = evbuffer_drain(m_read_buf, 2);
-                        assert((unsigned int) ret == 0);
+                        assert(ret != -1);
 
                         m_last_response.set_value(bulk_value, m_bulk_len);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, m_bulk_len + 2);
-                        assert((unsigned int) ret == 0);
+                        assert(ret != -1);
                     }
 
                     m_response_state = rs_initial;
@@ -350,7 +355,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
     virtual int write_command_get(const char *key, int key_len);
     virtual int write_command_multi_get(const keylist *keylist);
-    virtual int parse_response(bool want_value);
+    virtual int parse_response(void);
 };
 
 int memcache_text_protocol::select_db(int db)
@@ -426,7 +431,7 @@ int memcache_text_protocol::write_command_multi_get(const keylist *keylist)
     return size;
 }
 
-int memcache_text_protocol::parse_response(bool want_value)
+int memcache_text_protocol::parse_response(void)
 {
     char *line;
     size_t tmplen;
@@ -481,7 +486,7 @@ int memcache_text_protocol::parse_response(bool want_value)
                 
             case rs_read_value:                
                 if (evbuffer_get_length(m_read_buf) >= m_value_len + 2) {
-                    if (want_value) {
+                    if (m_keep_value) {
                         char *value = (char *) malloc(m_value_len);
                         assert(value != NULL);
                             
@@ -535,7 +540,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
     virtual int write_command_get(const char *key, int key_len);
     virtual int write_command_multi_get(const keylist *keylist);
-    virtual int parse_response(bool want_value);
+    virtual int parse_response(void);
 };
 
 int memcache_binary_protocol::select_db(int db)
@@ -629,7 +634,7 @@ const char* memcache_binary_protocol::status_text(void)
     }
 }
 
-int memcache_binary_protocol::parse_response(bool want_value)
+int memcache_binary_protocol::parse_response(void)
 {
     while (true) {
         int ret;
@@ -671,7 +676,7 @@ int memcache_binary_protocol::parse_response(bool want_value)
                         m_response_hdr.message.header.response.keylen);
                     assert((unsigned int) ret == 0);
 
-                    if (want_value) {
+                    if (m_keep_value) {
                         int actual_body_len = m_response_hdr.message.header.response.bodylen -
                             m_response_hdr.message.header.response.extlen -
                             m_response_hdr.message.header.response.keylen;                        

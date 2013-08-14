@@ -409,11 +409,12 @@ const char* imported_keylist::get(unsigned int pos, unsigned int *len)
 
 ///////////////////////////////////////////////////////////////////////////
 
-import_object_generator::import_object_generator(const char *filename, imported_keylist *keys) :
+import_object_generator::import_object_generator(const char *filename, imported_keylist *keys, bool no_expiry) :
     m_keys(keys),
     m_reader(filename),
     m_cur_item(NULL),
-    m_reader_opened(false)
+    m_reader_opened(false),
+    m_no_expiry(no_expiry)
 {
     if (m_keys != NULL) {
         m_key_max = m_keys->size();
@@ -431,7 +432,8 @@ import_object_generator::import_object_generator(const import_object_generator& 
     object_generator(from),
     m_keys(from.m_keys),
     m_reader(from.m_reader),
-    m_cur_item(NULL)
+    m_cur_item(NULL),
+    m_no_expiry(from.m_no_expiry)
 {
     if (m_keys != NULL) {
         m_key_max = m_keys->size();
@@ -490,12 +492,14 @@ data_object* import_object_generator::get_object(unsigned int iter)
     
     // compute expiry
     int expiry = 0;
-    if (m_expiry_max > 0) {
-        expiry = random_range(m_expiry_min, m_expiry_max);
-    } else {
-        expiry = m_cur_item->get_exptime();
+    if (!m_no_expiry) {
+        if (m_expiry_max > 0) {
+            expiry = random_range(m_expiry_min, m_expiry_max);
+        } else {
+            expiry = m_cur_item->get_exptime();
+        }
+        m_object.set_expiry(expiry);
     }
-    m_object.set_expiry(expiry);
 
     return &m_object;
 }

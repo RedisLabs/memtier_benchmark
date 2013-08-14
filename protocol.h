@@ -29,6 +29,7 @@ protected:
     unsigned int m_total_len;
     unsigned int m_hits;
     bool m_error;
+
 public:
      protocol_response();
      virtual ~protocol_response();
@@ -82,19 +83,21 @@ protected:
     struct evbuffer* m_read_buf;
     struct evbuffer* m_write_buf;
 
+    bool m_keep_value;
     struct protocol_response m_last_response;
 public:
     abstract_protocol();
     virtual ~abstract_protocol();
     virtual abstract_protocol* clone(void) = 0;
     void set_buffers(struct evbuffer* read_buf, struct evbuffer* write_buf);    
+    void set_keep_value(bool flag);
 
     virtual int select_db(int db) = 0;
     virtual int authenticate(const char *password) = 0;
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry) = 0;
     virtual int write_command_get(const char *key, int key_len) = 0;
     virtual int write_command_multi_get(const keylist *keylist) = 0;
-    virtual int parse_response(bool want_value) = 0;
+    virtual int parse_response() = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }
 };

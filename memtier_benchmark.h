@@ -53,6 +53,8 @@ struct benchmark_config {
     config_weight_list data_size_list;
     struct config_range expiry_range;
     const char *data_import;
+    int data_verify;
+    int verify_only;
     int generate_keys;
     const char *key_prefix;
     unsigned int key_minimum;
@@ -62,6 +64,7 @@ struct benchmark_config {
     int multi_key_get;
     const char *authenticate;
     int select_db;
+    bool no_expiry;
 };
 
 

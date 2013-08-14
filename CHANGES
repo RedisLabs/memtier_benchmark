@@ -1,3 +1,7 @@
+* Version 1.1.0
+    * Add --data-verify and --verify options to allow data verification.
+    * Add --no-expiry option to ignore expiry of imported data.
+
 * Version 1.0.2
     * Remove libmemcached dependency.
     * Detailed instructions for building on Ubuntu and CentOS distributions.

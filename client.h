@@ -127,7 +127,7 @@ protected:
     struct addrinfo* m_server_addr;
     struct sockaddr_un* m_unix_sockaddr;
     struct event* m_event;
-    client_group* m_group;
+    struct event_base* m_event_base;
     struct evbuffer *m_read_buf;
     struct evbuffer *m_write_buf;
     bool m_initialized;
@@ -150,8 +150,9 @@ protected:
         unsigned int m_keys;
 
         request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys);
+        virtual ~request(void) {}
     };
-    std::queue<request> m_pipeline;
+    std::queue<request *> m_pipeline;
 
     unsigned int m_reqs_processed;      // requests processed (responses received)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
@@ -159,13 +160,16 @@ protected:
 
     keylist *m_keylist;                 // used to construct multi commands
 
+    bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     int connect(void);
     void disconnect(void);
 
     void handle_event(short evtype);
     int get_sockfd(void) { return m_sockfd; }
 
-    bool finished();
+    virtual bool finished();
+    virtual void create_request(void);
+    virtual void handle_response(request *request, protocol_response *response);
 
     bool send_conn_setup_commands(void);
     bool is_conn_setup_done(void);
@@ -174,11 +178,43 @@ protected:
     void process_response(void);
 public:
     client(client_group* group);
+    client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     ~client();
 
     bool initialized(void);
     int prepare(void);
     run_stats* get_stats(void) { return &m_stats; }
+};
+
+class verify_client : public client {
+protected:
+    struct verify_request : public request {
+        char *m_key;
+        unsigned int m_key_len;
+        char *m_value;
+        unsigned int m_value_len;
+
+        verify_request(request_type type, 
+            unsigned int size, 
+            struct timeval* sent_time,
+            unsigned int keys,
+            const char *key,
+            unsigned int key_len,
+            const char *value,
+            unsigned int value_len);
+        virtual ~verify_request(void);
+    };
+    bool m_finished;
+    unsigned long long int m_verified_keys;
+    unsigned long long int m_errors;
+
+    virtual bool finished(void);
+    virtual void create_request(void);
+    virtual void handle_response(request *request, protocol_response *response);
+public:
+    verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+    unsigned long long int get_verified_keys(void);
+    unsigned long long int get_errors(void);
 };
 
 class client_group {

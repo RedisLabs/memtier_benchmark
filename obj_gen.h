@@ -131,8 +131,9 @@ protected:
     file_reader m_reader;
     memcache_item* m_cur_item;
     bool m_reader_opened;
+    bool m_no_expiry;
 public:
-    import_object_generator(const char *filename, imported_keylist* keys);
+    import_object_generator(const char *filename, imported_keylist* keys, bool no_expiry);
     import_object_generator(const import_object_generator& from);
     virtual ~import_object_generator();
     virtual import_object_generator* clone(void);
