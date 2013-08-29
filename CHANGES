@@ -1,6 +1,7 @@
 * Version 1.1.0
     * Add --data-verify and --verify options to allow data verification.
     * Add --no-expiry option to ignore expiry of imported data.
+    * Binary memcache now supports SASL PLAIN authentication.
 
 * Version 1.0.2
     * Remove libmemcached dependency.
