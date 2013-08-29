@@ -618,8 +618,8 @@ void client::process_response(void)
         m_pipeline.pop();
 
         if (req->m_type == rt_auth) {
-            if (strcmp(r->get_status(), "+OK") != 0) {
-                benchmark_error_log("authentication failed.\n");
+            if (r->is_error()) {
+                benchmark_error_log("error: authentication failed [%s]\n", r->get_status());
                 error = true;
             } else {
                 m_authentication = auth_done;

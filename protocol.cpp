@@ -151,7 +151,7 @@ public:
     redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
-    virtual int authenticate(const char *password);
+    virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
     virtual int write_command_get(const char *key, int key_len);
     virtual int write_command_multi_get(const keylist *keylist);
@@ -174,10 +174,10 @@ int redis_protocol::select_db(int db)
     return size;
 }
 
-int redis_protocol::authenticate(const char *password)
+int redis_protocol::authenticate(const char *credentials)
 {
     int size = 0;
-    assert(password != NULL);
+    assert(credentials != NULL);
 
     size = evbuffer_add_printf(m_write_buf,
         "*2\r\n"
@@ -185,7 +185,7 @@ int redis_protocol::authenticate(const char *password)
         "AUTH\r\n"
         "$%u\r\n"
         "%s\r\n",
-        (unsigned int)strlen(password), password);
+        (unsigned int)strlen(credentials), credentials);
     return size;
 }
 
@@ -351,7 +351,7 @@ public:
     memcache_text_protocol() : m_response_state(rs_initial), m_value_len(0), m_response_len(0) { }
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
-    virtual int authenticate(const char *password);
+    virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
     virtual int write_command_get(const char *key, int key_len);
     virtual int write_command_multi_get(const keylist *keylist);
@@ -363,7 +363,7 @@ int memcache_text_protocol::select_db(int db)
     assert(0);
 }
 
-int memcache_text_protocol::authenticate(const char *password)
+int memcache_text_protocol::authenticate(const char *credentials)
 {
     assert(0);
 }
@@ -536,7 +536,7 @@ public:
     memcache_binary_protocol() : m_response_state(rs_initial), m_response_len(0) { }
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
-    virtual int authenticate(const char *password);
+    virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
     virtual int write_command_get(const char *key, int key_len);
     virtual int write_command_multi_get(const keylist *keylist);
@@ -548,9 +548,41 @@ int memcache_binary_protocol::select_db(int db)
     assert(0);
 }
 
-int memcache_binary_protocol::authenticate(const char *password)
+int memcache_binary_protocol::authenticate(const char *credentials)
 {
-    assert(0);
+    protocol_binary_request_no_extras req;
+    char nullbyte = '\0';
+    const char mechanism[] = "PLAIN";
+    int mechanism_len = sizeof(mechanism) - 1;
+    const char *colon;
+    const char *user;
+    int user_len;
+    const char *passwd;
+    int passwd_len;
+
+    assert(credentials != NULL);
+    colon = strchr(credentials, ':');
+    assert(colon != NULL);
+
+    user = credentials;
+    user_len = colon - user;
+    passwd = colon + 1;
+    passwd_len = strlen(passwd);
+    
+    memset(&req, 0, sizeof(req));
+    req.message.header.request.magic = PROTOCOL_BINARY_REQ;
+    req.message.header.request.opcode = PROTOCOL_BINARY_CMD_SASL_AUTH;
+    req.message.header.request.keylen = htons(mechanism_len);
+    req.message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
+    req.message.header.request.bodylen = htonl(mechanism_len + user_len + passwd_len + 2);
+    evbuffer_add(m_write_buf, &req, sizeof(req));
+    evbuffer_add(m_write_buf, mechanism, mechanism_len);
+    evbuffer_add(m_write_buf, &nullbyte, 1);
+    evbuffer_add(m_write_buf, user, user_len);
+    evbuffer_add(m_write_buf, &nullbyte, 1);
+    evbuffer_add(m_write_buf, passwd, passwd_len);
+
+    return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
 }
 
 int memcache_binary_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry)
@@ -607,7 +639,8 @@ int memcache_binary_protocol::write_command_multi_get(const keylist *keylist)
 
 const char* memcache_binary_protocol::status_text(void)
 {
-    static const char* status_str[] = {
+    int status;
+    static const char* status_str_00[] = {
         "PROTOCOL_BINARY_RESPONSE_SUCCESS",
         "PROTOCOL_BINARY_RESPONSE_KEY_ENOENT",
         "PROTOCOL_BINARY_RESPONSE_KEY_EEXISTS",
@@ -616,8 +649,13 @@ const char* memcache_binary_protocol::status_text(void)
         "PROTOCOL_BINARY_RESPONSE_NOT_STORED",
         "PROTOCOL_BINARY_RESPONSE_DELTA_BADVAL",
         "PROTOCOL_BINARY_RESPONSE_NOT_MY_VBUCKET",
+    };
+    static const char* status_str_20[] = {
         "PROTOCOL_BINARY_RESPONSE_AUTH_ERROR",
-        "PROTOCOL_BINARY_RESPONSE_AUTH_CONTINUE",
+        "PROTOCOL_BINARY_RESPONSE_AUTH_CONTINUE"
+    };
+    static const char* status_str_80[] = {
+        NULL,
         "PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND",
         "PROTOCOL_BINARY_RESPONSE_ENOMEM",
         "PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED",
@@ -626,9 +664,13 @@ const char* memcache_binary_protocol::status_text(void)
         "PROTOCOL_BINARY_RESPONSE_ETMPFAIL"
     };
 
-    if (m_response_hdr.message.header.response.status >= PROTOCOL_BINARY_RESPONSE_SUCCESS &&
-        m_response_hdr.message.header.response.status <= PROTOCOL_BINARY_RESPONSE_ETMPFAIL) {        
-        return status_str[m_response_hdr.message.header.response.status];    
+    status = ntohs(m_response_hdr.message.header.response.status);
+    if (status <= 0x07) {
+        return status_str_00[status];
+    } else if (status >= 0x20 && status <= 0x21) {
+        return status_str_20[status - 0x20];
+    } else if (status >= 0x80 && status <= 0x86) {
+        return status_str_80[status - 0x80];
     } else {
         return NULL;
     }
@@ -638,6 +680,7 @@ int memcache_binary_protocol::parse_response(void)
 {
     while (true) {
         int ret;
+        int status;
         
         switch (m_response_state) {
             case rs_initial:
@@ -656,6 +699,16 @@ int memcache_binary_protocol::parse_response(void)
                 m_last_response.clear();
                 if (status_text()) {
                     m_last_response.set_status(strdup(status_text()));
+                }
+
+                status = ntohs(m_response_hdr.message.header.response.status);
+                if (status == PROTOCOL_BINARY_RESPONSE_AUTH_ERROR ||
+                    status == PROTOCOL_BINARY_RESPONSE_AUTH_CONTINUE ||
+                    status == PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED ||
+                    status == PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND ||
+                    status == PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED ||
+                    status == PROTOCOL_BINARY_RESPONSE_EBUSY) {
+                    m_last_response.set_error(true);
                 }
                 
                 if (ntohl(m_response_hdr.message.header.response.bodylen) > 0) {

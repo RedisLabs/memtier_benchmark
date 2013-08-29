@@ -496,7 +496,8 @@ void usage() {
             "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
             "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
-            "  -a, --authenticate=PASSWORD    Authenticate to redis using PASSWORD\n"
+            "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
+            "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "\n"
             "Object Options:\n"
@@ -798,9 +799,17 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (strcmp(cfg.protocol, "redis") != 0 && cfg.authenticate) {
-        fprintf(stderr, "error: authenticate can only be used with redis protocol.\n");
-        usage();
+    if (cfg.authenticate) {
+        if (strcmp(cfg.protocol, "redis") != 0  &&
+            strcmp(cfg.protocol, "memcache_binary") != 0) {
+                fprintf(stderr, "error: authenticate can only be used with redis or memcache_binary.\n");
+                usage();
+        }
+        if (strcmp(cfg.protocol, "memcache_binary") == 0 &&
+            strchr(cfg.authenticate, ':') == NULL) {
+                fprintf(stderr, "error: binary_memcache credentials must be in the form of USER:PASSWORD.\n");
+                usage();
+        }
     }
 
     if (cfg.select_db > 0 && strcmp(cfg.protocol, "redis")) {
