@@ -109,7 +109,7 @@ public:
     void merge(const run_stats& other);
     bool save_csv(const char *filename);
     void debug_dump(void);
-    void print(FILE *file);
+    void print(FILE *file, bool histogram);
     
     unsigned int get_duration(void);
     unsigned long int get_duration_usec(void);

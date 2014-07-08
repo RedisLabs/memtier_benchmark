@@ -471,8 +471,12 @@ void client::create_request(void)
     // are we set or get? this depends on the ratio
     if (m_set_ratio_count < m_config->ratio.a) {
         // set command
-    
-        data_object *obj = m_obj_gen->get_object(m_config->key_pattern[0] == 'R' ? 0 : 1);
+        int iter = OBJECT_GENERATOR_KEY_SET_ITER;
+        if (m_config->key_pattern[0] == 'R')
+            iter = OBJECT_GENERATOR_KEY_RANDOM;
+        else if (m_config->key_pattern[0] == 'G')
+            iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
+        data_object *obj = m_obj_gen->get_object(iter);
         unsigned int key_len;
         const char *key = obj->get_key(&key_len);
         unsigned int value_len;
@@ -483,7 +487,7 @@ void client::create_request(void)
         benchmark_debug_log("SET key=[%.*s] value_len=%u expiry=%u\n",
             key_len, key, value_len, obj->get_expiry());
         cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
-            obj->get_expiry());
+            obj->get_expiry(), m_config->data_offset);
 
         m_pipeline.push(new client::request(rt_set, cmd_size, NULL, 1));
     } else if (m_get_ratio_count < m_config->ratio.b) {
@@ -500,7 +504,12 @@ void client::create_request(void)
             m_keylist->clear();
             while (m_keylist->get_keys_count() < keys_count) {
                 unsigned int keylen;
-                const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+                int iter = OBJECT_GENERATOR_KEY_GET_ITER;
+                if (m_config->key_pattern[2] == 'R')
+                    iter = OBJECT_GENERATOR_KEY_RANDOM;
+                else if (m_config->key_pattern[2] == 'G')
+                    iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
+                const char *key = m_obj_gen->get_key(iter, &keylen);
 
                 assert(key != NULL);
                 assert(keylen > 0);
@@ -521,12 +530,17 @@ void client::create_request(void)
             m_pipeline.push(new client::request(rt_get, cmd_size, NULL, m_keylist->get_keys_count()));
         } else {
             unsigned int keylen;
-            const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+            int iter = OBJECT_GENERATOR_KEY_GET_ITER;
+            if (m_config->key_pattern[2] == 'R')
+                iter = OBJECT_GENERATOR_KEY_RANDOM;
+            else if (m_config->key_pattern[2] == 'G')
+                iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
+            const char *key = m_obj_gen->get_key(iter, &keylen);
             assert(key != NULL);
             assert(keylen > 0);
             
             benchmark_debug_log("GET key=[%.*s]\n", keylen, key);
-            cmd_size = m_protocol->write_command_get(key, keylen);
+            cmd_size = m_protocol->write_command_get(key, keylen, m_config->data_offset);
 
             m_get_ratio_count++;
             m_pipeline.push(new client::request(rt_get, cmd_size, NULL, 1));
@@ -734,7 +748,12 @@ void verify_client::create_request(void)
     if (m_set_ratio_count < m_config->ratio.a) {
         // Prepare a GET request that will be compared against a previous
         // SET request.
-        data_object *obj = m_obj_gen->get_object(m_config->key_pattern[0] == 'R' ? 0 : 1);
+        int iter = OBJECT_GENERATOR_KEY_SET_ITER;
+        if (m_config->key_pattern[0] == 'R')
+            iter = OBJECT_GENERATOR_KEY_RANDOM;
+        else if (m_config->key_pattern[0] == 'G')
+            iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
+        data_object *obj = m_obj_gen->get_object(iter);
         unsigned int key_len;
         const char *key = obj->get_key(&key_len);
         unsigned int value_len;
@@ -742,7 +761,7 @@ void verify_client::create_request(void)
         unsigned int cmd_size;
 
         m_set_ratio_count++;
-        cmd_size = m_protocol->write_command_get(key, key_len);
+        cmd_size = m_protocol->write_command_get(key, key_len, m_config->data_offset);
 
         m_pipeline.push(new verify_client::verify_request(rt_get,
             cmd_size, NULL, 1, key, key_len, value, value_len));
@@ -758,7 +777,12 @@ void verify_client::create_request(void)
             m_keylist->clear();
             while (m_keylist->get_keys_count() < keys_count) {
                 unsigned int keylen;
-                const char *key = m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+                int iter = OBJECT_GENERATOR_KEY_GET_ITER;
+                if (m_config->key_pattern[2] == 'R')
+                    iter = OBJECT_GENERATOR_KEY_RANDOM;
+                else if (m_config->key_pattern[2] == 'G')
+                    iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
+                const char *key = m_obj_gen->get_key(iter, &keylen);
 
                 assert(key != NULL);
                 assert(keylen > 0);
@@ -769,7 +793,12 @@ void verify_client::create_request(void)
             m_get_ratio_count += keys_count;
         } else {
             unsigned int keylen;
-            m_obj_gen->get_key(m_config->key_pattern[2] == 'R' ? 0 : 2, &keylen);
+            int iter = OBJECT_GENERATOR_KEY_GET_ITER;
+            if (m_config->key_pattern[2] == 'R')
+                iter = OBJECT_GENERATOR_KEY_RANDOM;
+            else if (m_config->key_pattern[2] == 'G')
+                iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
+            m_obj_gen->get_key(iter, &keylen);
             m_get_ratio_count++;
         }
 
@@ -1342,7 +1371,7 @@ void run_stats::summarize(totals& result) const
     result.m_bytes_sec = (double) ((result.m_bytes / 1024) / test_duration_sec);
 }
 
-void run_stats::print(FILE *out)
+void run_stats::print(FILE *out, bool histogram)
 {
     // aggregate all one_second_stats; we do this only if we have
     // one_second_stats, otherwise it means we're probably printing previously
@@ -1382,6 +1411,9 @@ void run_stats::print(FILE *out)
            m_totals.m_latency,
            m_totals.m_bytes_sec);
 
+    if (!histogram)
+        return;
+        
     fprintf(out,
             "\n\n"
             "Request Latency Distribution\n"

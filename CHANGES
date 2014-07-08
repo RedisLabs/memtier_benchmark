@@ -1,3 +1,9 @@
+* Version 1.2.0
+    * Add --data-size-pattern
+    * Add --key-pattern now has Gaussian distribution, and also --key-stddev, --key-median
+    * Add --data-offset
+    * Add --hide-histogram
+
 * Version 1.1.0
     * Add --data-verify and --verify options to allow data verification.
     * Add --no-expiry option to ignore expiry of imported data.

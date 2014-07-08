@@ -41,6 +41,7 @@ struct benchmark_config {
     unsigned int run_count;
     int debug;
     int show_config;
+    int hide_histogram;
     unsigned int requests;
     unsigned int clients;
     unsigned int threads;
@@ -48,9 +49,11 @@ struct benchmark_config {
     config_ratio ratio;
     unsigned int pipeline;
     unsigned int data_size;
+    unsigned int data_offset;
     bool random_data;
     struct config_range data_size_range;
     config_weight_list data_size_list;
+    const char *data_size_pattern;
     struct config_range expiry_range;
     const char *data_import;
     int data_verify;
@@ -59,6 +62,8 @@ struct benchmark_config {
     const char *key_prefix;
     unsigned int key_minimum;
     unsigned int key_maximum;
+    double key_stddev;
+    double key_median;
     const char *key_pattern;
     unsigned int reconnect_interval;
     int multi_key_get;

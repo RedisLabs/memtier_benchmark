@@ -152,8 +152,8 @@ public:
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
-    virtual int write_command_get(const char *key, int key_len);
+    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
+    virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int parse_response(void);
 };
@@ -189,7 +189,7 @@ int redis_protocol::authenticate(const char *credentials)
     return size;
 }
 
-int redis_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry)
+int redis_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
@@ -197,7 +197,7 @@ int redis_protocol::write_command_set(const char *key, int key_len, const char *
     assert(value_len > 0);
     int size = 0;
     
-    if (!expiry) {
+    if (!expiry && !offset) {
         size = evbuffer_add_printf(m_write_buf,
             "*3\r\n"
             "$3\r\n"
@@ -208,6 +208,22 @@ int redis_protocol::write_command_set(const char *key, int key_len, const char *
         size += evbuffer_add_printf(m_write_buf,
             "\r\n"
             "$%u\r\n", value_len);
+    } else if(offset) {
+        char offset_str[30];
+        snprintf(offset_str, sizeof(offset_str)-1, "%u", offset);
+
+        size = evbuffer_add_printf(m_write_buf,
+            "*4\r\n"
+            "$8\r\n"
+            "SETRANGE\r\n"
+            "$%u\r\n", key_len);
+        evbuffer_add(m_write_buf, key, key_len);
+        size += key_len;
+        size += evbuffer_add_printf(m_write_buf,
+            "\r\n"
+            "$%u\r\n"
+            "%s\r\n"
+            "$%u\r\n", (unsigned int) strlen(offset_str), offset_str, value_len);
     } else {
         char expiry_str[30];
         snprintf(expiry_str, sizeof(expiry_str)-1, "%u", expiry);
@@ -238,20 +254,39 @@ int redis_protocol::write_command_multi_get(const keylist *keylist)
     assert(0);
 }
 
-int redis_protocol::write_command_get(const char *key, int key_len)
+int redis_protocol::write_command_get(const char *key, int key_len, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
     int size = 0;
     
-    size = evbuffer_add_printf(m_write_buf,
-        "*2\r\n"
-        "$3\r\n"
-        "GET\r\n"
-        "$%u\r\n", key_len);
-    evbuffer_add(m_write_buf, key, key_len);
-    evbuffer_add(m_write_buf, "\r\n", 2);        
-    size += key_len + 2;
+    if (!offset) {
+        size = evbuffer_add_printf(m_write_buf,
+            "*2\r\n"
+            "$3\r\n"
+            "GET\r\n"
+            "$%u\r\n", key_len);
+        evbuffer_add(m_write_buf, key, key_len);
+        evbuffer_add(m_write_buf, "\r\n", 2);        
+        size += key_len + 2;
+    } else {
+        char offset_str[30];
+        snprintf(offset_str, sizeof(offset_str)-1, "%u", offset);
+
+        size = evbuffer_add_printf(m_write_buf,
+            "*4\r\n"
+            "$8\r\n"
+            "GETRANGE\r\n"
+            "$%u\r\n", key_len);
+        evbuffer_add(m_write_buf, key, key_len);
+        size += key_len;
+        size += evbuffer_add_printf(m_write_buf,
+            "\r\n"
+            "$%u\r\n"
+            "%s\r\n"
+            "$2\r\n"
+            "-1\r\n", (unsigned int) strlen(offset_str), offset_str);        
+    }
 
     return size;
 }
@@ -352,8 +387,8 @@ public:
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
-    virtual int write_command_get(const char *key, int key_len);
+    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
+    virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int parse_response(void);
 };
@@ -368,7 +403,7 @@ int memcache_text_protocol::authenticate(const char *credentials)
     assert(0);
 }
 
-int memcache_text_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry)
+int memcache_text_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
@@ -385,7 +420,7 @@ int memcache_text_protocol::write_command_set(const char *key, int key_len, cons
     return size;
 }
 
-int memcache_text_protocol::write_command_get(const char *key, int key_len)
+int memcache_text_protocol::write_command_get(const char *key, int key_len, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
@@ -537,8 +572,8 @@ public:
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry);
-    virtual int write_command_get(const char *key, int key_len);
+    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
+    virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int parse_response(void);
 };
@@ -585,7 +620,7 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
 }
 
-int memcache_binary_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry)
+int memcache_binary_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
@@ -610,7 +645,7 @@ int memcache_binary_protocol::write_command_set(const char *key, int key_len, co
     return sizeof(req) + key_len + value_len;
 }
 
-int memcache_binary_protocol::write_command_get(const char *key, int key_len)
+int memcache_binary_protocol::write_command_get(const char *key, int key_len, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);

@@ -25,6 +25,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <math.h>
 
 #ifdef HAVE_ASSERT_H
 #include <assert.h>
@@ -33,8 +34,84 @@
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
 
+random_generator::random_generator()
+{
+#ifdef HAVE_RANDOM_R
+    memset(&m_data_blob, 0, sizeof(m_data_blob));
+    memset(m_state_array, 0, sizeof(m_state_array));
+    
+    int ret = initstate_r(1, m_state_array, sizeof(m_state_array), &m_data_blob);
+    assert(ret == 0);
+#elif (defined HAVE_DRAND48)
+    memset(&m_data_blob, 0, sizeof(m_data_blob));
+#endif
+}
+
+unsigned int random_generator::get_random()
+{
+    int rn;
+#ifdef HAVE_RANDOM_R
+    int ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
+    assert(ret == 0);
+#elif (defined HAVE_DRAND48)
+    rn = nrand48(m_data_blob); // max is 1<<31
+#else
+    #error no random function
+#endif
+    return rn;
+}
+
+unsigned int random_generator::get_random_max()
+{
+#ifdef HAVE_RANDOM_R
+    return RAND_MAX;
+#elif (defined HAVE_DRAND48)
+    return 1<<31;
+#else
+    #error no random function
+#endif
+}
+
+//returns a value surrounding 0
+double gaussian_noise::gaussian_distribution(const double &stddev)
+{
+    // Box–Muller transform (Marsaglia polar method)
+    if (m_hasSpare) {
+        m_hasSpare = false;
+        return stddev * m_spare;
+    }
+ 
+    m_hasSpare = true;
+    double u, v, s;
+    do {
+        u = (get_random() / ((double) get_random_max())) * 2 - 1;
+        v = (get_random() / ((double) get_random_max())) * 2 - 1;
+        s = u * u + v * v;
+    } while(s >= 1 || s == 0);
+ 
+    s = sqrt(-2.0 * log(s) / s);
+    m_spare = v * s;
+    return stddev * u * s;
+}
+
+int gaussian_noise::gaussian_distribution_range(double stddev, double median, int min, int max)
+{
+    int len = max-min;
+    double val;
+    if (median==0)
+        median = len/2.0+min + 0.5;
+    if (stddev==0)
+        stddev = len/6.0;
+    assert(median>min && median<max);
+    do {
+        val = gaussian_distribution(stddev) + median;
+    } while(val<min || val>max+1);
+    return val;
+}
+
 object_generator::object_generator() :
     m_data_size_type(data_size_unknown),
+    m_data_size_pattern(NULL),
     m_random_data(false),
     m_expiry_min(0),
     m_expiry_max(0),
@@ -44,7 +121,6 @@ object_generator::object_generator() :
     m_value_buffer(NULL),
     m_random_fd(-1)
 {
-    random_init();
     for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
         m_next_key[i] = 0;
 
@@ -54,12 +130,14 @@ object_generator::object_generator() :
 object_generator::object_generator(const object_generator& copy) :        
     m_data_size_type(copy.m_data_size_type),
     m_data_size(copy.m_data_size),
+    m_data_size_pattern(copy.m_data_size_pattern),
     m_random_data(copy.m_random_data),
     m_expiry_min(copy.m_expiry_min),
     m_expiry_max(copy.m_expiry_max),
     m_key_prefix(copy.m_key_prefix),
     m_key_min(copy.m_key_min),
     m_key_max(copy.m_key_max),
+    m_key_stddev(copy.m_key_stddev),
     m_value_buffer(NULL),
     m_random_fd(-1)
 
@@ -69,7 +147,6 @@ object_generator::object_generator(const object_generator& copy) :
         m_data_size.size_list = new config_weight_list(*m_data_size.size_list);
     }
 
-    random_init();
     alloc_value_buffer();
     for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
         m_next_key[i] = 0;
@@ -181,6 +258,11 @@ void object_generator::set_data_size_list(config_weight_list* size_list)
     alloc_value_buffer();
 }
 
+void object_generator::set_data_size_pattern(const char* pattern)
+{
+    m_data_size_pattern = pattern;
+}
+
 void object_generator::set_expiry_range(unsigned int expiry_min, unsigned int expiry_max)
 {
     m_expiry_min = expiry_min;
@@ -198,69 +280,62 @@ void object_generator::set_key_range(unsigned int key_min, unsigned int key_max)
     m_key_max = key_max;
 }
 
-void object_generator::random_init(void)
+void object_generator::set_key_distribution(double key_stddev, double key_median)
 {
-    memset(&m_random_data_blob, 0, sizeof(m_random_data_blob));
-#ifdef HAVE_RANDOM_R
-    memset(m_random_state_array, 0, sizeof(m_random_state_array));
-    
-    int ret = initstate_r(1, m_random_state_array, sizeof(m_random_state_array), &m_random_data_blob);
-    assert(ret == 0);
-#endif
+    m_key_stddev = key_stddev;
+    m_key_median = key_median;
 }
 
 // return a random number between r_min and r_max
 unsigned int object_generator::random_range(unsigned int r_min, unsigned int r_max)
 {
-    int rn;
-
-#ifdef HAVE_RANDOM_R
-    int ret = random_r(&m_random_data_blob, &rn);
-    assert(ret == 0);
-#else
-#ifdef HAVE_DRAND48
-    rn = nrand48(m_random_data_blob);
-#endif
-#endif
-
+    int rn = m_random.get_random();
     return ((unsigned int) rn % (r_max - r_min + 1)) + r_min;
 }
 
-unsigned int object_generator::get_key_index(unsigned int iter)
+// return a random number between r_min and r_max using normal distribution according to r_stddev
+unsigned int object_generator::normal_distribution(unsigned int r_min, unsigned int r_max, double r_stddev, double r_median)
 {
-    assert(iter <= OBJECT_GENERATOR_KEY_ITERATORS);
+    return m_random.gaussian_distribution_range(r_stddev, r_median, r_min, r_max);
+}
+
+unsigned int object_generator::get_key_index(int iter)
+{
+    assert(iter < OBJECT_GENERATOR_KEY_ITERATORS && iter >= OBJECT_GENERATOR_KEY_GAUSSIAN);
 
     unsigned int k;
-    if (!iter) {
+    if (iter==OBJECT_GENERATOR_KEY_RANDOM) {
         k = random_range(m_key_min, m_key_max);
+    } else if(iter==OBJECT_GENERATOR_KEY_GAUSSIAN) {
+        k = normal_distribution(m_key_min, m_key_max, m_key_stddev, m_key_median);
     } else {
-        if (m_next_key[iter-1] < m_key_min)
-            m_next_key[iter-1] = m_key_min;
-        k = m_next_key[iter-1];
+        if (m_next_key[iter] < m_key_min)
+            m_next_key[iter] = m_key_min;
+        k = m_next_key[iter];
 
-        m_next_key[iter-1]++;
-        if (m_next_key[iter-1] > m_key_max)
-            m_next_key[iter-1] = m_key_min;
+        m_next_key[iter]++;
+        if (m_next_key[iter] > m_key_max)
+            m_next_key[iter] = m_key_min;
     }
 
     return k;
 }
 
-const char* object_generator::get_key(unsigned int iter, unsigned int *len)
+const char* object_generator::get_key(int iter, unsigned int *len)
 {
-    unsigned int k = get_key_index(iter);
     unsigned int l;
+    m_key_index = get_key_index(iter);
     
     // format key
     l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
-        "%s%u", m_key_prefix, k);
+        "%s%u", m_key_prefix, m_key_index);
     if (len != NULL) *len = l;
     
     return m_key_buffer;
 }
 
 
-data_object* object_generator::get_object(unsigned int iter)
+data_object* object_generator::get_object(int iter)
 {
     // compute key
     (void) get_key(iter, NULL);
@@ -270,8 +345,13 @@ data_object* object_generator::get_object(unsigned int iter)
     if (m_data_size_type == data_size_fixed) {
         new_size = m_data_size.size_fixed;
     } else if (m_data_size_type == data_size_range) {
-        new_size = random_range(m_data_size.size_range.size_min > 0 ? m_data_size.size_range.size_min : 1,
-            m_data_size.size_range.size_max);
+        if (m_data_size_pattern && *m_data_size_pattern=='S') {
+            float a = (m_key_index-m_key_min)/(float)(m_key_max-m_key_min);
+            new_size = (m_data_size.size_range.size_max-m_data_size.size_range.size_min)*a + m_data_size.size_range.size_min;
+        } else {
+            new_size = random_range(m_data_size.size_range.size_min > 0 ? m_data_size.size_range.size_min : 1,
+                m_data_size.size_range.size_max);
+        }
     } else if (m_data_size_type == data_size_weighted) {
         new_size = m_data_size.size_list->get_next_size();
     } else {
@@ -456,7 +536,7 @@ import_object_generator* import_object_generator::clone(void)
     return new import_object_generator(*this);
 }
 
-const char* import_object_generator::get_key(unsigned int iter, unsigned int *len)
+const char* import_object_generator::get_key(int iter, unsigned int *len)
 {
     if (m_keys == NULL) {
         return object_generator::get_key(iter, len);
@@ -466,7 +546,7 @@ const char* import_object_generator::get_key(unsigned int iter, unsigned int *le
     }
 }
 
-data_object* import_object_generator::get_object(unsigned int iter)
+data_object* import_object_generator::get_object(int iter)
 {    
     memcache_item *i = m_reader.read_item();
 

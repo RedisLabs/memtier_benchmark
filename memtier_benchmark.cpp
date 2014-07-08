@@ -97,9 +97,11 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "ratio = %u:%u\n"
         "pipeline = %u\n"
         "data_size = %u\n"
+        "data_offset = %u\n"
         "random_data = %s\n"
         "data_size_range = %u-%u\n"
         "data_size_list = %s\n"
+        "data_size_pattern = %s\n"
         "expiry_range = %u-%u\n"
         "data_import = %s\n"
         "data_verify = %s\n"
@@ -109,6 +111,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key_minimum = %u\n"
         "key_maximum = %u\n"
         "key_pattern = %s\n"
+        "key_stddev = %f\n"
+        "key_median = %f\n"
         "reconnect_interval = %u\n"
         "multi_key_get = %u\n"
         "authenticate = %s\n"
@@ -129,9 +133,11 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->ratio.a, cfg->ratio.b,
         cfg->pipeline,
         cfg->data_size,
+        cfg->data_offset,
         cfg->random_data ? "yes" : "no",
         cfg->data_size_range.min, cfg->data_size_range.max,
         cfg->data_size_list.print(tmpbuf, sizeof(tmpbuf)-1),
+        cfg->data_size_pattern,
         cfg->expiry_range.min, cfg->expiry_range.max,
         cfg->data_import,
         cfg->data_verify ? "yes" : "no",
@@ -141,6 +147,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->key_minimum,
         cfg->key_maximum,
         cfg->key_pattern,
+        cfg->key_stddev,
+        cfg->key_median,
         cfg->reconnect_interval,
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
@@ -178,6 +186,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
     }
     if (!cfg->key_pattern)
         cfg->key_pattern = "R:R";
+    if (!cfg->data_size_pattern)
+        cfg->data_size_pattern = "R";
 }
 
 static int config_parse_args(int argc, char *argv[], struct benchmark_config *cfg)
@@ -188,6 +198,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_pipeline,
         o_data_size_range,
         o_data_size_list,
+        o_data_size_pattern,
+        o_data_offset,
         o_expiry_range,
         o_data_import,
         o_data_verify,
@@ -196,7 +208,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_key_minimum,
         o_key_maximum,
         o_key_pattern,
+        o_key_stddev,
+        o_key_median,
         o_show_config,
+        o_hide_histogram,
         o_client_stats,
         o_reconnect_interval,
         o_generate_keys,
@@ -215,6 +230,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "run-count",                  1, 0, 'x' },
         { "debug",                      0, 0, 'D' },
         { "show-config",                0, 0, o_show_config },
+        { "hide-histogram",             0, 0, o_hide_histogram },
         { "requests",                   1, 0, 'n' },
         { "clients",                    1, 0, 'c' },
         { "threads",                    1, 0, 't' },        
@@ -222,9 +238,11 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "ratio",                      1, 0, o_ratio },
         { "pipeline",                   1, 0, o_pipeline },
         { "data-size",                  1, 0, 'd' },
+        { "data-offset",                1, 0, o_data_offset },
         { "random-data",                0, 0, 'R' },
         { "data-size-range",            1, 0, o_data_size_range },
         { "data-size-list",             1, 0, o_data_size_list },
+        { "data-size-pattern",          1, 0, o_data_size_pattern },
         { "expiry-range",               1, 0, o_expiry_range },
         { "data-import",                1, 0, o_data_import },
         { "data-verify",                0, 0, o_data_verify },
@@ -234,6 +252,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key-minimum",                1, 0, o_key_minimum },
         { "key-maximum",                1, 0, o_key_maximum },
         { "key-pattern",                1, 0, o_key_pattern },
+        { "key-stddev",                 1, 0, o_key_stddev },
+        { "key-median",                 1, 0, o_key_median },
         { "reconnect-interval",         1, 0, o_reconnect_interval },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
@@ -304,6 +324,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_show_config:
                     cfg->show_config++;
                     break;
+                case o_hide_histogram:
+                    cfg->hide_histogram++;
+                    break;
                 case 'n':
                     endptr = NULL;
                     cfg->requests = (unsigned int) strtoul(optarg, &endptr, 10);
@@ -363,32 +386,48 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     endptr = NULL;
                     cfg->data_size = (unsigned int) strtoul(optarg, &endptr, 10);
                     if (!cfg->data_size || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: data_size must be greater than zero.\n");
+                        fprintf(stderr, "error: data-size must be greater than zero.\n");
                         return -1;
                     }
                     break;
                 case 'R':
                     cfg->random_data = true;
                     break;
+                case o_data_offset:
+                    endptr = NULL;
+                    cfg->data_offset = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: data-offset must be greater than or equal to zero.\n");
+                        return -1;
+                    }
+                    break;
                 case o_data_size_range:
                     cfg->data_size_range = config_range(optarg);
                     if (!cfg->data_size_range.is_defined() || cfg->data_size_range.min < 1) {
-                        fprintf(stderr, "error: data_size_range must be expressed as [1-n]-[1-n].\n");
+                        fprintf(stderr, "error: data-size-range must be expressed as [1-n]-[1-n].\n");
                         return -1;
                     }
                     break;
                 case o_data_size_list:
                     cfg->data_size_list = config_weight_list(optarg);
                     if (!cfg->data_size_list.is_defined()) {
-                        fprintf(stderr, "error: data_size_list must be expressed as [size1:weight1],...[sizeN:weightN].\n");
+                        fprintf(stderr, "error: data-size-list must be expressed as [size1:weight1],...[sizeN:weightN].\n");
                         return -1;
                     }
                     break;
                 case o_expiry_range:
                     cfg->expiry_range = config_range(optarg);
                     if (!cfg->expiry_range.is_defined()) {
-                        fprintf(stderr, "error: data_size_range must be expressed as [0-n]-[1-n].\n");
+                        fprintf(stderr, "error: data-size-range must be expressed as [0-n]-[1-n].\n");
                         return -1;
+                    }
+                    break;
+                case o_data_size_pattern:
+                    cfg->data_size_pattern = optarg;
+                    if (strlen(cfg->data_size_pattern) != 1 ||
+                        (cfg->data_size_pattern[0] != 'R' && cfg->data_size_pattern[0] != 'S')) {
+                            fprintf(stderr, "error: data-size-pattern must be either R or S.\n");
+                            return -1;
                     }
                     break;
                 case o_data_import:
@@ -408,7 +447,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     endptr = NULL;
                     cfg->key_minimum = (unsigned int) strtoul(optarg, &endptr, 10);
                     if (cfg->key_minimum < 1 || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: key_minimum must be greater than zero.\n");
+                        fprintf(stderr, "error: key-minimum must be greater than zero.\n");
                         return -1;
                     }
                     break;
@@ -416,16 +455,32 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     endptr = NULL;
                     cfg->key_maximum = (unsigned int) strtoul(optarg, &endptr, 10);
                     if (cfg->key_maximum< 1 || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: key_maximum must be greater than zero.\n");
+                        fprintf(stderr, "error: key-maximum must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_key_stddev:
+                    endptr = NULL;
+                    cfg->key_stddev = (unsigned int) strtof(optarg, &endptr);
+                    if (cfg->key_stddev<= 0 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-stddev must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_key_median:
+                    endptr = NULL;
+                    cfg->key_median = (unsigned int) strtof(optarg, &endptr);
+                    if (cfg->key_median<= 0 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-median must be greater than zero.\n");
                         return -1;
                     }
                     break;
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
                     if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[1] != ':' ||
-                        (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S') ||
-                        (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S')) {
-                            fprintf(stderr, "error: key_pattern must be in the format of [S/R]:[S/R].\n");
+                        (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S' && cfg->key_pattern[0] != 'G') ||
+                        (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S' && cfg->key_pattern[2] != 'G')) {
+                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G].\n");
                             return -1;
                     }
                     break;
@@ -433,7 +488,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     endptr = NULL;
                     cfg->reconnect_interval = (unsigned int) strtoul(optarg, &endptr, 10);
                     if (!cfg->reconnect_interval || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: reconnect_interval must be greater than zero.\n");
+                        fprintf(stderr, "error: reconnect-interval must be greater than zero.\n");
                         return -1;
                     }
                     break;
@@ -444,7 +499,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     endptr = NULL;
                     cfg->multi_key_get = (unsigned int) strtoul(optarg, &endptr, 10);
                     if (cfg->multi_key_get <= 0 || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: multi_key_get must be greater than zero.\n");
+                        fprintf(stderr, "error: multi-key-get must be greater than zero.\n");
                         return -1;
                     }
                     break;
@@ -454,7 +509,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_select_db:
                     cfg->select_db = (int) strtoul(optarg, &endptr, 10);
                     if (cfg->select_db < 0 || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: select_db must be greater or equal zero.\n");
+                        fprintf(stderr, "error: select-db must be greater or equal zero.\n");
                         return -1;
                     }
                     break;
@@ -486,6 +541,7 @@ void usage() {
             "      --client-stats=FILE        Produce per-client stats file\n"
             "      --out-file=FILE            Name of output file (default: stdout)\n"
             "      --show-config              Print detailed configuration before running\n"
+            "      --hide-histogram           Don't print detailed latency histogram\n"
             "\n"
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
@@ -502,9 +558,15 @@ void usage() {
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"
+            "      --data-offset=OFFSET       Actual size of value will be data-size + data-offset\n"
+            "                                 Will use SETRANGE / GETRANGE (default: 0)\n"
             "  -R  --random-data              Indicate that data should be randomized\n"
             "      --data-size-range=RANGE    Use random-sized items in the specified range (min-max)\n"
             "      --data-size-list=LIST      Use sizes from weight list (size1:weight1,..sizeN:weightN)\n"
+            "      --data-size-pattern=R|S    Use together with data-size-range\n"
+            "                                 when set to R, a random size from the defined data sizes will be used,\n"
+            "                                 when set to S, the defined data sizes will be evenly distributed across\n"
+            "                                 the key range, see --key-maximum (default R)\n"
             "      --expiry-range=RANGE       Use random expiry values from the specified range\n"
             "\n"
             "Imported Data Options:\n"
@@ -519,7 +581,11 @@ void usage() {
             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
             "      --key-pattern=PATTERN      Set:Get pattern (default: R:R)\n"
-            "\n"
+            "                                 G for Gaussian distribution, R for uniform Random, S for Sequential\n"
+            "      --key-stddev               The standard deviation used in the Gaussian distribution\n"
+            "                                 (default is key range / 6)\n"
+            "      --key-median               The median point used in the Gaussian distribution\n"
+            "                                 (default is the center of the key range)\n"
             "      --help                     Display this help\n"
             "      --version                  Display version information\n"
             "\n"
@@ -816,10 +882,19 @@ int main(int argc, char *argv[])
         fprintf(stderr, "error: select-db can only be used with redis protocol.\n");
         usage();
     }
- 
+    if (cfg.data_offset > 0) {
+        if (cfg.data_offset > (1<<29)-1) {
+            fprintf(stderr, "error: data-offset too long\n");
+            usage();
+        }
+        if (cfg.expiry_range.min || cfg.expiry_range.max || strcmp(cfg.protocol, "redis")) {
+            fprintf(stderr, "error: data-offset can only be used with redis protocol, and cannot be used with expiry\n");
+            usage();
+        }
+    }
     if (cfg.data_size) {
         if (cfg.data_size_list.is_defined() || cfg.data_size_range.is_defined()) {
-            fprintf(stderr, "error: data-size cannot be used with data_size_list or data_size_range.\n");
+            fprintf(stderr, "error: data-size cannot be used with data-size-list or data-size-range.\n");
             usage();
         }
         obj_gen->set_data_size_fixed(cfg.data_size);
@@ -831,6 +906,7 @@ int main(int argc, char *argv[])
         obj_gen->set_data_size_list(&cfg.data_size_list);
     } else if (cfg.data_size_range.is_defined()) {
         obj_gen->set_data_size_range(cfg.data_size_range.min, cfg.data_size_range.max);
+        obj_gen->set_data_size_pattern(cfg.data_size_pattern);
     } else if (!cfg.data_import) {
         fprintf(stderr, "error: data-size, data-size-list or data-size-range must be specified.\n");
         usage();
@@ -843,6 +919,17 @@ int main(int argc, char *argv[])
     if (!cfg.data_import || cfg.generate_keys) {
         obj_gen->set_key_prefix(cfg.key_prefix);
         obj_gen->set_key_range(cfg.key_minimum, cfg.key_maximum);
+    }
+    if (cfg.key_stddev>0 || cfg.key_median>0) {
+        if (cfg.key_pattern[0]!='G' && cfg.key_pattern[2]!='G') {
+            fprintf(stderr, "error: key-stddev and key-median are only allowed together with key-pattern set to G.\n");
+            usage();
+        }
+        if (cfg.key_median!=0 && (cfg.key_median<cfg.key_minimum || cfg.key_median>cfg.key_maximum)) {
+            fprintf(stderr, "error: key-median must be between key-minimum and key-maximum.\n");
+            usage();
+        }
+        obj_gen->set_key_distribution(cfg.key_stddev, cfg.key_median);
     }
     obj_gen->set_expiry_range(cfg.expiry_range.min, cfg.expiry_range.max);
 
@@ -902,12 +989,12 @@ int main(int argc, char *argv[])
             fprintf(outfile, "\n\n"
                              "BEST RUN RESULTS\n"
                              "========================================================================\n");        
-            best->print(outfile);
+            best->print(outfile, !cfg.hide_histogram);
 
             fprintf(outfile, "\n\n"
                              "WORST RUN RESULTS\n"
                              "========================================================================\n");        
-            worst->print(outfile);
+            worst->print(outfile, !cfg.hide_histogram);
 
             fprintf(outfile, "\n\n"
                              "AGGREGATED AVERAGE RESULTS (%u runs)\n"
@@ -915,9 +1002,9 @@ int main(int argc, char *argv[])
 
             run_stats average;
             average.aggregate_average(all_stats);
-            average.print(outfile);
+            average.print(outfile, !cfg.hide_histogram);
         } else {
-            all_stats.begin()->print(outfile);
+            all_stats.begin()->print(outfile, !cfg.hide_histogram);
         }
     }
 

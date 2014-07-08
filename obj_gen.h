@@ -25,6 +25,30 @@
 struct random_data;
 struct config_weight_list;
 
+class random_generator {
+public:
+    random_generator();
+    unsigned int get_random();
+    unsigned int get_random_max();
+private:
+#ifdef HAVE_RANDOM_R
+    struct random_data m_data_blob;
+    char m_state_array[512];
+#elif (defined HAVE_DRAND48)
+    unsigned short m_data_blob[3];
+#endif
+};
+
+class gaussian_noise: public random_generator {
+public:
+    gaussian_noise() { m_hasSpare = false; }
+    int gaussian_distribution_range(double stddev, double median, int min, int max);
+private:
+    double gaussian_distribution(const double &stddev);
+    bool m_hasSpare;
+	double m_spare;
+};
+
 class data_object {
 protected:    
     const char *m_key;
@@ -45,7 +69,11 @@ public:
     unsigned int get_expiry(void);    
 };
 
-#define OBJECT_GENERATOR_KEY_ITERATORS  2
+#define OBJECT_GENERATOR_KEY_ITERATORS  2 /* number of iterators */
+#define OBJECT_GENERATOR_KEY_SET_ITER   1
+#define OBJECT_GENERATOR_KEY_GET_ITER   0
+#define OBJECT_GENERATOR_KEY_RANDOM    -1
+#define OBJECT_GENERATOR_KEY_GAUSSIAN  -2
 
 class object_generator {
 public:
@@ -60,33 +88,30 @@ protected:
         } size_range;
         config_weight_list* size_list;
     } m_data_size;
+    const char *m_data_size_pattern;
     bool m_random_data;
     unsigned int m_expiry_min;
     unsigned int m_expiry_max;
     const char *m_key_prefix;
     unsigned int m_key_min;
     unsigned int m_key_max;
+    double m_key_stddev;
+    double m_key_median;
     data_object m_object;
 
     unsigned int m_next_key[OBJECT_GENERATOR_KEY_ITERATORS];
 
+    unsigned int m_key_index;
     char m_key_buffer[250];
     char *m_value_buffer;
     int m_random_fd;
-
-#ifdef HAVE_RANDOM_R
-    struct random_data m_random_data_blob;
-    char m_random_state_array[512];
-#else
-#ifdef HAVE_DRAND48
-    unsigned short m_random_data_blob[3];
-#endif
-#endif
+    gaussian_noise m_random;
     
     void alloc_value_buffer(void);
     void random_init(void);
     unsigned int random_range(unsigned int r_min, unsigned int r_max);
-    unsigned int get_key_index(unsigned int iter);
+    unsigned int normal_distribution(unsigned int r_min, unsigned int r_max, double r_stddev, double r_median);
+    unsigned int get_key_index(int iter);
 public:    
     object_generator();
     object_generator(const object_generator& copy);
@@ -97,12 +122,14 @@ public:
     void set_data_size_fixed(unsigned int size);
     void set_data_size_range(unsigned int size_min, unsigned int size_max);
     void set_data_size_list(config_weight_list* data_size_list);
+    void set_data_size_pattern(const char* pattern);
     void set_expiry_range(unsigned int expiry_min, unsigned int expiry_max);
     void set_key_prefix(const char *key_prefix);    
     void set_key_range(unsigned int key_min, unsigned int key_max);
+    void set_key_distribution(double key_stddev, double key_median);
 
-    virtual const char* get_key(unsigned int iter, unsigned int *len);
-    virtual data_object* get_object(unsigned int iter);
+    virtual const char* get_key(int iter, unsigned int *len);
+    virtual data_object* get_object(int iter);
 };
 
 class imported_keylist;
@@ -138,8 +165,8 @@ public:
     virtual ~import_object_generator();
     virtual import_object_generator* clone(void);
 
-    virtual const char* get_key(unsigned int iter, unsigned int *len);
-    virtual data_object* get_object(unsigned int iter);
+    virtual const char* get_key(int iter, unsigned int *len);
+    virtual data_object* get_object(int iter);
 
     bool open_file(void);
 };
