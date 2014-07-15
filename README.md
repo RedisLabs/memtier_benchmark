@@ -61,7 +61,7 @@ Then proceed to follow the build instructions below.
 On recent Ubuntu versions, simply install all prerequisites as follows:
 
 ```
-# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config
+# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev
 ```
 
 
