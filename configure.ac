@@ -46,7 +46,7 @@ AC_FUNC_MEMCMP
 AC_CHECK_FUNCS([gettimeofday memchr memset socket strerror random_r drand48])
 
 AC_CHECK_LIB([pcre], [pcre_compile], , AC_MSG_ERROR([pcre is required; try installing libpcre3-dev.]))
-AC_CHECK_LIB([z], [deflateInit_], , AC_MSG_ERROR([zlib is required; try installing zlib-dev.]))
+AC_CHECK_LIB([z], [deflateInit_], , AC_MSG_ERROR([zlib is required; try installing zlib1g-dev.]))
 AC_CHECK_LIB([rt], [clock_gettime], , AC_MSG_ERROR([rt is required for libevent.]))
 AC_CHECK_LIB([pthread], [pthread_create], , AC_MSG_ERROR([pthread is required.]))
 AC_CHECK_LIB([socket], [gai_strerror])
