@@ -132,6 +132,8 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
 
     m_obj_gen = objgen->clone();
     assert(m_obj_gen != NULL);
+    if (config->distinct_client_seed)
+        m_obj_gen->set_random_seed(config->distinct_client_seed++);
 
     m_keylist = new keylist(m_config->multi_key_get + 1);
     assert(m_keylist != NULL);

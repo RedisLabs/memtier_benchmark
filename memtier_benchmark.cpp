@@ -212,6 +212,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_key_median,
         o_show_config,
         o_hide_histogram,
+        o_distinct_client_seed,
         o_client_stats,
         o_reconnect_interval,
         o_generate_keys,
@@ -231,6 +232,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "debug",                      0, 0, 'D' },
         { "show-config",                0, 0, o_show_config },
         { "hide-histogram",             0, 0, o_hide_histogram },
+        { "distinct-client-seed",       0, 0, o_distinct_client_seed },
         { "requests",                   1, 0, 'n' },
         { "clients",                    1, 0, 'c' },
         { "threads",                    1, 0, 't' },        
@@ -326,6 +328,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_hide_histogram:
                     cfg->hide_histogram++;
+                    break;
+                case o_distinct_client_seed:
+                    cfg->distinct_client_seed++;
                     break;
                 case 'n':
                     endptr = NULL;
@@ -555,6 +560,7 @@ void usage() {
             "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
             "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
+            "      --distinct-client-seed     Use a different random seed for each client\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"

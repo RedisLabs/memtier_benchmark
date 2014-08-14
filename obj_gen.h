@@ -29,7 +29,8 @@ class random_generator {
 public:
     random_generator();
     unsigned int get_random();
-    unsigned int get_random_max();
+    unsigned int get_random_max() const;
+    void set_seed(int seed);
 private:
 #ifdef HAVE_RANDOM_R
     struct random_data m_data_blob;
@@ -127,6 +128,7 @@ public:
     void set_key_prefix(const char *key_prefix);    
     void set_key_range(unsigned int key_min, unsigned int key_max);
     void set_key_distribution(double key_stddev, double key_median);
+    void set_random_seed(int seed);
 
     virtual const char* get_key(int iter, unsigned int *len);
     virtual data_object* get_object(int iter);

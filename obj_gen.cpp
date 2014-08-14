@@ -36,14 +36,20 @@
 
 random_generator::random_generator()
 {
+    set_seed(0);
+}
+
+void random_generator::set_seed(int seed)
+{
 #ifdef HAVE_RANDOM_R
     memset(&m_data_blob, 0, sizeof(m_data_blob));
     memset(m_state_array, 0, sizeof(m_state_array));
     
-    int ret = initstate_r(1, m_state_array, sizeof(m_state_array), &m_data_blob);
+    int ret = initstate_r(seed, m_state_array, sizeof(m_state_array), &m_data_blob);
     assert(ret == 0);
 #elif (defined HAVE_DRAND48)
     memset(&m_data_blob, 0, sizeof(m_data_blob));
+    memcpy(&m_data_blob, &seed, MIN(sizeof(seed), sizeof(m_data_blob)));
 #endif
 }
 
@@ -61,7 +67,7 @@ unsigned int random_generator::get_random()
     return rn;
 }
 
-unsigned int random_generator::get_random_max()
+unsigned int random_generator::get_random_max() const
 {
 #ifdef HAVE_RANDOM_R
     return RAND_MAX;
@@ -169,6 +175,11 @@ object_generator::~object_generator()
 object_generator* object_generator::clone(void)
 {
     return new object_generator(*this);
+}
+
+void object_generator::set_random_seed(int seed)
+{
+    m_random.set_seed(seed);
 }
 
 void object_generator::alloc_value_buffer(void)
