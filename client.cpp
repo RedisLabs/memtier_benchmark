@@ -1336,41 +1336,37 @@ void run_stats::summarize(totals& result) const
     }
 
     unsigned long int test_duration_usec = ts_diff(m_start_time, m_end_time);
-    unsigned int test_duration_sec = test_duration_usec / 1000000;
 
     result.m_ops_set = totals.m_ops_set;
     result.m_ops_get = totals.m_ops_get;
     result.m_ops = totals.m_ops_get + totals.m_ops_set;
     result.m_bytes = totals.m_bytes_get + totals.m_bytes_set;
 
-    if (test_duration_sec == 0)
-        test_duration_sec = 1;
-    
-    result.m_ops_sec_set = (double) totals.m_ops_set / test_duration_sec;
+    result.m_ops_sec_set = (double) totals.m_ops_set / test_duration_usec * 1000000;
     if (totals.m_ops_set > 0) {
         result.m_latency_set = (double) (totals.m_total_set_latency / totals.m_ops_set) / 1000;
     } else {
         result.m_latency_set = 0;
     }
-    result.m_bytes_sec_set = (double) ((totals.m_bytes_set / 1024) / test_duration_sec);
+    result.m_bytes_sec_set = (totals.m_bytes_set / 1024.0) / test_duration_usec * 1000000;
 
-    result.m_ops_sec_get = (double) totals.m_ops_get / test_duration_sec;
+    result.m_ops_sec_get = (double) totals.m_ops_get / test_duration_usec * 1000000;
     if (totals.m_ops_get > 0) {
         result.m_latency_get = (double) (totals.m_total_get_latency / totals.m_ops_get) / 1000;
     } else {
         result.m_latency_get = 0;
     }
-    result.m_bytes_sec_get = (double) ((totals.m_bytes_get / 1024) / test_duration_sec);
-    result.m_hits_sec = (double) totals.m_get_hits / test_duration_sec;
-    result.m_misses_sec = (double) totals.m_get_misses / test_duration_sec;
+    result.m_bytes_sec_get = (totals.m_bytes_get / 1024.0) / test_duration_usec * 1000000;
+    result.m_hits_sec = (double) totals.m_get_hits / test_duration_usec * 1000000;
+    result.m_misses_sec = (double) totals.m_get_misses / test_duration_usec * 1000000;
 
-    result.m_ops_sec = (double) result.m_ops / test_duration_sec;
+    result.m_ops_sec = (double) result.m_ops / test_duration_usec * 1000000;
     if (result.m_ops > 0) {
         result.m_latency = (double) ((totals.m_total_get_latency + totals.m_total_set_latency) / result.m_ops) / 1000;
     } else {
         result.m_latency = 0;
     }
-    result.m_bytes_sec = (double) ((result.m_bytes / 1024) / test_duration_sec);
+    result.m_bytes_sec = (result.m_bytes / 1024.0) / test_duration_usec * 1000000;
 }
 
 void run_stats::print(FILE *out, bool histogram)

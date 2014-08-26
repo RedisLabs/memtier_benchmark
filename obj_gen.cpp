@@ -104,14 +104,14 @@ int gaussian_noise::gaussian_distribution_range(double stddev, double median, in
 {
     int len = max-min;
     double val;
-    if (median==0)
-        median = len/2.0+min + 0.5;
-    if (stddev==0)
-        stddev = len/6.0;
-    assert(median>min && median<max);
+    if (median == 0)
+        median = len / 2.0 + min + 0.5;
+    if (stddev == 0)
+        stddev = len / 6.0;
+    assert(median > min && median < max);
     do {
         val = gaussian_distribution(stddev) + median;
-    } while(val<min || val>max+1);
+    } while(val < min || val > max + 1);
     return val;
 }
 
@@ -124,6 +124,8 @@ object_generator::object_generator() :
     m_key_prefix(NULL),
     m_key_min(0),
     m_key_max(0),
+    m_key_stddev(0),
+    m_key_median(0),
     m_value_buffer(NULL),
     m_random_fd(-1)
 {
@@ -144,6 +146,7 @@ object_generator::object_generator(const object_generator& copy) :
     m_key_min(copy.m_key_min),
     m_key_max(copy.m_key_max),
     m_key_stddev(copy.m_key_stddev),
+    m_key_median(copy.m_key_median),
     m_value_buffer(NULL),
     m_random_fd(-1)
 

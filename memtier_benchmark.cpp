@@ -725,8 +725,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int bytes_sec = 0;
         double avg_latency = 0;
         if (duration > 1000000) {
-            ops_sec = (total_ops / (duration / 1000000));
-            bytes_sec = (total_bytes / (duration / 1000000));
+            ops_sec = (long)( (double)total_ops / duration * 1000000);
+            bytes_sec = (long)( (double)total_bytes / duration * 1000000);
             avg_latency = ((double) total_latency / 1000 / total_ops) ;
         }
 
@@ -979,13 +979,13 @@ int main(int argc, char *argv[])
             run_stats* worst = NULL;
             run_stats* best = NULL;        
             for (std::vector<run_stats>::iterator i = all_stats.begin(); i != all_stats.end(); i++) {
-                unsigned int secs = (i->get_duration_usec() / 1000);
-                unsigned int ops_sec = (i->get_total_ops() / (secs > 0 ? secs : 1)) * 1000;
-                if (ops_sec < min_ops_sec) {
+                unsigned long usecs = i->get_duration_usec();
+                unsigned int ops_sec = (int)(((double)i->get_total_ops() / (usecs > 0 ? usecs : 1)) * 1000000);
+                if (ops_sec < min_ops_sec || worst == NULL) {
                     min_ops_sec = ops_sec;                
                     worst = &(*i);
                 }
-                if (ops_sec > max_ops_sec) {
+                if (ops_sec > max_ops_sec || best == NULL) {
                     max_ops_sec = ops_sec;
                     best = &(*i);
                 }
