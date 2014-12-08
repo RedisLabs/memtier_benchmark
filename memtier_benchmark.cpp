@@ -166,8 +166,6 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->protocol = "redis";
     if (!cfg->run_count)
         cfg->run_count = 1;
-    if (!cfg->requests && !cfg->test_time)
-        cfg->requests = 10000;
     if (!cfg->clients)
         cfg->clients = 50;
     if (!cfg->threads)
@@ -188,6 +186,14 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->key_pattern = "R:R";
     if (!cfg->data_size_pattern)
         cfg->data_size_pattern = "R";
+    if (cfg->requests == (unsigned int)-1) {
+        cfg->requests = cfg->key_maximum - cfg->key_minimum;
+        if (strcmp(cfg->key_pattern, "P:P")==0)
+            cfg->requests = cfg->requests / (cfg->clients * cfg->threads) + 1;
+        printf("setting requests to %d\n", cfg->requests);
+    }
+    if (!cfg->requests && !cfg->test_time)
+        cfg->requests = 10000;
 }
 
 static int config_parse_args(int argc, char *argv[], struct benchmark_config *cfg)
@@ -334,14 +340,18 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case 'n':
                     endptr = NULL;
-                    cfg->requests = (unsigned int) strtoul(optarg, &endptr, 10);
-                    if (!cfg->requests || !endptr || *endptr != '\0') {
-                        fprintf(stderr, "error: requests must be greater than zero.\n");
-                        return -1;
-                    }
-                    if (cfg->test_time) {
-                        fprintf(stderr, "error: --test-time and --requests are mutually exclusive.\n");
-                        return -1;
+                    if (strcmp(optarg, "allkeys")==0)
+                        cfg->requests = -1;
+                    else {
+                        cfg->requests = (unsigned int) strtoul(optarg, &endptr, 10);
+                        if (!cfg->requests || !endptr || *endptr != '\0') {
+                            fprintf(stderr, "error: requests must be greater than zero.\n");
+                            return -1;
+                        }
+                        if (cfg->test_time) {
+                            fprintf(stderr, "error: --test-time and --requests are mutually exclusive.\n");
+                            return -1;
+                        }
                     }
                     break;
                 case 'c':
@@ -483,8 +493,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
                     if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[1] != ':' ||
-                        (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S' && cfg->key_pattern[0] != 'G') ||
-                        (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S' && cfg->key_pattern[2] != 'G')) {
+                        (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S' && cfg->key_pattern[0] != 'G' && cfg->key_pattern[0] != 'P') ||
+                        (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S' && cfg->key_pattern[2] != 'G' && cfg->key_pattern[2] != 'P')) {
                             fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G].\n");
                             return -1;
                     }
@@ -550,6 +560,7 @@ void usage() {
             "\n"
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
+            "                                 use 'allkeys' to run on the entire key-range\n"
             "  -c, --clients=NUMBER           Number of clients per thread (default: 50)\n"
             "  -t, --threads=NUMBER           Number of threads (default: 4)\n"
             "      --test-time=SECS           Number of seconds to run the test\n"
@@ -587,7 +598,10 @@ void usage() {
             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
             "      --key-pattern=PATTERN      Set:Get pattern (default: R:R)\n"
-            "                                 G for Gaussian distribution, R for uniform Random, S for Sequential\n"
+            "                                 G for Gaussian distribution.\n"
+            "                                 R for uniform Random.\n"
+            "                                 S for Sequential.\n"
+            "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "      --key-stddev               The standard deviation used in the Gaussian distribution\n"
             "                                 (default is key range / 6)\n"
             "      --key-median               The median point used in the Gaussian distribution\n"

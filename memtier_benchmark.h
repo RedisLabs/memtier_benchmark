@@ -43,6 +43,7 @@ struct benchmark_config {
     int show_config;
     int hide_histogram;
     int distinct_client_seed;
+    int next_client_idx;
     unsigned int requests;
     unsigned int clients;
     unsigned int threads;

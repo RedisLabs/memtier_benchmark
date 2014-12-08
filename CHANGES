@@ -1,3 +1,7 @@
+* Version 1.2.2
+    * Add --key-pattern=P:P
+    * Add -n allkeys
+
 * Version 1.2.1
     * Add --distinct-client-seed
 
