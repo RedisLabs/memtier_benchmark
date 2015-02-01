@@ -1,3 +1,6 @@
+* Version 1.2.3
+    * Add progress and current (instantaneous) stats
+
 * Version 1.2.2
     * Add --key-pattern=P:P
     * Add -n allkeys

@@ -713,6 +713,13 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         (*i)->start();
     }
 
+    unsigned long int prev_ops = 0;
+    unsigned long int prev_bytes = 0;
+    unsigned long int prev_duration = 0;
+    double prev_latency = 0, cur_latency = 0;
+    unsigned long int cur_ops_sec = 0;
+    unsigned long int cur_bytes_sec = 0;
+
     // provide some feedback...
     unsigned int active_threads = 0;
     do {
@@ -731,9 +738,18 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             total_ops += (*i)->m_cg->get_total_ops();
             total_bytes += (*i)->m_cg->get_total_bytes();
             total_latency += (*i)->m_cg->get_total_latency();
-            if ((*i)->m_cg->get_duration_usec() > duration)                
+            if ((*i)->m_cg->get_duration_usec() > duration)
                 duration = (*i)->m_cg->get_duration_usec();
         }
+        
+        unsigned long int cur_ops = total_ops-prev_ops;
+        unsigned long int cur_bytes = total_bytes-prev_bytes;
+        unsigned long int cur_duration = duration-prev_duration;
+        double cur_total_latency = total_latency-prev_latency;
+        prev_ops = total_ops;
+        prev_bytes = total_bytes;
+        prev_latency = total_latency;
+        prev_duration = duration;
         
         unsigned long int ops_sec = 0;
         unsigned long int bytes_sec = 0;
@@ -743,12 +759,24 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             bytes_sec = (long)( (double)total_bytes / duration * 1000000);
             avg_latency = ((double) total_latency / 1000 / total_ops) ;
         }
+        if (cur_duration > 1000000 && active_threads == cfg->threads) {
+            cur_ops_sec = (long)( (double)cur_ops / cur_duration * 1000000);
+            cur_bytes_sec = (long)( (double)cur_bytes / cur_duration * 1000000);
+            cur_latency = ((double) cur_total_latency / 1000 / cur_ops) ;
+        }
 
-        char bytes_str[40];
+        char bytes_str[40], cur_bytes_str[40];
         size_to_str(bytes_sec, bytes_str, sizeof(bytes_str)-1);
+        size_to_str(cur_bytes_sec, cur_bytes_str, sizeof(cur_bytes_str)-1);
         
-        fprintf(stderr, "[RUN #%u, %3u secs] %2u threads: %11lu ops, %7lu ops/sec, %s/sec, %5.2fmsec latency\r",
-            run_id, (unsigned int) (duration / 1000000), active_threads, total_ops, ops_sec, bytes_str, avg_latency);
+        double progress = 0;
+        if(cfg->requests)
+            progress = 100.0 * total_ops / (cfg->requests*cfg->clients*cfg->threads);
+        else
+            progress = 100.0 * (duration / 1000000.0)/cfg->test_time;
+        
+        fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
+            run_id, progress, (unsigned int) (duration / 1000000), active_threads, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
     } while (active_threads > 0);
 
     fprintf(stderr, "\n\n");

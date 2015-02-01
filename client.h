@@ -179,7 +179,7 @@ protected:
 public:
     client(client_group* group);
     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
-    ~client();
+    virtual ~client();
 
     bool initialized(void);
     int prepare(void);
