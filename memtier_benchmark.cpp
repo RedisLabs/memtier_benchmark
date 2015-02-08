@@ -771,7 +771,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         
         double progress = 0;
         if(cfg->requests)
-            progress = 100.0 * total_ops / (cfg->requests*cfg->clients*cfg->threads);
+            progress = 100.0 * total_ops / ((double)cfg->requests*cfg->clients*cfg->threads);
         else
             progress = 100.0 * (duration / 1000000.0)/cfg->test_time;
         
