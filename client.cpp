@@ -132,10 +132,15 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
 
     m_obj_gen = objgen->clone();
     assert(m_obj_gen != NULL);
-    if (config->distinct_client_seed)
+
+    if (config->distinct_client_seed && config->randomize)
+        m_obj_gen->set_random_seed(config->randomize + config->next_client_idx);
+    else if (config->randomize)
+        m_obj_gen->set_random_seed(config->randomize);
+    else if (config->distinct_client_seed)
         m_obj_gen->set_random_seed(config->next_client_idx);
-    if (config->key_pattern[0]=='P')
-    {
+
+    if (config->key_pattern[0]=='P') {
         int range = (config->key_maximum - config->key_minimum)/(config->clients*config->threads) + 1;
         int min = config->key_minimum + range*config->next_client_idx;
         int max = min+range;
