@@ -41,6 +41,7 @@ random_generator::random_generator()
 
 void random_generator::set_seed(int seed)
 {
+    seed++; //http://stackoverflow.com/questions/27386470/srand0-and-srand1-give-the-same-results
 #ifdef HAVE_RANDOM_R
     memset(&m_data_blob, 0, sizeof(m_data_blob));
     memset(m_state_array, 0, sizeof(m_state_array));

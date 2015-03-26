@@ -106,7 +106,7 @@ public:
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
-    void merge(const run_stats& other);
+    void merge(const run_stats& other, int iteration);
     bool save_csv(const char *filename);
     void debug_dump(void);
     void print(FILE *file, bool histogram);

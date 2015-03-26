@@ -735,6 +735,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int total_ops = 0;
         unsigned long int total_bytes = 0;
         unsigned long int duration = 0;
+        unsigned int thread_counter = 0; 
         unsigned long int total_latency = 0;
         
         for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
@@ -744,8 +745,9 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             total_ops += (*i)->m_cg->get_total_ops();
             total_bytes += (*i)->m_cg->get_total_bytes();
             total_latency += (*i)->m_cg->get_total_latency();
-            if ((*i)->m_cg->get_duration_usec() > duration)
-                duration = (*i)->m_cg->get_duration_usec();
+            thread_counter++;
+            float factor = ((float)(thread_counter - 1) / thread_counter);
+            duration =  factor * duration +  (float)(*i)->m_cg->get_duration_usec() / thread_counter ;
         }
         
         unsigned long int cur_ops = total_ops-prev_ops;

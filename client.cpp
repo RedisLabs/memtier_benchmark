@@ -79,6 +79,15 @@ inline unsigned long int ts_diff_now(struct timeval a)
     return bval - aval;
 }
 
+inline timeval timeval_factorial_avarge( timeval a, timeval b, unsigned int weight)
+{
+    timeval tv;
+    double factor = ((double)weight - 1) / weight;
+    tv.tv_sec   = factor * a.tv_sec  + (double)b.tv_sec  / weight ;
+    tv.tv_usec  = factor * a.tv_usec + (double)b.tv_usec / weight ;
+    return (tv);
+}
+
 client::request::request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys)
     : m_type(type), m_size(size), m_keys(keys)
 {
@@ -955,9 +964,10 @@ unsigned long int client_group::get_total_latency(void)
 unsigned long int client_group::get_duration_usec(void)
 {
     unsigned long int duration = 0;
-    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        if ((*i)->get_stats()->get_duration_usec() > duration)
-            duration = (*i)->get_stats()->get_duration_usec();
+    unsigned int thread_counter = 1;
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++, thread_counter++) {
+        float factor = ((float)(thread_counter - 1) / thread_counter);
+        duration =  factor * duration +  (float)(*i)->get_stats()->get_duration_usec() / thread_counter ;
     }
         
     return duration;
@@ -966,10 +976,10 @@ unsigned long int client_group::get_duration_usec(void)
 void client_group::merge_run_stats(run_stats* target)
 {
     assert(target != NULL);
-
+    unsigned int iteration_counter = 1;    
     for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        target->merge(*(*i)->get_stats());
-    }    
+        target->merge(*(*i)->get_stats(), iteration_counter++);
+    }
 }
 
 void client_group::write_client_stats(const char *prefix)
@@ -1294,14 +1304,12 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
 
 }
 
-void run_stats::merge(const run_stats& other)
+void run_stats::merge(const run_stats& other, int iteration)
 {
     bool new_stats = false;
 
-    if (!m_start_time.tv_sec)
-        m_start_time = other.m_start_time;
-    if (!m_end_time.tv_sec)
-        m_end_time = other.m_end_time;
+    m_start_time = timeval_factorial_avarge( m_start_time, other.m_start_time, iteration );
+    m_end_time =   timeval_factorial_avarge( m_end_time,   other.m_end_time,   iteration );
 
     // aggregate the one_second_stats vectors. this is not efficient
     // but it's not really important (small numbers, not realtime)
