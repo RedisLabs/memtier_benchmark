@@ -1,3 +1,8 @@
+* Version 1.2.4
+    * Add --randomize
+    * Fix random seed bug
+    * Improve statistics accuracy
+
 * Version 1.2.3
     * Add progress and current (instantaneous) stats
 
