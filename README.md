@@ -1,12 +1,20 @@
 memtier_benchmark
 =================
 
-memtier_benchmark is a command line utility developed by Redis Labs (formerly Garantia Data Ltd.)
-for load generation and bechmarking NoSQL databases.
+memtier_benchmark is a command line utility developed by Redis Labs (formerly Garantia Data Ltd.) for load generation and bechmarking NoSQL key-value databases. It offers the following:
 
-Currently memtier_benchmark supports Redis and Memcache protocols (text and
-binary).
+* Support for both Redis and Memcache protocols (text and binary)
+* Multi-threaded multi-client execution
+* Multiple configuration options, including:
+ * Read:Write ratio
+ * Random and sequential key name pattern policies
+ * Random or ranged key expiration
+ * ...and much more
 
+Read more at:
+
+* [A High Throughput Benchmarking Tool for Redis and Memcached](https://redislabs.com/blog/memtier_benchmark-a-high-throughput-benchmarking-tool-for-redis-memcached)
+* [Pseudo-Random Data, Gaussian Access Pattern and Range Manipulation](https://redislabs.com/blog/new-in-memtier_benchmark-pseudo-random-data-gaussian-access-pattern-and-range-manipulation)
 
 ## Getting Started
 
