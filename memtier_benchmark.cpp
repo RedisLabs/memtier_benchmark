@@ -341,7 +341,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->distinct_client_seed++;
                     break;
                 case o_randomize:
-                    cfg->randomize = (int)time(NULL);
+                    srandom((int)time(NULL));
+                    cfg->randomize = random();
                     break;
                 case 'n':
                     endptr = NULL;
