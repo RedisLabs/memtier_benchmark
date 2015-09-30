@@ -1,3 +1,7 @@
+* Version 1.2.6
+    * Improve latency histogram accuracy and range
+    * Fix --random-data when using many threads
+
 * Version 1.2.5
     * Bugfix in --randomize
 

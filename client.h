@@ -26,7 +26,8 @@
 #include <sys/un.h>
 #include <vector>
 #include <queue>
-
+#include <map>
+#include <iterator>
 #include <event2/event.h>
 #include <event2/buffer.h>
 
@@ -39,7 +40,10 @@ struct benchmark_config;
 class object_generator;
 class data_object;
 
-#define MAX_LATENCY_HISTOGRAM       5000
+typedef std::map<float, int> latency_map;
+typedef std::map<float, int>::iterator latency_map_itr;
+typedef std::map<float, int>::const_iterator latency_map_itr_const;
+
 class run_stats {
 protected:
     struct one_second_stats {
@@ -92,8 +96,8 @@ protected:
     std::vector<one_second_stats> m_stats;
     one_second_stats m_cur_stats;
 
-    unsigned int m_get_latency[MAX_LATENCY_HISTOGRAM+1];
-    unsigned int m_set_latency[MAX_LATENCY_HISTOGRAM+1];
+    latency_map m_get_latency_map;
+    latency_map m_set_latency_map;
     void roll_cur_stats(struct timeval* ts);
 
 public:

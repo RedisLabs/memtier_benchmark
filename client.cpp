@@ -44,11 +44,21 @@
 #include <assert.h>
 #endif
 
+#include <math.h>
 #include <algorithm>
 
 #include "client.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+
+float get_2_meaningful_digits(float val)
+{
+    float log = floor(log10(val));
+    float factor = pow(10, log-1); // to save 2 digits
+    float new_val = round( val / factor);
+    new_val *= factor;
+    return new_val;
+}
 
 void client_event_handler(evutil_socket_t sfd, short evtype, void *opaque)
 {
@@ -1067,8 +1077,6 @@ run_stats::run_stats() :
 {
     memset(&m_start_time, 0, sizeof(m_start_time));
     memset(&m_end_time, 0, sizeof(m_end_time));
-    memset(m_get_latency, 0, sizeof(m_get_latency));
-    memset(m_set_latency, 0, sizeof(m_set_latency));    
 }
 
 void run_stats::set_start_time(struct timeval* start_time)
@@ -1122,10 +1130,7 @@ void run_stats::update_get_op(struct timeval* ts, unsigned int bytes, unsigned i
     m_totals.m_ops++;
     m_totals.m_latency += latency;
 
-    unsigned int msec_latency = latency / 1000;
-    if (msec_latency > MAX_LATENCY_HISTOGRAM)
-        msec_latency = MAX_LATENCY_HISTOGRAM;
-    m_get_latency[msec_latency]++;    
+    m_get_latency_map[get_2_meaningful_digits((float)latency/1000)]++;
 }
 
 void run_stats::update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
@@ -1140,10 +1145,7 @@ void run_stats::update_set_op(struct timeval* ts, unsigned int bytes, unsigned i
     m_totals.m_ops++;
     m_totals.m_latency += latency;
     
-    unsigned int msec_latency = latency / 1000;
-    if (msec_latency > MAX_LATENCY_HISTOGRAM)
-        msec_latency = MAX_LATENCY_HISTOGRAM;
-    m_set_latency[msec_latency]++;
+    m_set_latency_map[get_2_meaningful_digits(latency/1000)]++;
 }
 
 unsigned int run_stats::get_duration(void)
@@ -1214,24 +1216,24 @@ bool run_stats::save_csv(const char *filename)
         total_set_ops += i->m_ops_set;
     }
 
-    unsigned long int total_count = 0;
+
+    double total_count_float = 0;
+    int i=0;
     fprintf(f, "\n" "Full-Test GET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
-    for (int i = 0; i <= MAX_LATENCY_HISTOGRAM; i++) {
-        if (m_get_latency[i] > 0) {
-            total_count += m_get_latency[i];
-            fprintf(f, "%u,%.2f\n", i, (double) total_count / total_get_ops * 100);
-        }
+    for ( latency_map_itr it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++ ) {
+        total_count_float += it->second;
+        fprintf(f, "%u,%.2f\n", i, total_count_float / total_get_ops * 100);
+        i++;
     }
-    
+    i=0;
     fprintf(f, "\n" "Full-Test SET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
-    total_count = 0;
-    for (int i = 0; i <= MAX_LATENCY_HISTOGRAM; i++) {
-        if (m_set_latency[i] > 0) {
-            total_count += m_set_latency[i];
-            fprintf(f, "%u,%.2f\n", i, (double) total_count / total_set_ops * 100);
-        }
+
+    for ( latency_map_itr it = m_set_latency_map.begin(); it != m_set_latency_map.end() ; it++ ) {
+        total_count_float += it->second;
+        fprintf(f, "%u,%.2f\n", i, total_count_float / total_get_ops * 100);
+        i++;
     }
 
     fclose(f);
@@ -1259,14 +1261,14 @@ void run_stats::debug_dump(void)
             i->m_get_misses);
     }
 
-    for (int i = 0; i <= MAX_LATENCY_HISTOGRAM; i++) {
-        if (m_get_latency[i] > 0) 
-            benchmark_debug_log("  GET <= %u msec: %u\n", i, m_get_latency[i]);
-    }
 
-    for (int i = 0; i <= MAX_LATENCY_HISTOGRAM; i++) {
-        if (m_set_latency[i] > 0) 
-            benchmark_debug_log("  SET <= %u msec: %u\n", i, m_set_latency[i]);
+    for( latency_map_itr it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++) {
+        if (it->second)
+            benchmark_debug_log("  GET <= %u msec: %u\n", it->first, it->second);
+    }
+    for(  latency_map_itr it = m_set_latency_map.begin() ; it != m_set_latency_map.end() ; it++) {
+        if (it->second)
+            benchmark_debug_log("  SET <= %u msec: %u\n", it->first, it->second);
     }
 }
 
@@ -1284,12 +1286,14 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
             m_totals.add(i_totals);
 
             // aggregate latency data
-            for (int j = 0; j < MAX_LATENCY_HISTOGRAM + 1; j++) {
-                m_get_latency[j] += i->m_get_latency[j];
-                m_set_latency[j] += i->m_set_latency[j];
-            }            
-    }
 
+        for( latency_map_itr_const it = i->m_get_latency_map.begin() ; it != i->m_get_latency_map.end() ; it++) {
+            m_get_latency_map[it->first] += it->second;
+        }
+        for( latency_map_itr_const it = i->m_set_latency_map.begin() ; it != i->m_set_latency_map.end() ; it++) {
+            m_set_latency_map[it->first] += it->second;
+        }
+    }
     m_totals.m_ops_sec_set /= all_stats.size();
     m_totals.m_ops_sec_get /= all_stats.size();
     m_totals.m_ops_sec /= all_stats.size();
@@ -1342,11 +1346,13 @@ void run_stats::merge(const run_stats& other, int iteration)
     m_totals.m_ops += other.m_totals.m_ops;
     
     // aggregate latency data
-    for (int i = 0; i < MAX_LATENCY_HISTOGRAM + 1; i++) {
-        m_get_latency[i] += other.m_get_latency[i];
-        m_set_latency[i] += other.m_set_latency[i];
+    for( latency_map_itr_const it = other.m_get_latency_map.begin() ; it != other.m_get_latency_map.end() ; it++) {
+	m_get_latency_map[it->first] += it->second;
     }
-           
+    for( latency_map_itr_const it = other.m_set_latency_map.begin() ; it != other.m_set_latency_map.end() ; it++) {
+	m_set_latency_map[it->first] += it->second;
+    }
+       
 }
 
 void run_stats::summarize(totals& result) const
@@ -1440,25 +1446,19 @@ void run_stats::print(FILE *out, bool histogram)
             "Request Latency Distribution\n"
             "%-6s %12s %12s\n"
             "------------------------------------------------------------------------\n",
-            "Type", "<= msec", "Percent");    
+            "Type", "<= msec   ", "Percent");    
             
     unsigned long int total_count = 0;
-    for (int i = 0; i <= MAX_LATENCY_HISTOGRAM; i++) {
-        if (m_set_latency[i] > 0) {
-            total_count += m_set_latency[i];
-            fprintf(out, "%-6s %12u %12.2f\n",
-                    "SET", i, (double) total_count / m_totals.m_ops_set * 100);
-        }
+    for( latency_map_itr_const it = m_set_latency_map.begin() ; it != m_set_latency_map.end() ; it++) {
+        total_count += it->second;
+        fprintf(out, "%-6s %8.3f %12.2f\n", "SET", it->first, (double) total_count / m_totals.m_ops_set * 100);
     }
+    total_count = 0;
 
     fprintf(out, "---\n");
-    total_count = 0;
-    for (int i = 0; i <= MAX_LATENCY_HISTOGRAM; i++) {
-        if (m_get_latency[i] > 0) {
-            total_count += m_get_latency[i];
-            fprintf(out, "%-6s %12u %12.2f\n",
-                    "GET", i, (double) total_count / m_totals.m_ops_get * 100);
-        }
-    }    
+    for( latency_map_itr_const it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++) {
+        total_count += it->second;
+        fprintf(out, "%-6s %8.3f %12.2f\n", "GET", it->first, (double) total_count / m_totals.m_ops_get * 100);
+    }
 }
 

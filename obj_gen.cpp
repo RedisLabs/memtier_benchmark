@@ -156,8 +156,7 @@ object_generator::object_generator(const object_generator& copy) :
         m_data_size.size_list != NULL) {
         m_data_size.size_list = new config_weight_list(*m_data_size.size_list);
     }
-
-    alloc_value_buffer();
+    alloc_value_buffer(copy.m_value_buffer);
     for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
         m_next_key[i] = 0;
 }
@@ -191,7 +190,7 @@ void object_generator::alloc_value_buffer(void)
     unsigned int size = 0;
     
     if (m_value_buffer != NULL)
-        free(m_value_buffer);
+        free(m_value_buffer), m_value_buffer = NULL;
 
     if (m_data_size_type == data_size_fixed) 
         size = m_data_size.size_fixed;
@@ -240,6 +239,27 @@ void object_generator::alloc_value_buffer(void)
                 buf1_idx++;
             }
         }
+    }
+}
+
+void object_generator::alloc_value_buffer(const char* copy_from)
+{
+    unsigned int size = 0;
+
+    if (m_value_buffer != NULL)
+        free(m_value_buffer), m_value_buffer = NULL;
+
+    if (m_data_size_type == data_size_fixed)
+        size = m_data_size.size_fixed;
+    else if (m_data_size_type == data_size_range)
+        size = m_data_size.size_range.size_max;
+    else if (m_data_size_type == data_size_weighted)
+        size = m_data_size.size_list->largest();
+
+    if (size > 0) {
+        m_value_buffer = (char*) malloc(size);
+        assert(m_value_buffer != NULL);
+        memcpy(m_value_buffer, copy_from, size);
     }
 }
 
