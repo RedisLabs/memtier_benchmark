@@ -48,10 +48,10 @@ class run_stats {
 protected:
     struct one_second_stats {
         unsigned int m_second;        // from start of test
-        unsigned int m_bytes_get;
-        unsigned int m_bytes_set;
-        unsigned int m_ops_get;
-        unsigned int m_ops_set;
+        unsigned long int m_bytes_get;
+        unsigned long int m_bytes_set;
+        unsigned long int m_ops_get;
+        unsigned long int m_ops_set;
         unsigned int m_get_hits;
         unsigned int m_get_misses;
 
