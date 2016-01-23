@@ -1201,7 +1201,7 @@ bool run_stats::save_csv(const char *filename)
     for (std::vector<one_second_stats>::iterator i = m_stats.begin();
             i != m_stats.end(); i++) {
 
-        fprintf(f, "%u,%u,%u.%06u,%u,%u,%u.%06u,%u,%u,%u\n",
+        fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%u.%06u,%lu,%u,%u\n",
             i->m_second,
             i->m_ops_set,
             USEC_FORMAT(AVERAGE(i->m_total_set_latency, i->m_ops_set)),
