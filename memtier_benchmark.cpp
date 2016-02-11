@@ -47,6 +47,8 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
+#include <stdexcept>
+
 static int log_level = 0;
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
 {
@@ -848,6 +850,16 @@ int main(int argc, char *argv[])
         (cfg.server != NULL || cfg.port > 0)) {
         benchmark_error_log("error: UNIX domain socket and TCP cannot be used together.\n");
         exit(1);
+    }
+
+    if (cfg.server != NULL && cfg.port > 0) {
+        try {
+            cfg.server_addr = new server_addr(cfg.server, cfg.port);
+        } catch (std::runtime_error& e) {
+            benchmark_error_log("%s:%u: error: %s\n",
+                    cfg.server, cfg.port, e.what());
+            exit(1);
+        }
     }
 
     unsigned int fds_needed = (cfg.threads * cfg.clients) + (cfg.threads * 10) + 10;

@@ -121,14 +121,13 @@ public:
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
  };
- 
+
 class client {
 protected:
     friend void client_event_handler(evutil_socket_t sfd, short evtype, void *opaque);
 
     // connection related
     int m_sockfd;
-    struct addrinfo* m_server_addr;
     struct sockaddr_un* m_unix_sockaddr;
     struct event* m_event;
     struct event_base* m_event_base;

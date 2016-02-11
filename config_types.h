@@ -19,7 +19,14 @@
 #ifndef _CONFIG_TYPES_H
 #define _CONFIG_TYPES_H
 
+#ifdef HAVE_PTHREAD_H
+#include <pthread.h>
+#endif
+
+#include <netinet/in.h>
+
 #include <vector>
+#include <string>
 
 struct config_range {
     int min;
@@ -60,6 +67,30 @@ struct config_weight_list {
     unsigned int get_next_size(void);
 };
 
+struct connect_info {
+    int ci_family;
+    int ci_socktype;
+    int ci_protocol;
+    socklen_t ci_addrlen;
+    struct sockaddr *ci_addr;
+    char addr_buf[sizeof(struct sockaddr_in)];
+};
 
+struct server_addr {
+    server_addr(const char *hostname, int port);
+    virtual ~server_addr();
+
+    int get_connect_info(struct connect_info *ci);
+    const char* get_last_error(void) const;
+protected:
+    int resolve(void);
+    pthread_mutex_t m_mutex;
+
+    std::string m_hostname;
+    int m_port;
+    struct addrinfo *m_server_addr;
+    struct addrinfo *m_used_addr;
+    int m_last_error;
+};
 
 #endif /* _CONFIG_TYPES_H */

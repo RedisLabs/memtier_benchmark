@@ -120,23 +120,6 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
         m_unix_sockaddr->sun_family = AF_UNIX;
         strncpy(m_unix_sockaddr->sun_path, m_config->unix_socket, sizeof(m_unix_sockaddr->sun_path)-1);
         m_unix_sockaddr->sun_path[sizeof(m_unix_sockaddr->sun_path)-1] = '\0';
-    } else {
-        struct addrinfo hints;    
-        char port_str[20];
-
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_flags = AI_PASSIVE;
-        hints.ai_socktype = SOCK_STREAM;
-        hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
-
-        snprintf(port_str, sizeof(port_str)-1, "%u", m_config->port);
-        int error = getaddrinfo(m_config->server, 
-                        port_str, &hints, &m_server_addr);
-        if (error != 0) {
-            benchmark_error_log("%s:%u: failed to resolve: %s\n", 
-                        m_config->server, m_config->port, gai_strerror(error));
-            return false;
-        }
     }
 
     m_read_buf = evbuffer_new();
@@ -176,7 +159,7 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
 }
 
 client::client(client_group* group) : 
-    m_sockfd(-1), m_server_addr(NULL), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL), 
+    m_sockfd(-1), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL),
     m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
     m_authentication(auth_none), m_db_selection(select_none),
     m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
@@ -198,7 +181,7 @@ client::client(struct event_base *event_base,
     benchmark_config *config,
     abstract_protocol *protocol,
     object_generator *obj_gen) : 
-    m_sockfd(-1), m_server_addr(NULL), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL), 
+    m_sockfd(-1), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL),
     m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
     m_authentication(auth_none), m_db_selection(select_none),
     m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
@@ -222,11 +205,6 @@ client::~client()
         m_event = NULL;
     }
     
-    if (m_server_addr != NULL) {
-        freeaddrinfo(m_server_addr);
-        m_server_addr = NULL;
-    }
-
     if (m_unix_sockaddr != NULL) {
         free(m_unix_sockaddr);
         m_unix_sockaddr = NULL;
@@ -288,10 +266,7 @@ void client::disconnect(void)
 
 int client::connect(void)
 {
-    if (!m_server_addr && !m_unix_sockaddr) {
-        benchmark_error_log("connect: server host/port failed to resolve, aborting.\n");
-        return -1;
-    }
+    struct connect_info addr;
 
     // clean up existing socket/buffers
     if (m_sockfd != -1)
@@ -304,9 +279,14 @@ int client::connect(void)
         if (m_sockfd < 0) {
             return -errno;
         }
-    } else {    
+    } else {
+        if (m_config->server_addr->get_connect_info(&addr) != 0) {
+            benchmark_error_log("connect: resolve error: %s\n", m_config->server_addr->get_last_error());
+            return -1;
+        }
+
         // initialize socket
-        m_sockfd = socket(m_server_addr->ai_family, m_server_addr->ai_socktype, m_server_addr->ai_protocol);
+        m_sockfd = socket(addr.ci_family, addr.ci_socktype, addr.ci_protocol);
         if (m_sockfd < 0) {
             return -errno;
         }
@@ -353,8 +333,8 @@ int client::connect(void)
 
     // call connect
     if (::connect(m_sockfd, 
-        m_server_addr != NULL ? m_server_addr->ai_addr : (struct sockaddr *) m_unix_sockaddr, 
-        m_server_addr != NULL ? m_server_addr->ai_addrlen : sizeof(struct sockaddr_un)) == -1) {
+        m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr.ci_addr,
+        m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr.ci_addrlen) == -1) {
         if (errno == EINPROGRESS || errno == EWOULDBLOCK)            
             return 0;
         benchmark_error_log("connect failed, error = %s\n", strerror(errno));
@@ -613,7 +593,7 @@ void client::fill_pipeline(void)
 
 int client::prepare(void)
 {       
-    if (!m_unix_sockaddr && (!m_server_addr || !m_protocol))
+    if (!m_unix_sockaddr && (!m_config->server_addr || !m_protocol))
         return -1;
     
     int ret = this->connect();
@@ -1461,4 +1441,3 @@ void run_stats::print(FILE *out, bool histogram)
         fprintf(out, "%-6s %8.3f %12.2f\n", "GET", it->first, (double) total_count / m_totals.m_ops_get * 100);
     }
 }
-

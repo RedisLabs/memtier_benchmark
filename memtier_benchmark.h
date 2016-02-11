@@ -34,6 +34,7 @@
 struct benchmark_config {
     const char *server;
     unsigned short port;
+    struct server_addr *server_addr;
     const char *unix_socket;
     const char *protocol;
     const char *out_file;
@@ -73,6 +74,7 @@ struct benchmark_config {
     const char *authenticate;
     int select_db;
     bool no_expiry;
+    bool resolve_on_connect;
 };
 
 

@@ -1,3 +1,7 @@
+* Version 1.2.7
+    * Fix incorrect statistics due to integer overflow (Daisy Hsiung).
+    * Better round-robin address selection when doing hostname resolution.
+
 * Version 1.2.6
     * Improve latency histogram accuracy and range
     * Fix --random-data when using many threads

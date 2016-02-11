@@ -25,6 +25,17 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#include <netdb.h>
+
+#include <string>
+#include <stdexcept>
+
 #include "config_types.h"
 
 config_range::config_range(const char *range_str) :
@@ -175,3 +186,74 @@ const char* config_weight_list::print(char *buf, int buf_len)
     return start;
 }
 
+
+server_addr::server_addr(const char *hostname, int port) :
+    m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_last_error(0)
+{
+    int error = resolve();
+
+    if (error != 0)
+        throw std::runtime_error(std::string(gai_strerror(error)));
+
+    pthread_mutex_init(&m_mutex, NULL);
+}
+
+server_addr::~server_addr()
+{
+    if (m_server_addr) {
+        freeaddrinfo(m_server_addr);
+        m_server_addr = NULL;
+    }
+
+    pthread_mutex_destroy(&m_mutex);
+}
+
+int server_addr::resolve(void)
+{
+    char port_str[20];
+    struct addrinfo hints;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_flags = AI_PASSIVE;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
+
+    snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
+    m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);
+    return m_last_error;
+}
+
+int server_addr::get_connect_info(struct connect_info *ci)
+{
+    pthread_mutex_lock(&m_mutex);
+    if (m_used_addr)
+        m_used_addr = m_used_addr->ai_next;
+    if (!m_used_addr) {
+        if (m_server_addr) {
+            freeaddrinfo(m_server_addr);
+            m_server_addr = NULL;
+        }
+        if (resolve() == 0) {
+            m_used_addr = m_server_addr;
+        } else {
+            m_used_addr = NULL;
+        }
+    }
+
+    if (m_used_addr) {
+        ci->ci_family = m_used_addr->ai_family;
+        ci->ci_socktype = m_used_addr->ai_socktype;
+        ci->ci_protocol = m_used_addr->ai_protocol;
+        assert(m_used_addr->ai_addrlen <= sizeof(ci->addr_buf));
+        memcpy(ci->addr_buf, m_used_addr->ai_addr, m_used_addr->ai_addrlen);
+        ci->ci_addr = (struct sockaddr *) ci->addr_buf;
+        ci->ci_addrlen = m_used_addr->ai_addrlen;
+    }
+    pthread_mutex_unlock(&m_mutex);
+    return m_last_error;
+}
+
+const char* server_addr::get_last_error(void) const
+{
+    return gai_strerror(m_last_error);
+}
