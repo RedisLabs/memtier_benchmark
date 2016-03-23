@@ -765,12 +765,12 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int ops_sec = 0;
         unsigned long int bytes_sec = 0;
         double avg_latency = 0;
-        if (duration > 1000000) {
+        if (duration > 1) {
             ops_sec = (long)( (double)total_ops / duration * 1000000);
             bytes_sec = (long)( (double)total_bytes / duration * 1000000);
             avg_latency = ((double) total_latency / 1000 / total_ops) ;
         }
-        if (cur_duration > 1000000 && active_threads == cfg->threads) {
+        if (cur_duration > 1 && active_threads == cfg->threads) {
             cur_ops_sec = (long)( (double)cur_ops / cur_duration * 1000000);
             cur_bytes_sec = (long)( (double)cur_bytes / cur_duration * 1000000);
             cur_latency = ((double) cur_total_latency / 1000 / cur_ops) ;
