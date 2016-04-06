@@ -1,4 +1,6 @@
 * Version 1.2.7
+    * Improvement of --randomize
+    * Minor bugfix in instantaneous stats not begin updated
     * Fix incorrect statistics due to integer overflow (Daisy Hsiung).
     * Better round-robin address selection when doing hostname resolution.
 
