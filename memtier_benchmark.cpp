@@ -198,6 +198,20 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->requests = 10000;
 }
 
+static int generate_random_seed()
+{
+    int R;
+    FILE* f = fopen("/dev/random", "r");
+    if (f)
+    {
+        size_t ignore = fread(&R, sizeof(R), 1, f);
+        fclose(f);
+        ignore++;//ignore warning
+    }
+    
+    return (int)time(NULL)^getpid()^R;
+}
+
 static int config_parse_args(int argc, char *argv[], struct benchmark_config *cfg)
 {
     enum extended_options {
@@ -343,7 +357,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->distinct_client_seed++;
                     break;
                 case o_randomize:
-                    srandom((int)time(NULL));
+                    srandom(generate_random_seed());
                     cfg->randomize = random();
                     break;
                 case 'n':
