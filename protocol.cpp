@@ -410,7 +410,7 @@ int memcache_text_protocol::write_command_set(const char *key, int key_len, cons
     assert(value != NULL);
     assert(value_len > 0);
     int size = 0;
-    
+   
     size = evbuffer_add_printf(m_write_buf,
         "set %.*s 0 %u %u\r\n", key_len, key, expiry, value_len);
     evbuffer_add(m_write_buf, value, value_len);
@@ -630,6 +630,7 @@ int memcache_binary_protocol::write_command_set(const char *key, int key_len, co
     protocol_binary_request_set req;
 
     memset(&req, 0, sizeof(req));
+    req.message.header.request.udp_header = 0x0000010000000000;
     req.message.header.request.magic = PROTOCOL_BINARY_REQ;
     req.message.header.request.opcode = PROTOCOL_BINARY_CMD_SET;
     req.message.header.request.keylen = htons(key_len);
@@ -653,6 +654,8 @@ int memcache_binary_protocol::write_command_get(const char *key, int key_len, un
     protocol_binary_request_get req;
 
     memset(&req, 0, sizeof(req));
+    benchmark_debug_log("here");
+    req.message.header.request.udp_header = 0x0000010000000000;
     req.message.header.request.magic = PROTOCOL_BINARY_REQ;
     req.message.header.request.opcode = PROTOCOL_BINARY_CMD_GET;
     req.message.header.request.keylen = htons(key_len);
@@ -724,6 +727,7 @@ int memcache_binary_protocol::parse_response(void)
 
                 ret = evbuffer_remove(m_read_buf, (void *)&m_response_hdr, sizeof(m_response_hdr));
                 assert(ret == sizeof(m_response_hdr));
+                //printf("sizse of resposne header %d\n",sizeof(m_response_hdr));
 
                 if (m_response_hdr.message.header.response.magic != PROTOCOL_BINARY_RES) {
                     benchmark_error_log("error: invalid memcache response header magic.\n");

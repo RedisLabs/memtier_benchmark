@@ -215,7 +215,8 @@ int server_addr::resolve(void)
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
-    hints.ai_socktype = SOCK_STREAM;
+    //hints.ai_socktype = SOCK_STREAM;
+    hints.ai_socktype = SOCK_DGRAM;
     hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
 
     snprintf(port_str, sizeof(port_str)-1, "%u", m_port);

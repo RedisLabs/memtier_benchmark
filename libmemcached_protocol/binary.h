@@ -185,6 +185,7 @@ extern "C"
      */
     typedef union {
         struct {
+            uint64_t udp_header;
             uint8_t magic;
             uint8_t opcode;
             uint16_t keylen;
@@ -204,6 +205,7 @@ extern "C"
      */
     typedef union {
         struct {
+            uint64_t udp_header;
             uint8_t magic;
             uint8_t opcode;
             uint16_t keylen;

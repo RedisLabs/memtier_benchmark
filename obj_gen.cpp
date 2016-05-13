@@ -358,12 +358,24 @@ unsigned int object_generator::get_key_index(int iter)
 
 const char* object_generator::get_key(int iter, unsigned int *len)
 {
+    
+    char a[6] = {0xC, 0xA, 0xF, 0xE, 0xC, 0xA};
+    unsigned int i;
     unsigned int l;
     m_key_index = get_key_index(iter);
     
     // format key
-    l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
-        "%s%u", m_key_prefix, m_key_index);
+    //l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
+    
+    //fixed
+    //l = snprintf(m_key_buffer, 7,
+    //    "%s%u", m_key_prefix, m_key_index);
+    
+    //rnd COMENT OUT for FIX key
+    for (i=0; i < 6; ++i){
+        a[i] = (char)random_range(0, 15);
+    }
+    l = snprintf(m_key_buffer, 7, "%x%x%x%x%x%x%x%x", a[0], a[1], a[2], a[3], a[4], a[5], a[0], a[1]);
     if (len != NULL) *len = l;
     
     return m_key_buffer;
@@ -400,6 +412,8 @@ data_object* object_generator::get_object(int iter)
     }
     
     // set object
+    new_size = 8;
+    //printf("setting key of len %d\n", strlen(m_key_buffer));
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
     m_object.set_value(m_value_buffer, new_size);
     m_object.set_expiry(expiry);    
