@@ -1198,23 +1198,19 @@ bool run_stats::save_csv(const char *filename)
 
 
     double total_count_float = 0;
-    int i=0;
     fprintf(f, "\n" "Full-Test GET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
     for ( latency_map_itr it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++ ) {
         total_count_float += it->second;
-        fprintf(f, "%u,%.2f\n", i, total_count_float / total_get_ops * 100);
-        i++;
+        fprintf(f, "%8.3f,%.2f\n", it->first, total_count_float / total_get_ops * 100);
     }
     total_count_float = 0;
-    i=0;
     fprintf(f, "\n" "Full-Test SET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
 
     for ( latency_map_itr it = m_set_latency_map.begin(); it != m_set_latency_map.end() ; it++ ) {
         total_count_float += it->second;
-        fprintf(f, "%u,%.2f\n", i, total_count_float / total_set_ops * 100);
-        i++;
+        fprintf(f, "%8.3f,%.2f\n", it->first, total_count_float / total_set_ops * 100);
     }
 
     fclose(f);
