@@ -1206,6 +1206,7 @@ bool run_stats::save_csv(const char *filename)
         fprintf(f, "%u,%.2f\n", i, total_count_float / total_get_ops * 100);
         i++;
     }
+    total_count_float = 0;
     i=0;
     fprintf(f, "\n" "Full-Test SET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
