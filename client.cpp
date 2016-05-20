@@ -1212,7 +1212,7 @@ bool run_stats::save_csv(const char *filename)
 
     for ( latency_map_itr it = m_set_latency_map.begin(); it != m_set_latency_map.end() ; it++ ) {
         total_count_float += it->second;
-        fprintf(f, "%u,%.2f\n", i, total_count_float / total_get_ops * 100);
+        fprintf(f, "%u,%.2f\n", i, total_count_float / total_set_ops * 100);
         i++;
     }
 
