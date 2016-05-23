@@ -563,7 +563,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
 }
 
 void usage() {
-    fprintf(stderr, "Usage: memtier_benchmark [options]\n"
+    fprintf(stdout, "Usage: memtier_benchmark [options]\n"
             "A memcache/redis NoSQL traffic generator and performance benchmarking tool.\n"
             "\n"
             "Connection and General Options:\n"
@@ -579,6 +579,8 @@ void usage() {
             "      --out-file=FILE            Name of output file (default: stdout)\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --help                     Display this help\n"
+            "      --version                  Display version information\n"
             "\n"
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
@@ -594,7 +596,7 @@ void usage() {
             "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
-            "      --randomize                random seed based on timestamp (defalut is constant value)\n"
+            "      --randomize                random seed based on timestamp (default is constant value)\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"
@@ -629,8 +631,6 @@ void usage() {
             "                                 (default is key range / 6)\n"
             "      --key-median               The median point used in the Gaussian distribution\n"
             "                                 (default is the center of the key range)\n"
-            "      --help                     Display this help\n"
-            "      --version                  Display version information\n"
             "\n"
             );
     
