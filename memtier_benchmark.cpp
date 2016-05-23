@@ -563,7 +563,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
 }
 
 void usage() {
-    fprintf(stderr, "Usage: memtier_benchmark [options]\n"
+    fprintf(stdout, "Usage: memtier_benchmark [options]\n"
             "A memcache/redis NoSQL traffic generator and performance benchmarking tool.\n"
             "\n"
             "Connection and General Options:\n"
