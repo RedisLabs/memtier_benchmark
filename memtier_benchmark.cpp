@@ -596,7 +596,7 @@ void usage() {
             "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
-            "      --randomize                random seed based on timestamp (defalut is constant value)\n"
+            "      --randomize                random seed based on timestamp (default is constant value)\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"
