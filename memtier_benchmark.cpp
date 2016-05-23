@@ -579,6 +579,8 @@ void usage() {
             "      --out-file=FILE            Name of output file (default: stdout)\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --help                     Display this help\n"
+            "      --version                  Display version information\n"
             "\n"
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
@@ -629,8 +631,6 @@ void usage() {
             "                                 (default is key range / 6)\n"
             "      --key-median               The median point used in the Gaussian distribution\n"
             "                                 (default is the center of the key range)\n"
-            "      --help                     Display this help\n"
-            "      --version                  Display version information\n"
             "\n"
             );
     
