@@ -89,18 +89,6 @@ inline unsigned long int ts_diff_now(struct timeval a)
     return bval - aval;
 }
 
-/*inline unsigned long int ts_now()
-{
-    struct timeval b;
-
-    gettimeofday(&b, NULL);
-    //unsigned long long bval = b.tv_sec * 1000000 + b.tv_usec;
-
-    //return bval;
-    return b;
-}
-*/
-
 inline timeval timeval_factorial_avarge( timeval a, timeval b, unsigned int weight)
 {
     timeval tv;
@@ -288,7 +276,7 @@ int client::connect(void)
 
     if (m_unix_sockaddr != NULL) {
         //m_sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-        m_sockfd = socket(AF_UNIX, SOCK_DGRAM, 0);
+        m_sockfd = socket(AF_UNIX, SOCK_DGRAM, 0); // FIXME UDP adaptation
         if (m_sockfd < 0) {
             return -errno;
         }
@@ -313,6 +301,7 @@ int client::connect(void)
         error = setsockopt(m_sockfd, SOL_SOCKET, SO_LINGER, (void *)&ling, sizeof(ling));
         assert(error == 0);
 
+		// FIXME UDP adaptation
         //error = setsockopt(m_sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
         //assert(error == 0);
     }
@@ -568,7 +557,7 @@ void client::create_request(void)
             assert(key != NULL);
             assert(keylen > 0);
             
-            keylen = 6;
+            keylen = 6; // FIXME const
             benchmark_debug_log("GET key=[%.*s]\n", keylen, key);
             cmd_size = m_protocol->write_command_get(key, keylen, m_config->data_offset);
 
@@ -630,24 +619,17 @@ void client::process_first_request(void)
 
 void client::handle_response(request *request, protocol_response *response)
 {
-
-    //long long unsigned int tmp = 0;
     switch (request->m_type) {
         case rt_get:
-            //printf("GET %lu\n",ts_diff_now(request->m_sent_time));
+            //printf("GET %lu\n",ts_diff_now(request->m_sent_time)); // FIXME latency printf
             m_stats.update_get_op(NULL, 
                 request->m_size + response->get_total_len(),
                 ts_diff_now(request->m_sent_time),
                 response->get_hits(),
                 request->m_keys - response->get_hits());
-                //printf("now %d\n",ts_now());
-                //b.tv_sec * 1000000 + b.tv_usec;
-                //printf("request->m_sent_time %lld %lld\n",request->m_sent_time.tv_sec, request->m_sent_time.tv_usec);
-                //printf("Latency %d\n",ts_diff_now(request->m_sent_time));
-                //printf("Get %lld\n",ts_diff_now(request->m_sent_time));
             break;
         case rt_set:
-           // printf("SET %lu\n",ts_diff_now(request->m_sent_time));
+           // printf("SET %lu\n",ts_diff_now(request->m_sent_time)); // FIXME latency printf
             m_stats.update_set_op(NULL,
                 request->m_size + response->get_total_len(),
                 ts_diff_now(request->m_sent_time));
@@ -1403,7 +1385,6 @@ void run_stats::print(FILE *out, bool histogram)
     // aggregate all one_second_stats; we do this only if we have
     // one_second_stats, otherwise it means we're probably printing previously
     // aggregated data
-    debug_dump();
     if (m_stats.size() > 0) {
         summarize(m_totals);
     }

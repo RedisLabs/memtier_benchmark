@@ -356,9 +356,9 @@ unsigned int object_generator::get_key_index(int iter)
     return k;
 }
 
+// FIXME various additions to generate fixed-size keys of two kinds: random, and fixed contents.
 const char* object_generator::get_key(int iter, unsigned int *len)
 {
-    
     char a[6] = {0xC, 0xA, 0xF, 0xE, 0xC, 0xA};
     unsigned int i;
     unsigned int l;
@@ -412,8 +412,7 @@ data_object* object_generator::get_object(int iter)
     }
     
     // set object
-    new_size = 8;
-    //printf("setting key of len %d\n", strlen(m_key_buffer));
+    new_size = 8; // FIXME const
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
     m_object.set_value(m_value_buffer, new_size);
     m_object.set_expiry(expiry);    
