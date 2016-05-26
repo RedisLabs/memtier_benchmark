@@ -119,7 +119,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
-        "no-expiry = %s\n",
+        "no-expiry = %s\n"
+        "transaction_latency = %s\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -155,7 +156,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
-        cfg->no_expiry ? "yes" : "no");
+        cfg->no_expiry ? "yes" : "no",
+        cfg->transaction_latency ? "yes" : "no");
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -241,7 +243,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
-        o_no_expiry
+        o_no_expiry,
+        o_transaction_latency
     };
     
     static struct option long_options[] = {
@@ -287,6 +290,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "no-expiry",                  0, 0, o_no_expiry },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
+        { "transaction_latency",        0, 0, o_transaction_latency },
         { NULL,                         0, 0, 0 }
     };
 
@@ -553,6 +557,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_no_expiry:
                     cfg->no_expiry = true;
                     break;
+                case o_transaction_latency:
+                    cfg->transaction_latency = true;
+                    break;
                 default:
                     return -1;
                     break;
@@ -597,6 +604,7 @@ void usage() {
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
             "      --randomize                random seed based on timestamp (default is constant value)\n"
+            "      --transaction_latency      Measure and report the latency of each transaction\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"

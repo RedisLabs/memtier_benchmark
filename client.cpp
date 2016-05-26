@@ -621,7 +621,12 @@ void client::handle_response(request *request, protocol_response *response)
 {
     switch (request->m_type) {
         case rt_get:
-            //printf("GET %lu\n",ts_diff_now(request->m_sent_time)); // FIXME latency printf
+			if (m_config->transaction_latency) {
+			  // NOTE using printf adds latency to the client because of the system call, but we're measuring transaction latency, not throughput.
+			  // FIXME might be preferable to print to some user-specified file, rather than to stdout
+              printf("GET %lu\n", ts_diff_now(request->m_sent_time));
+			}
+
             m_stats.update_get_op(NULL, 
                 request->m_size + response->get_total_len(),
                 ts_diff_now(request->m_sent_time),
@@ -629,7 +634,12 @@ void client::handle_response(request *request, protocol_response *response)
                 request->m_keys - response->get_hits());
             break;
         case rt_set:
-           // printf("SET %lu\n",ts_diff_now(request->m_sent_time)); // FIXME latency printf
+			if (m_config->transaction_latency) {
+			  // NOTE using printf adds latency to the client because of the system call, but we're measuring transaction latency, not throughput.
+			  // FIXME might be preferable to print to some user-specified file, rather than to stdout
+              printf("SET %lu\n", ts_diff_now(request->m_sent_time));
+			}
+
             m_stats.update_set_op(NULL,
                 request->m_size + response->get_total_len(),
                 ts_diff_now(request->m_sent_time));
