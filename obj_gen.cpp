@@ -412,7 +412,6 @@ data_object* object_generator::get_object(int iter)
     }
     
     // set object
-    new_size = 8; // FIXME const
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
     m_object.set_value(m_value_buffer, new_size);
     m_object.set_expiry(expiry);    
