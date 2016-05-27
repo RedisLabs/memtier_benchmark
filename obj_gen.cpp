@@ -348,6 +348,7 @@ void object_generator::set_key_prefix(const char *key_prefix)
 
 void object_generator::set_key_range(unsigned int key_min, unsigned int key_max)
 {
+    assert (key_min <= key_max);
     m_key_min = key_min;
     m_key_max = key_max;
     check_key_size();
