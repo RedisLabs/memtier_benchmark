@@ -75,10 +75,12 @@ public:
 #define OBJECT_GENERATOR_KEY_GET_ITER   0
 #define OBJECT_GENERATOR_KEY_RANDOM    -1
 #define OBJECT_GENERATOR_KEY_GAUSSIAN  -2
+#define OBJECT_GENERATOR_KEY_WIDTH      250
 
 class object_generator {
 public:
     enum data_size_type { data_size_unknown, data_size_fixed, data_size_range, data_size_weighted };
+	const unsigned int m_key_width;
 protected:
     data_size_type m_data_size_type;
     union {
@@ -103,7 +105,7 @@ protected:
     unsigned int m_next_key[OBJECT_GENERATOR_KEY_ITERATORS];
 
     unsigned int m_key_index;
-    char m_key_buffer[250];
+    char m_key_buffer[OBJECT_GENERATOR_KEY_WIDTH];
     char *m_value_buffer;
     int m_random_fd;
     gaussian_noise m_random;
@@ -116,6 +118,7 @@ protected:
     unsigned int get_key_index(int iter);
 public:    
     object_generator();
+    object_generator(unsigned int key_width);
     object_generator(const object_generator& copy);
     virtual ~object_generator();
     virtual object_generator* clone(void);
@@ -130,6 +133,7 @@ public:
     void set_key_range(unsigned int key_min, unsigned int key_max);
     void set_key_distribution(double key_stddev, double key_median);
     void set_random_seed(int seed);
+    void check_key_size();
 
     virtual const char* get_key(int iter, unsigned int *len);
     virtual data_object* get_object(int iter);

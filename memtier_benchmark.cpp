@@ -120,7 +120,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "authenticate = %s\n"
         "select-db = %d\n"
         "no-expiry = %s\n"
-        "transaction_latency = %s\n",
+        "transaction_latency = %s\n"
+        "key-width = %u\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -157,7 +158,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
         cfg->no_expiry ? "yes" : "no",
-        cfg->transaction_latency ? "yes" : "no");
+        cfg->transaction_latency ? "yes" : "no",
+        cfg->key_width);
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -198,6 +200,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
     }
     if (!cfg->requests && !cfg->test_time)
         cfg->requests = 10000;
+    if (!cfg->key_width)
+        cfg->key_width = OBJECT_GENERATOR_KEY_WIDTH;
 }
 
 static int generate_random_seed()
@@ -244,7 +248,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_multi_key_get,
         o_select_db,
         o_no_expiry,
-        o_transaction_latency
+        o_transaction_latency,
+        o_key_width,
     };
     
     static struct option long_options[] = {
@@ -291,6 +296,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { "transaction_latency",        0, 0, o_transaction_latency },
+        { "key-width",                  1, 0, o_key_width },
         { NULL,                         0, 0, 0 }
     };
 
@@ -560,6 +566,16 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_transaction_latency:
                     cfg->transaction_latency = true;
                     break;
+                case o_key_width:
+                    endptr = NULL;
+                    cfg->key_width = (unsigned short) strtoul(optarg, &endptr, 10);
+                    if (!cfg->key_width || cfg->key_width > OBJECT_GENERATOR_KEY_WIDTH || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-width must be a number in the range [1-%u].\n", OBJECT_GENERATOR_KEY_WIDTH);
+                        return -1;
+                    }
+                    break;
+
+                    break;
                 default:
                     return -1;
                     break;
@@ -627,6 +643,7 @@ void usage() {
             "      --no-expiry                Ignore expiry information in imported data\n"
             "\n"
             "Key Options:\n"
+            "      --key-width=NUMBER         Maximum key size (default: \"250\")\n"
             "      --key-prefix=PREFIX        Prefix for keys (default: \"memtier-\")\n"
             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
@@ -911,7 +928,7 @@ int main(int argc, char *argv[])
             exit(1);
         }
         
-        obj_gen = new object_generator();
+        obj_gen = new object_generator(cfg.key_width);
         assert(obj_gen != NULL);
     } else {
         // check paramters

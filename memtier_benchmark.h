@@ -76,6 +76,7 @@ struct benchmark_config {
     bool no_expiry;
     bool resolve_on_connect;
     bool transaction_latency;
+    unsigned short key_width;
 };
 
 
