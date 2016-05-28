@@ -275,8 +275,7 @@ int client::connect(void)
     evbuffer_drain(m_write_buf, evbuffer_get_length(m_write_buf));
 
     if (m_unix_sockaddr != NULL) {
-        //m_sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-        m_sockfd = socket(AF_UNIX, SOCK_DGRAM, 0); // FIXME UDP adaptation
+        m_sockfd = socket(AF_UNIX, m_config->use_udp ? SOCK_DGRAM : SOCK_STREAM, 0);
         if (m_sockfd < 0) {
             return -errno;
         }
@@ -301,9 +300,10 @@ int client::connect(void)
         error = setsockopt(m_sockfd, SOL_SOCKET, SO_LINGER, (void *)&ling, sizeof(ling));
         assert(error == 0);
 
-		// FIXME UDP adaptation
-        //error = setsockopt(m_sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
-        //assert(error == 0);
+        if (!m_config->use_udp) {
+            error = setsockopt(m_sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+            assert(error == 0);
+        }
     }
     
     // set non-blcoking behavior

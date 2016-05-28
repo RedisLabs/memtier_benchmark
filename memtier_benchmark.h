@@ -77,6 +77,7 @@ struct benchmark_config {
     bool resolve_on_connect;
     bool transaction_latency;
     unsigned short key_width;
+    bool use_udp;
 };
 
 

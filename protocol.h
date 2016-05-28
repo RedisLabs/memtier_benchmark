@@ -102,6 +102,6 @@ public:
     struct protocol_response* get_response(void) { return &m_last_response; }
 };
 
-class abstract_protocol *protocol_factory(const char *proto_name);
+class abstract_protocol *protocol_factory(const char *proto_name, bool over_udp);
 
 #endif  /* _PROTOCOL_H */

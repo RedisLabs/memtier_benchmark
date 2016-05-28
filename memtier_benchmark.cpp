@@ -121,7 +121,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "select-db = %d\n"
         "no-expiry = %s\n"
         "transaction_latency = %s\n"
-        "key-width = %u\n",
+        "key-width = %u\n"
+        "udp = %s\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -159,7 +160,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->select_db,
         cfg->no_expiry ? "yes" : "no",
         cfg->transaction_latency ? "yes" : "no",
-        cfg->key_width);
+        cfg->key_width,
+        cfg->use_udp ? "yes" : "no");
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -250,6 +252,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_no_expiry,
         o_transaction_latency,
         o_key_width,
+        o_use_udp,
     };
     
     static struct option long_options[] = {
@@ -297,6 +300,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "version",                    0, 0, 'v' },
         { "transaction_latency",        0, 0, o_transaction_latency },
         { "key-width",                  1, 0, o_key_width },
+        { "udp",                        0, 0, o_use_udp },
         { NULL,                         0, 0, 0 }
     };
 
@@ -574,7 +578,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
-
+                case o_use_udp:
+                    //FIXME check that key and value size can fit in a datagram
+                    fprintf(stderr, "Warning: generating traffic over UDP is still experimental. Check that the size of requests can fit in a UDP datagram.");
+                    cfg->use_udp = true;
                     break;
                 default:
                     return -1;
@@ -593,6 +600,7 @@ void usage() {
             "  -s, --server=ADDR              Server address (default: localhost)\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
+            "      --udp                      Connect using UDP rather than TCP (default: false)\n"
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
             "                                 supported protocols are memcache_text,\n"
             "                                 memcache_binary.\n"
@@ -676,7 +684,7 @@ struct cg_thread {
     cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen) :
         m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false)
     {
-        m_protocol = protocol_factory(m_config->protocol);
+        m_protocol = protocol_factory(m_config->protocol, m_config->use_udp);
         assert(m_protocol != NULL);
         
         m_cg = new client_group(m_config, m_protocol, m_obj_gen);
@@ -893,7 +901,7 @@ int main(int argc, char *argv[])
 
     if (cfg.server != NULL && cfg.port > 0) {
         try {
-            cfg.server_addr = new server_addr(cfg.server, cfg.port);
+            cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.use_udp ? server_addr::UDP : server_addr::TCP);
         } catch (std::runtime_error& e) {
             benchmark_error_log("%s:%u: error: %s\n",
                     cfg.server, cfg.port, e.what());
@@ -1119,7 +1127,7 @@ int main(int argc, char *argv[])
     // If needed, data verification is done now...
     if (cfg.data_verify) {
         struct event_base *verify_event_base = event_base_new();
-        abstract_protocol *verify_protocol = protocol_factory(cfg.protocol);
+        abstract_protocol *verify_protocol = protocol_factory(cfg.protocol, cfg.use_udp);
         verify_client *client = new verify_client(verify_event_base, &cfg, verify_protocol, obj_gen);
 
         fprintf(outfile, "\n\nPerforming data verification...\n");
