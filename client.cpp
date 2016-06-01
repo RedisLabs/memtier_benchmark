@@ -275,7 +275,7 @@ int client::connect(void)
     evbuffer_drain(m_write_buf, evbuffer_get_length(m_write_buf));
 
     if (m_unix_sockaddr != NULL) {
-        m_sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+        m_sockfd = socket(AF_UNIX, m_config->use_udp ? SOCK_DGRAM : SOCK_STREAM, 0);
         if (m_sockfd < 0) {
             return -errno;
         }
@@ -300,8 +300,10 @@ int client::connect(void)
         error = setsockopt(m_sockfd, SOL_SOCKET, SO_LINGER, (void *)&ling, sizeof(ling));
         assert(error == 0);
 
-        error = setsockopt(m_sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
-        assert(error == 0);
+        if (!m_config->use_udp) {
+            error = setsockopt(m_sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+            assert(error == 0);
+        }
     }
     
     // set non-blcoking behavior
@@ -555,6 +557,7 @@ void client::create_request(void)
             assert(key != NULL);
             assert(keylen > 0);
             
+            keylen = 6; // FIXME const
             benchmark_debug_log("GET key=[%.*s]\n", keylen, key);
             cmd_size = m_protocol->write_command_get(key, keylen, m_config->data_offset);
 
@@ -618,6 +621,12 @@ void client::handle_response(request *request, protocol_response *response)
 {
     switch (request->m_type) {
         case rt_get:
+			if (m_config->transaction_latency) {
+			  // NOTE using printf adds latency to the client because of the system call, but we're measuring transaction latency, not throughput.
+			  // FIXME might be preferable to print to some user-specified file, rather than to stdout
+              printf("GET %lu\n", ts_diff_now(request->m_sent_time));
+			}
+
             m_stats.update_get_op(NULL, 
                 request->m_size + response->get_total_len(),
                 ts_diff_now(request->m_sent_time),
@@ -625,6 +634,12 @@ void client::handle_response(request *request, protocol_response *response)
                 request->m_keys - response->get_hits());
             break;
         case rt_set:
+			if (m_config->transaction_latency) {
+			  // NOTE using printf adds latency to the client because of the system call, but we're measuring transaction latency, not throughput.
+			  // FIXME might be preferable to print to some user-specified file, rather than to stdout
+              printf("SET %lu\n", ts_diff_now(request->m_sent_time));
+			}
+
             m_stats.update_set_op(NULL,
                 request->m_size + response->get_total_len(),
                 ts_diff_now(request->m_sent_time));

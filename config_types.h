@@ -77,7 +77,8 @@ struct connect_info {
 };
 
 struct server_addr {
-    server_addr(const char *hostname, int port);
+    enum transport_protocol {TCP=SOCK_STREAM, UDP=SOCK_DGRAM};
+    server_addr(const char *hostname, int port, transport_protocol proto);
     virtual ~server_addr();
 
     int get_connect_info(struct connect_info *ci);
@@ -88,6 +89,7 @@ protected:
 
     std::string m_hostname;
     int m_port;
+    int m_protocol;
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
     int m_last_error;

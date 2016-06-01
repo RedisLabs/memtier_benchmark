@@ -119,7 +119,10 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
-        "no-expiry = %s\n",
+        "no-expiry = %s\n"
+        "transaction_latency = %s\n"
+        "key-width = %u\n"
+        "udp = %s\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -155,7 +158,10 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
-        cfg->no_expiry ? "yes" : "no");
+        cfg->no_expiry ? "yes" : "no",
+        cfg->transaction_latency ? "yes" : "no",
+        cfg->key_width,
+        cfg->use_udp ? "yes" : "no");
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -196,6 +202,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
     }
     if (!cfg->requests && !cfg->test_time)
         cfg->requests = 10000;
+    if (!cfg->key_width)
+        cfg->key_width = OBJECT_GENERATOR_KEY_WIDTH;
 }
 
 static int generate_random_seed()
@@ -241,7 +249,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
-        o_no_expiry
+        o_no_expiry,
+        o_transaction_latency,
+        o_key_width,
+        o_use_udp,
     };
     
     static struct option long_options[] = {
@@ -287,6 +298,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "no-expiry",                  0, 0, o_no_expiry },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
+        { "transaction_latency",        0, 0, o_transaction_latency },
+        { "key-width",                  1, 0, o_key_width },
+        { "udp",                        0, 0, o_use_udp },
         { NULL,                         0, 0, 0 }
     };
 
@@ -553,6 +567,22 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_no_expiry:
                     cfg->no_expiry = true;
                     break;
+                case o_transaction_latency:
+                    cfg->transaction_latency = true;
+                    break;
+                case o_key_width:
+                    endptr = NULL;
+                    cfg->key_width = (unsigned short) strtoul(optarg, &endptr, 10);
+                    if (!cfg->key_width || cfg->key_width > OBJECT_GENERATOR_KEY_WIDTH || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-width must be a number in the range [1-%u].\n", OBJECT_GENERATOR_KEY_WIDTH);
+                        return -1;
+                    }
+                    break;
+                case o_use_udp:
+                    //FIXME check that key and value size can fit in a datagram
+                    fprintf(stderr, "Warning: generating traffic over UDP is still experimental. Check that the size of requests can fit in a UDP datagram.");
+                    cfg->use_udp = true;
+                    break;
                 default:
                     return -1;
                     break;
@@ -570,6 +600,7 @@ void usage() {
             "  -s, --server=ADDR              Server address (default: localhost)\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
+            "      --udp                      Connect using UDP rather than TCP (default: false)\n"
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
             "                                 supported protocols are memcache_text,\n"
             "                                 memcache_binary.\n"
@@ -597,6 +628,7 @@ void usage() {
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
             "      --randomize                random seed based on timestamp (default is constant value)\n"
+            "      --transaction_latency      Measure and report the latency of each transaction\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"
@@ -619,6 +651,7 @@ void usage() {
             "      --no-expiry                Ignore expiry information in imported data\n"
             "\n"
             "Key Options:\n"
+            "      --key-width=NUMBER         Maximum key size (default: \"250\")\n"
             "      --key-prefix=PREFIX        Prefix for keys (default: \"memtier-\")\n"
             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
@@ -651,7 +684,7 @@ struct cg_thread {
     cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen) :
         m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false)
     {
-        m_protocol = protocol_factory(m_config->protocol);
+        m_protocol = protocol_factory(m_config->protocol, m_config->use_udp);
         assert(m_protocol != NULL);
         
         m_cg = new client_group(m_config, m_protocol, m_obj_gen);
@@ -868,7 +901,7 @@ int main(int argc, char *argv[])
 
     if (cfg.server != NULL && cfg.port > 0) {
         try {
-            cfg.server_addr = new server_addr(cfg.server, cfg.port);
+            cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.use_udp ? server_addr::UDP : server_addr::TCP);
         } catch (std::runtime_error& e) {
             benchmark_error_log("%s:%u: error: %s\n",
                     cfg.server, cfg.port, e.what());
@@ -903,7 +936,7 @@ int main(int argc, char *argv[])
             exit(1);
         }
         
-        obj_gen = new object_generator();
+        obj_gen = new object_generator(cfg.key_width);
         assert(obj_gen != NULL);
     } else {
         // check paramters
@@ -1094,7 +1127,7 @@ int main(int argc, char *argv[])
     // If needed, data verification is done now...
     if (cfg.data_verify) {
         struct event_base *verify_event_base = event_base_new();
-        abstract_protocol *verify_protocol = protocol_factory(cfg.protocol);
+        abstract_protocol *verify_protocol = protocol_factory(cfg.protocol, cfg.use_udp);
         verify_client *client = new verify_client(verify_event_base, &cfg, verify_protocol, obj_gen);
 
         fprintf(outfile, "\n\nPerforming data verification...\n");

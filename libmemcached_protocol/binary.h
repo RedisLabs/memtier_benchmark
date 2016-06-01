@@ -180,6 +180,22 @@ extern "C"
     } protocol_binary_datatypes;
 
     /**
+     * Definition of the extra header that is used when using the
+     * memcached binary protocol over UDP. This header lies between
+     * the UDP header and the memcached datagram.
+     * See https://github.com/memcached/memcached/blob/master/doc/protocol.txt#L922
+     */
+    typedef union {
+        struct {
+            uint16_t request_id;
+            uint16_t sequence_no;
+            uint16_t total_datagrams;
+            uint16_t reserved; // Must be set to 0
+        } header;
+        uint8_t bytes[8];
+     } protocol_binary_udp_header;
+
+    /**
      * Definition of the header structure for a request packet.
      * See section 2
      */

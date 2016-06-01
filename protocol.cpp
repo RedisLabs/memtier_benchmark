@@ -410,7 +410,7 @@ int memcache_text_protocol::write_command_set(const char *key, int key_len, cons
     assert(value != NULL);
     assert(value_len > 0);
     int size = 0;
-    
+   
     size = evbuffer_add_printf(m_write_buf,
         "set %.*s 0 %u %u\r\n", key_len, key, expiry, value_len);
     evbuffer_add(m_write_buf, value, value_len);
@@ -565,11 +565,12 @@ protected:
     response_state m_response_state;
     protocol_binary_response_no_extras m_response_hdr;
     size_t m_response_len;
+    bool m_over_udp;
 
     const char* status_text(void);
 public:
-    memcache_binary_protocol() : m_response_state(rs_initial), m_response_len(0) { }
-    virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
+    memcache_binary_protocol(bool over_udp) : m_response_state(rs_initial), m_response_len(0), m_over_udp(over_udp) { }
+    virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(m_over_udp); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
@@ -620,6 +621,18 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
 }
 
+// FIXME this currently produces a constant value.
+int append_binary_udp_header(struct evbuffer* write_buf) {
+    protocol_binary_udp_header binary_udp_head;
+    memset(&binary_udp_head, 0, sizeof(binary_udp_head));
+    binary_udp_head.header.request_id = 0;
+    binary_udp_head.header.sequence_no = 0;
+    binary_udp_head.header.total_datagrams = 0x0100; //16-bit "0x01" in big endian.
+    binary_udp_head.header.reserved = 0;
+    evbuffer_add(write_buf, &binary_udp_head, sizeof(binary_udp_head));
+    return sizeof(binary_udp_head);
+}
+
 int memcache_binary_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
@@ -638,11 +651,16 @@ int memcache_binary_protocol::write_command_set(const char *key, int key_len, co
     req.message.header.request.extlen = sizeof(req.message.body);
     req.message.body.expiration = htonl(expiry);
 
+    int binary_udp_head_size = 0;
+    if (m_over_udp) {
+        binary_udp_head_size = append_binary_udp_header(m_write_buf);
+    }
+
     evbuffer_add(m_write_buf, &req, sizeof(req));
     evbuffer_add(m_write_buf, key, key_len);
     evbuffer_add(m_write_buf, value, value_len);
 
-    return sizeof(req) + key_len + value_len;
+    return binary_udp_head_size + sizeof(req) + key_len + value_len;
 }
 
 int memcache_binary_protocol::write_command_get(const char *key, int key_len, unsigned int offset)
@@ -660,10 +678,15 @@ int memcache_binary_protocol::write_command_get(const char *key, int key_len, un
     req.message.header.request.bodylen = htonl(key_len);
     req.message.header.request.extlen = 0;
 
+    int binary_udp_head_size = 0;
+    if (m_over_udp) {
+        binary_udp_head_size = append_binary_udp_header(m_write_buf);
+    }
+
     evbuffer_add(m_write_buf, &req, sizeof(req));
     evbuffer_add(m_write_buf, key, key_len);
 
-    return sizeof(req) + key_len;
+    return binary_udp_head_size + sizeof(req) + key_len;
 }
 
 int memcache_binary_protocol::write_command_multi_get(const keylist *keylist)
@@ -721,6 +744,13 @@ int memcache_binary_protocol::parse_response(void)
             case rs_initial:
                 if (evbuffer_get_length(m_read_buf) < sizeof(m_response_hdr))
                     return 0;               // no header yet?
+
+                if (m_over_udp) {
+                    protocol_binary_udp_header header;
+                    // FIXME we currently do not check the returned header.
+                    ret = evbuffer_remove(m_read_buf, (void *)&header, sizeof(header));
+                    assert(ret == sizeof(header));
+                }
 
                 ret = evbuffer_remove(m_read_buf, (void *)&m_response_hdr, sizeof(m_response_hdr));
                 assert(ret == sizeof(m_response_hdr));
@@ -800,7 +830,7 @@ int memcache_binary_protocol::parse_response(void)
 
 /////////////////////////////////////////////////////////////////////////
 
-class abstract_protocol *protocol_factory(const char *proto_name)
+class abstract_protocol *protocol_factory(const char *proto_name, bool over_udp)
 {
     assert(proto_name != NULL);
 
@@ -809,7 +839,7 @@ class abstract_protocol *protocol_factory(const char *proto_name)
     } else if (strcmp(proto_name, "memcache_text") == 0) {
         return new memcache_text_protocol();
     } else if (strcmp(proto_name, "memcache_binary") == 0) {
-        return new memcache_binary_protocol();
+        return new memcache_binary_protocol(over_udp);
     } else {
         benchmark_error_log("Error: unknown protocol '%s'.\n", proto_name);
         return NULL;

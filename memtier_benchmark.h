@@ -75,6 +75,9 @@ struct benchmark_config {
     int select_db;
     bool no_expiry;
     bool resolve_on_connect;
+    bool transaction_latency;
+    unsigned short key_width;
+    bool use_udp;
 };
 
 

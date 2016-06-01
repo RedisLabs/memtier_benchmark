@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <math.h>
+#include <stdexcept>
 
 #ifdef HAVE_ASSERT_H
 #include <assert.h>
@@ -117,6 +118,7 @@ int gaussian_noise::gaussian_distribution_range(double stddev, double median, in
 }
 
 object_generator::object_generator() :
+    m_key_width(OBJECT_GENERATOR_KEY_WIDTH),
     m_data_size_type(data_size_unknown),
     m_data_size_pattern(NULL),
     m_random_data(false),
@@ -136,7 +138,31 @@ object_generator::object_generator() :
     m_data_size.size_list = NULL;
 }
 
+object_generator::object_generator(unsigned int key_width) :
+    m_key_width(key_width),
+    m_data_size_type(data_size_unknown),
+    m_data_size_pattern(NULL),
+    m_random_data(false),
+    m_expiry_min(0),
+    m_expiry_max(0),
+    m_key_prefix(NULL),
+    m_key_min(0),
+    m_key_max(0),
+    m_key_stddev(0),
+    m_key_median(0),
+    m_value_buffer(NULL),
+    m_random_fd(-1)
+{
+	assert(m_key_width <= OBJECT_GENERATOR_KEY_WIDTH);
+
+    for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
+        m_next_key[i] = 0;
+
+    m_data_size.size_list = NULL;
+}
+
 object_generator::object_generator(const object_generator& copy) :        
+    m_key_width(copy.m_key_width),
     m_data_size_type(copy.m_data_size_type),
     m_data_size(copy.m_data_size),
     m_data_size_pattern(copy.m_data_size_pattern),
@@ -150,7 +176,6 @@ object_generator::object_generator(const object_generator& copy) :
     m_key_median(copy.m_key_median),
     m_value_buffer(NULL),
     m_random_fd(-1)
-
 {    
     if (m_data_size_type == data_size_weighted &&
         m_data_size.size_list != NULL) {
@@ -304,15 +329,29 @@ void object_generator::set_expiry_range(unsigned int expiry_min, unsigned int ex
     m_expiry_max = expiry_max;
 }
 
+void object_generator::check_key_size()
+{
+    unsigned int width_of_key_prefix = m_key_prefix == NULL ? 0 : strlen(m_key_prefix);
+    unsigned int width_of_key_max = (unsigned)log10((double)m_key_max) + 1;
+    if (width_of_key_prefix + width_of_key_max > m_key_width) {
+        char str [200];
+        sprintf(str, "Key prefix '%s' (length %u) exceeds maximum key width (%u) when combined with the maximum key index (%u, length %u)", m_key_prefix, width_of_key_prefix, m_key_width, m_key_max, width_of_key_max);
+        throw std::logic_error(str);
+    }
+}
+
 void object_generator::set_key_prefix(const char *key_prefix)
 {
     m_key_prefix = key_prefix;
+    check_key_size();
 }
 
 void object_generator::set_key_range(unsigned int key_min, unsigned int key_max)
 {
+    assert (key_min <= key_max);
     m_key_min = key_min;
     m_key_max = key_max;
+    check_key_size();
 }
 
 void object_generator::set_key_distribution(double key_stddev, double key_median)
@@ -360,9 +399,9 @@ const char* object_generator::get_key(int iter, unsigned int *len)
 {
     unsigned int l;
     m_key_index = get_key_index(iter);
-    
+
     // format key
-    l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
+    l = snprintf(m_key_buffer,	m_key_width - 1,
         "%s%u", m_key_prefix, m_key_index);
     if (len != NULL) *len = l;
     
