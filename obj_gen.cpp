@@ -103,6 +103,9 @@ double gaussian_noise::gaussian_distribution(const double &stddev)
 
 int gaussian_noise::gaussian_distribution_range(double stddev, double median, int min, int max)
 {
+    if (min==max)
+        return min;
+
     int len = max-min;
     double val;
     if (median == 0)

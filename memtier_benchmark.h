@@ -75,6 +75,10 @@ struct benchmark_config {
     int select_db;
     bool no_expiry;
     bool resolve_on_connect;
+    // WAIT related
+    config_ratio wait_ratio;
+    config_range num_slaves;
+    config_range wait_timeout;
 };
 
 

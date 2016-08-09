@@ -97,6 +97,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset) = 0;
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;
     virtual int write_command_multi_get(const keylist *keylist) = 0;
+    virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout) = 0;
     virtual int parse_response() = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }

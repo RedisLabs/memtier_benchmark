@@ -155,6 +155,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
+    virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(void);
 };
 
@@ -291,6 +292,39 @@ int redis_protocol::write_command_get(const char *key, int key_len, unsigned int
     return size;
 }
 
+/*
+ * Utility function to get the number of digits in a number
+ */
+static int get_number_length(unsigned int num)
+{
+    if (num < 10) return 1;
+    if (num < 100) return 2;
+    if (num < 1000) return 3;
+    if (num < 10000) return 4;
+    if (num < 100000) return 5;
+    if (num < 1000000) return 6;
+    if (num < 10000000) return 7;
+    if (num < 100000000) return 8;
+    if (num < 1000000000) return 9;
+    return 10;
+}
+
+int redis_protocol::write_command_wait(unsigned int num_slaves, unsigned int timeout)
+{
+    int size = 0;
+    size = evbuffer_add_printf(m_write_buf,
+                               "*3\r\n"
+                               "$4\r\n"
+                               "WAIT\r\n"
+                               "$%u\r\n"
+                               "%u\r\n"
+                               "$%u\r\n"
+                               "%u\r\n",
+                               get_number_length(num_slaves), num_slaves,
+                               get_number_length(timeout), timeout);
+    return size;
+}
+
 int redis_protocol::parse_response(void)
 {
     char *line;
@@ -390,6 +424,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
+    virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(void);
 };
 
@@ -464,6 +499,12 @@ int memcache_text_protocol::write_command_multi_get(const keylist *keylist)
     size += 2;
 
     return size;
+}
+
+int memcache_text_protocol::write_command_wait(unsigned int num_slaves, unsigned int timeout)
+{
+    fprintf(stderr, "error: WAIT command not implemented for memcache!\n");
+    assert(0);
 }
 
 int memcache_text_protocol::parse_response(void)
@@ -575,6 +616,7 @@ public:
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
+    virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(void);
 };
 
@@ -709,6 +751,12 @@ const char* memcache_binary_protocol::status_text(void)
     } else {
         return NULL;
     }
+}
+
+int memcache_binary_protocol::write_command_wait(unsigned int num_slaves, unsigned int timeout)
+{
+    fprintf(stderr, "error: WAIT command not implemented for memcache!\n");
+    assert(0);
 }
 
 int memcache_binary_protocol::parse_response(void)

@@ -20,34 +20,24 @@
 #include "config.h"
 #endif
 
+#include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 #include <limits.h>
-
-#ifdef HAVE_GETOPT_H
 #include <getopt.h>
-#endif
-
-#ifdef HAVE_PTHREAD_H
-#include <pthread.h>
-#endif
-
-#include "client.h"
-#include "obj_gen.h"
-#include "memtier_benchmark.h"
-
-#ifdef HAVE_ASSERT_H
 #include <assert.h>
-#endif
-
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 
 #include <stdexcept>
+
+#include "client.h"
+#include "obj_gen.h"
+#include "memtier_benchmark.h"
 
 static int log_level = 0;
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
@@ -119,7 +109,10 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
-        "no-expiry = %s\n",
+        "no-expiry = %s\n"
+        "wait-ratio = %u:%u\n"
+        "num-slaves = %u-%u\n"
+        "wait-timeout = %u-%u\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -155,7 +148,10 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
-        cfg->no_expiry ? "yes" : "no");
+        cfg->no_expiry ? "yes" : "no",
+        cfg->wait_ratio.a, cfg->wait_ratio.b,
+        cfg->num_slaves.min, cfg->num_slaves.max,
+        cfg->wait_timeout.min, cfg->wait_timeout.max);
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -241,7 +237,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
-        o_no_expiry
+        o_no_expiry,
+        o_wait_ratio,
+        o_num_slaves,
+        o_wait_timeout
     };
     
     static struct option long_options[] = {
@@ -285,6 +284,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
         { "no-expiry",                  0, 0, o_no_expiry },
+        { "wait-ratio",                 1, 0, o_wait_ratio },
+        { "num-slaves",                 1, 0, o_num_slaves },
+        { "wait-timeout",               1, 0, o_wait_timeout },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { NULL,                         0, 0, 0 }
@@ -302,6 +304,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case 'v':
                     puts(PACKAGE_STRING);
+                // FIXME!!
                     puts("Copyright (C) 2011-2013 Garantia Data Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
@@ -553,7 +556,28 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_no_expiry:
                     cfg->no_expiry = true;
                     break;
-                default:
+                case o_wait_ratio:
+                    cfg->wait_ratio = config_ratio(optarg);
+                    if (!cfg->wait_ratio.is_defined()) {
+                        fprintf(stderr, "error: wait-ratio must be expressed as [0-n]:[0-n].\n");
+                        return -1;
+                    }
+                    break;
+                case o_num_slaves:
+                    cfg->num_slaves = config_range(optarg);
+                    if (!cfg->num_slaves.is_defined()) {
+                        fprintf(stderr, "error: num-slaves must be expressed as [0-n]-[1-n].\n");
+                        return -1;
+                    }
+                    break;
+                case o_wait_timeout:
+                    cfg->wait_timeout = config_range(optarg);
+                    if (!cfg->wait_timeout.is_defined()) {
+                        fprintf(stderr, "error: wait-timeout must be expressed as [0-n]-[1-n].\n");
+                        return -1;
+                    }
+                    break;
+            default:
                     return -1;
                     break;
         }
@@ -631,6 +655,12 @@ void usage() {
             "                                 (default is key range / 6)\n"
             "      --key-median               The median point used in the Gaussian distribution\n"
             "                                 (default is the center of the key range)\n"
+            "\n"
+            "WAIT Options:\n"
+            "      --wait-ratio=RATIO         Set:Wait ratio (default is no WAIT commands - 1:0)\n"
+            "      --num-slaves=RANGE         WAIT for a random number of slaves in the specified range\n"
+            "      --wait-timeout=RANGE       WAIT for a random number of milliseconds in the specified range (normal \n"
+            "                                 distribution with the center in the middle of the range)"
             "\n"
             );
     
