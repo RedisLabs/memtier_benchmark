@@ -55,7 +55,13 @@ config_range::config_range(const char *range_str) :
     if (!q || *q != '\0') {
         min = max = 0;
         return;
-    }    
+    }
+
+    if (min > max) {
+        int tmp = min;
+        min = max;
+        max = tmp;
+    }
 }
 
 config_ratio::config_ratio(const char *ratio_str) :

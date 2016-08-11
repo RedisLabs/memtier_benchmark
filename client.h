@@ -52,11 +52,14 @@ protected:
         unsigned long int m_bytes_set;
         unsigned long int m_ops_get;
         unsigned long int m_ops_set;
+        unsigned long int m_ops_wait;
+
         unsigned int m_get_hits;
         unsigned int m_get_misses;
 
         unsigned long long int m_total_get_latency;
         unsigned long long int m_total_set_latency;
+        unsigned long long int m_total_wait_latency;
 
         one_second_stats(unsigned int second);
         void reset(unsigned int second);
@@ -71,6 +74,7 @@ protected:
     struct totals {
         double m_ops_sec_set;
         double m_ops_sec_get;
+        double m_ops_sec_wait;
         double m_ops_sec;
 
         double m_hits_sec;
@@ -82,11 +86,13 @@ protected:
         
         double m_latency_set;
         double m_latency_get;
+        double m_latency_wait;
         double m_latency;
 
         unsigned long int m_bytes;
         unsigned long int m_ops_set;
         unsigned long int m_ops_get;
+        unsigned long int m_ops_wait;
         unsigned long int m_ops;
 
         totals();
@@ -98,6 +104,7 @@ protected:
 
     latency_map m_get_latency_map;
     latency_map m_set_latency_map;
+    latency_map m_wait_latency_map;
     void roll_cur_stats(struct timeval* ts);
 
 public:
@@ -107,6 +114,7 @@ public:
 
     void update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_wait_op(struct timeval* ts, unsigned int latency);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
@@ -145,7 +153,7 @@ protected:
     run_stats m_stats;
 
     // pipeline management
-    enum request_type { rt_unknown, rt_set, rt_get, rt_auth, rt_select_db };
+    enum request_type { rt_unknown, rt_set, rt_get, rt_wait,rt_auth, rt_select_db };
     struct request {
         request_type m_type;
         struct timeval m_sent_time;
@@ -160,6 +168,9 @@ protected:
     unsigned int m_reqs_processed;      // requests processed (responses received)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
     unsigned int m_get_ratio_count;     // number of gets counter (overlaps on ratio)
+
+    unsigned long m_tot_set_ops;        // Total number of SET ops
+    unsigned long m_tot_wait_ops;       // Total number of WAIT ops
 
     keylist *m_keylist;                 // used to construct multi commands
 

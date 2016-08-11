@@ -89,7 +89,7 @@ inline unsigned long int ts_diff_now(struct timeval a)
     return bval - aval;
 }
 
-inline timeval timeval_factorial_avarge( timeval a, timeval b, unsigned int weight)
+inline timeval timeval_factorial_average(timeval a, timeval b, unsigned int weight)
 {
     timeval tv;
     double factor = ((double)weight - 1) / weight;
@@ -187,7 +187,9 @@ client::client(struct event_base *event_base,
     m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
     m_reqs_processed(0),
     m_set_ratio_count(0),
-    m_get_ratio_count(0)    
+    m_get_ratio_count(0),
+    m_tot_set_ops(0),
+    m_tot_wait_ops(0)
 {
     m_event_base = event_base;
     if (!setup_client(config, protocol, obj_gen)) {
@@ -304,7 +306,7 @@ int client::connect(void)
         assert(error == 0);
     }
     
-    // set non-blcoking behavior
+    // set non-blocking behavior
     int flags = 1;
     if ((flags = fcntl(m_sockfd, F_GETFL, 0)) < 0 ||
         fcntl(m_sockfd, F_SETFL, flags | O_NONBLOCK) < 0) {
@@ -482,24 +484,52 @@ bool client::is_conn_setup_done(void)
      return true;
 }
 
+/*
+ * Utility function to get the object iterator type based on the config
+ */
+static inline
+int obj_iter_type(benchmark_config *cfg, unsigned char index)
+{
+    if (cfg->key_pattern[index] == 'R')
+        return OBJECT_GENERATOR_KEY_RANDOM;
+    else if (cfg->key_pattern[index] == 'G')
+        return OBJECT_GENERATOR_KEY_GAUSSIAN;
+    return OBJECT_GENERATOR_KEY_SET_ITER;
+}
+
+// This function could use some urgent TLC -- but we need to do it without altering the behavior
 void client::create_request(void)
 {
+    int cmd_size = 0;
+
+    // If the Set:Wait ratio is not 0, start off with WAITs
+    if (m_config->wait_ratio.b &&
+        (m_tot_wait_ops == 0 ||
+         (m_tot_set_ops/m_tot_wait_ops > m_config->wait_ratio.a/m_config->wait_ratio.b))) {
+
+        m_tot_wait_ops++;
+
+        unsigned int num_slaves = m_obj_gen->random_range(m_config->num_slaves.min, m_config->num_slaves.max);
+        unsigned int timeout = m_obj_gen->normal_distribution(m_config->wait_timeout.min,
+                                  m_config->wait_timeout.max, 0,
+                                  ((m_config->wait_timeout.max - m_config->wait_timeout.min)/2.0) + m_config->wait_timeout.min);
+
+        benchmark_debug_log("WAIT num_slaves=%u timeout=%u\n", num_slaves, timeout);
+        cmd_size = m_protocol->write_command_wait(num_slaves, timeout);
+        m_pipeline.push(new client::request(rt_wait, cmd_size, NULL, 0));
+    }
     // are we set or get? this depends on the ratio
-    if (m_set_ratio_count < m_config->ratio.a) {
+    else if (m_set_ratio_count < m_config->ratio.a) {
         // set command
-        int iter = OBJECT_GENERATOR_KEY_SET_ITER;
-        if (m_config->key_pattern[0] == 'R')
-            iter = OBJECT_GENERATOR_KEY_RANDOM;
-        else if (m_config->key_pattern[0] == 'G')
-            iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
-        data_object *obj = m_obj_gen->get_object(iter);
+        data_object *obj = m_obj_gen->get_object(obj_iter_type(m_config, 0));
         unsigned int key_len;
         const char *key = obj->get_key(&key_len);
         unsigned int value_len;
         const char *value = obj->get_value(&value_len);
-        int cmd_size = 0;
 
         m_set_ratio_count++;
+        m_tot_set_ops++;
+
         benchmark_debug_log("SET key=[%.*s] value_len=%u expiry=%u\n",
             key_len, key, value_len, obj->get_expiry());
         cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
@@ -508,10 +538,10 @@ void client::create_request(void)
         m_pipeline.push(new client::request(rt_set, cmd_size, NULL, 1));
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // get command
-        int cmd_size = 0;
-        
+        int iter = obj_iter_type(m_config, 2);
+
         if (m_config->multi_key_get > 0) {
-            unsigned int keys_count;                
+            unsigned int keys_count;
 
             keys_count = m_config->ratio.b - m_get_ratio_count;
             if ((int)keys_count > m_config->multi_key_get)
@@ -520,11 +550,6 @@ void client::create_request(void)
             m_keylist->clear();
             while (m_keylist->get_keys_count() < keys_count) {
                 unsigned int keylen;
-                int iter = OBJECT_GENERATOR_KEY_GET_ITER;
-                if (m_config->key_pattern[2] == 'R')
-                    iter = OBJECT_GENERATOR_KEY_RANDOM;
-                else if (m_config->key_pattern[2] == 'G')
-                    iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
                 const char *key = m_obj_gen->get_key(iter, &keylen);
 
                 assert(key != NULL);
@@ -546,11 +571,6 @@ void client::create_request(void)
             m_pipeline.push(new client::request(rt_get, cmd_size, NULL, m_keylist->get_keys_count()));
         } else {
             unsigned int keylen;
-            int iter = OBJECT_GENERATOR_KEY_GET_ITER;
-            if (m_config->key_pattern[2] == 'R')
-                iter = OBJECT_GENERATOR_KEY_RANDOM;
-            else if (m_config->key_pattern[2] == 'G')
-                iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
             const char *key = m_obj_gen->get_key(iter, &keylen);
             assert(key != NULL);
             assert(keylen > 0);
@@ -627,6 +647,10 @@ void client::handle_response(request *request, protocol_response *response)
         case rt_set:
             m_stats.update_set_op(NULL,
                 request->m_size + response->get_total_len(),
+                ts_diff_now(request->m_sent_time));
+            break;
+        case rt_wait:
+            m_stats.update_wait_op(NULL,
                 ts_diff_now(request->m_sent_time));
             break;
         default:
@@ -760,16 +784,11 @@ unsigned long long int verify_client::get_errors(void)
 
 void verify_client::create_request(void)
 {
-    // TODO: Refactor client::create_reqeust so this can be unified.
+    // TODO: Refactor client::create_request so this can be unified.
     if (m_set_ratio_count < m_config->ratio.a) {
         // Prepare a GET request that will be compared against a previous
         // SET request.
-        int iter = OBJECT_GENERATOR_KEY_SET_ITER;
-        if (m_config->key_pattern[0] == 'R')
-            iter = OBJECT_GENERATOR_KEY_RANDOM;
-        else if (m_config->key_pattern[0] == 'G')
-            iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
-        data_object *obj = m_obj_gen->get_object(iter);
+        data_object *obj = m_obj_gen->get_object(obj_iter_type(m_config, 0));
         unsigned int key_len;
         const char *key = obj->get_key(&key_len);
         unsigned int value_len;
@@ -784,6 +803,8 @@ void verify_client::create_request(void)
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // We don't really care about GET operations, all we do here is keep
         // the object generator synced.
+        int iter = obj_iter_type(m_config, 2);
+
         if (m_config->multi_key_get > 0) {
             unsigned int keys_count;
 
@@ -793,11 +814,6 @@ void verify_client::create_request(void)
             m_keylist->clear();
             while (m_keylist->get_keys_count() < keys_count) {
                 unsigned int keylen;
-                int iter = OBJECT_GENERATOR_KEY_GET_ITER;
-                if (m_config->key_pattern[2] == 'R')
-                    iter = OBJECT_GENERATOR_KEY_RANDOM;
-                else if (m_config->key_pattern[2] == 'G')
-                    iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
                 const char *key = m_obj_gen->get_key(iter, &keylen);
 
                 assert(key != NULL);
@@ -809,11 +825,6 @@ void verify_client::create_request(void)
             m_get_ratio_count += keys_count;
         } else {
             unsigned int keylen;
-            int iter = OBJECT_GENERATOR_KEY_GET_ITER;
-            if (m_config->key_pattern[2] == 'R')
-                iter = OBJECT_GENERATOR_KEY_RANDOM;
-            else if (m_config->key_pattern[2] == 'G')
-                iter = OBJECT_GENERATOR_KEY_GAUSSIAN;
             m_obj_gen->get_key(iter, &keylen);
             m_get_ratio_count++;
         }
@@ -996,10 +1007,11 @@ void run_stats::one_second_stats::reset(unsigned int second)
 {
     m_second = second;
     m_bytes_get = m_bytes_set = 0;
-    m_ops_get = m_ops_set = 0;
+    m_ops_get = m_ops_set = m_ops_wait = 0;
     m_get_hits = m_get_misses = 0;
     m_total_get_latency = 0;
     m_total_set_latency = 0;
+    m_total_wait_latency = 0;
 }
 
 void run_stats::one_second_stats::merge(const one_second_stats& other)
@@ -1008,15 +1020,18 @@ void run_stats::one_second_stats::merge(const one_second_stats& other)
     m_bytes_set += other.m_bytes_set;
     m_ops_get += other.m_ops_get;
     m_ops_set += other.m_ops_set;
+    m_ops_wait += other.m_ops_wait;
     m_get_hits += other.m_get_hits;
     m_get_misses += other.m_get_misses;
     m_total_get_latency += other.m_total_get_latency;
     m_total_set_latency += other.m_total_set_latency;
+    m_total_wait_latency += other.m_total_wait_latency;
 }
 
 run_stats::totals::totals() :
     m_ops_sec_set(0),
     m_ops_sec_get(0),
+    m_ops_sec_wait(0),
     m_ops_sec(0),
     m_hits_sec(0),
     m_misses_sec(0),
@@ -1025,10 +1040,12 @@ run_stats::totals::totals() :
     m_bytes_sec(0),
     m_latency_set(0),
     m_latency_get(0),
+    m_latency_wait(0),
     m_latency(0),
     m_bytes(0),
     m_ops_set(0),
     m_ops_get(0),
+    m_ops_wait(0),
     m_ops(0)
 {
 }
@@ -1037,6 +1054,7 @@ void run_stats::totals::add(const run_stats::totals& other)
 {
     m_ops_sec_set += other.m_ops_sec_set;
     m_ops_sec_get += other.m_ops_sec_get;
+    m_ops_sec_wait += other.m_ops_sec_wait;
     m_ops_sec += other.m_ops_sec;
     m_hits_sec += other.m_hits_sec;
     m_misses_sec += other.m_misses_sec;
@@ -1045,10 +1063,12 @@ void run_stats::totals::add(const run_stats::totals& other)
     m_bytes_sec += other.m_bytes_sec;
     m_latency_set += other.m_latency_set;
     m_latency_get += other.m_latency_get;
+    m_latency_wait += other.m_latency_wait;
     m_latency += other.m_latency;
     m_bytes += other.m_bytes;
     m_ops_set += other.m_ops_set;
     m_ops_get += other.m_ops_get;
+    m_ops_wait += other.m_ops_wait;
     m_ops += other.m_ops;
 }
 
@@ -1124,8 +1144,21 @@ void run_stats::update_set_op(struct timeval* ts, unsigned int bytes, unsigned i
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
     m_totals.m_latency += latency;
-    
-    m_set_latency_map[get_2_meaningful_digits(latency/1000)]++;
+
+    m_set_latency_map[get_2_meaningful_digits((float)latency/1000)]++;
+}
+
+void run_stats::update_wait_op(struct timeval *ts, unsigned int latency)
+{
+    roll_cur_stats(ts);
+    m_cur_stats.m_ops_wait++;
+
+    m_cur_stats.m_total_wait_latency += latency;
+
+    m_totals.m_ops++;
+    m_totals.m_latency += latency;
+
+    m_wait_latency_map[get_2_meaningful_digits((float)latency/1000)]++;
 }
 
 unsigned int run_stats::get_duration(void)
@@ -1174,14 +1207,17 @@ bool run_stats::save_csv(const char *filename)
 
     fprintf(f, "Per-Second Benchmark Data\n");
     fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,"
-               "GET Requests,GET Average Latency,GET Total Bytes,GET Misses, GET Hits\n");
+               "GET Requests,GET Average Latency,GET Total Bytes,GET Misses, GET Hits,"
+               "WAIT Requests,WAIT Average Latency\n");
 
     unsigned long int total_get_ops = 0;
     unsigned long int total_set_ops = 0;
+    unsigned long int total_wait_ops = 0;
+
     for (std::vector<one_second_stats>::iterator i = m_stats.begin();
             i != m_stats.end(); i++) {
 
-        fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%u.%06u,%lu,%u,%u\n",
+        fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%u.%06u,%lu,%u,%u,%lu,%u.%06u\n",
             i->m_second,
             i->m_ops_set,
             USEC_FORMAT(AVERAGE(i->m_total_set_latency, i->m_ops_set)),
@@ -1190,10 +1226,13 @@ bool run_stats::save_csv(const char *filename)
             USEC_FORMAT(AVERAGE(i->m_total_get_latency, i->m_ops_get)),
             i->m_bytes_get,
             i->m_get_misses,
-            i->m_get_hits);
+            i->m_get_hits,
+            i->m_ops_wait,
+            USEC_FORMAT(AVERAGE(i->m_total_wait_latency, i->m_ops_wait)));
 
         total_get_ops += i->m_ops_get;
         total_set_ops += i->m_ops_set;
+        total_wait_ops += i->m_ops_wait;
     }
 
 
@@ -1204,13 +1243,21 @@ bool run_stats::save_csv(const char *filename)
         total_count_float += it->second;
         fprintf(f, "%8.3f,%.2f\n", it->first, total_count_float / total_get_ops * 100);
     }
+
     total_count_float = 0;
     fprintf(f, "\n" "Full-Test SET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
-
     for ( latency_map_itr it = m_set_latency_map.begin(); it != m_set_latency_map.end() ; it++ ) {
         total_count_float += it->second;
         fprintf(f, "%8.3f,%.2f\n", it->first, total_count_float / total_set_ops * 100);
+    }
+
+    total_count_float = 0;
+    fprintf(f, "\n" "Full-Test WAIT Latency\n");
+    fprintf(f, "Latency (<= msec),Percent\n");
+    for ( latency_map_itr it = m_wait_latency_map.begin(); it != m_wait_latency_map.end() ; it++ ) {
+        total_count_float += it->second;
+        fprintf(f, "%8.3f,%.2f\n", it->first, total_count_float / total_wait_ops * 100);
     }
 
     fclose(f);
@@ -1226,12 +1273,15 @@ void run_stats::debug_dump(void)
     for (std::vector<one_second_stats>::iterator i = m_stats.begin();
             i != m_stats.end(); i++) {
 
-        benchmark_debug_log("  %u: get latency=%u.%ums, set latency=%u.%ums m_ops_set/get=%u/%u, m_bytes_set/get=%u/%u, m_get_hit/miss=%u/%u\n",
+        benchmark_debug_log("  %u: get latency=%u.%ums, set latency=%u.%ums, wait latency=%u.%ums"
+                            "m_ops_set/get/wait=%u/%u/%u, m_bytes_set/get=%u/%u, m_get_hit/miss=%u/%u\n",
             i->m_second,
             USEC_FORMAT(AVERAGE(i->m_total_get_latency, i->m_ops_get)),
             USEC_FORMAT(AVERAGE(i->m_total_set_latency, i->m_ops_set)),
+            USEC_FORMAT(AVERAGE(i->m_total_wait_latency, i->m_ops_wait)),
             i->m_ops_set,
             i->m_ops_get,
+            i->m_ops_wait,
             i->m_bytes_set,
             i->m_bytes_get,
             i->m_get_hits,
@@ -1246,6 +1296,10 @@ void run_stats::debug_dump(void)
     for(  latency_map_itr it = m_set_latency_map.begin() ; it != m_set_latency_map.end() ; it++) {
         if (it->second)
             benchmark_debug_log("  SET <= %u msec: %u\n", it->first, it->second);
+    }
+    for(  latency_map_itr it = m_wait_latency_map.begin() ; it != m_wait_latency_map.end() ; it++) {
+        if (it->second)
+            benchmark_debug_log("  WAIT <= %u msec: %u\n", it->first, it->second);
     }
 }
 
@@ -1264,15 +1318,19 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
 
             // aggregate latency data
 
-        for( latency_map_itr_const it = i->m_get_latency_map.begin() ; it != i->m_get_latency_map.end() ; it++) {
+        for (latency_map_itr_const it = i->m_get_latency_map.begin() ; it != i->m_get_latency_map.end() ; it++) {
             m_get_latency_map[it->first] += it->second;
         }
-        for( latency_map_itr_const it = i->m_set_latency_map.begin() ; it != i->m_set_latency_map.end() ; it++) {
+        for (latency_map_itr_const it = i->m_set_latency_map.begin() ; it != i->m_set_latency_map.end() ; it++) {
             m_set_latency_map[it->first] += it->second;
+        }
+        for (latency_map_itr_const it = i->m_wait_latency_map.begin() ; it != i->m_wait_latency_map.end() ; it++) {
+            m_wait_latency_map[it->first] += it->second;
         }
     }
     m_totals.m_ops_sec_set /= all_stats.size();
     m_totals.m_ops_sec_get /= all_stats.size();
+    m_totals.m_ops_sec_wait /= all_stats.size();
     m_totals.m_ops_sec /= all_stats.size();
     m_totals.m_hits_sec /= all_stats.size();
     m_totals.m_misses_sec /= all_stats.size();
@@ -1281,6 +1339,7 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
     m_totals.m_bytes_sec /= all_stats.size();
     m_totals.m_latency_set /= all_stats.size();
     m_totals.m_latency_get /= all_stats.size();
+    m_totals.m_latency_wait /= all_stats.size();
     m_totals.m_latency /= all_stats.size();
 
 }
@@ -1289,8 +1348,8 @@ void run_stats::merge(const run_stats& other, int iteration)
 {
     bool new_stats = false;
 
-    m_start_time = timeval_factorial_avarge( m_start_time, other.m_start_time, iteration );
-    m_end_time =   timeval_factorial_avarge( m_end_time,   other.m_end_time,   iteration );
+    m_start_time = timeval_factorial_average( m_start_time, other.m_start_time, iteration );
+    m_end_time =   timeval_factorial_average( m_end_time,   other.m_end_time,   iteration );
 
     // aggregate the one_second_stats vectors. this is not efficient
     // but it's not really important (small numbers, not realtime)
@@ -1323,13 +1382,15 @@ void run_stats::merge(const run_stats& other, int iteration)
     m_totals.m_ops += other.m_totals.m_ops;
     
     // aggregate latency data
-    for( latency_map_itr_const it = other.m_get_latency_map.begin() ; it != other.m_get_latency_map.end() ; it++) {
-	m_get_latency_map[it->first] += it->second;
+    for (latency_map_itr_const it = other.m_get_latency_map.begin() ; it != other.m_get_latency_map.end() ; it++) {
+	    m_get_latency_map[it->first] += it->second;
     }
-    for( latency_map_itr_const it = other.m_set_latency_map.begin() ; it != other.m_set_latency_map.end() ; it++) {
-	m_set_latency_map[it->first] += it->second;
+    for (latency_map_itr_const it = other.m_set_latency_map.begin() ; it != other.m_set_latency_map.end() ; it++) {
+	    m_set_latency_map[it->first] += it->second;
     }
-       
+    for (latency_map_itr_const it = other.m_wait_latency_map.begin() ; it != other.m_wait_latency_map.end() ; it++) {
+        m_wait_latency_map[it->first] += it->second;
+    }
 }
 
 void run_stats::summarize(totals& result) const
@@ -1345,7 +1406,9 @@ void run_stats::summarize(totals& result) const
 
     result.m_ops_set = totals.m_ops_set;
     result.m_ops_get = totals.m_ops_get;
-    result.m_ops = totals.m_ops_get + totals.m_ops_set;
+    result.m_ops_wait = totals.m_ops_wait;
+
+    result.m_ops = totals.m_ops_get + totals.m_ops_set + totals.m_ops_wait;
     result.m_bytes = totals.m_bytes_get + totals.m_bytes_set;
 
     result.m_ops_sec_set = (double) totals.m_ops_set / test_duration_usec * 1000000;
@@ -1366,9 +1429,16 @@ void run_stats::summarize(totals& result) const
     result.m_hits_sec = (double) totals.m_get_hits / test_duration_usec * 1000000;
     result.m_misses_sec = (double) totals.m_get_misses / test_duration_usec * 1000000;
 
+    result.m_ops_sec_wait =  (double) totals.m_ops_wait / test_duration_usec * 1000000;
+    if (totals.m_ops_wait > 0) {
+        result.m_latency_wait = (double) (totals.m_total_wait_latency / totals.m_ops_wait) / 1000;
+    } else {
+        result.m_latency_wait = 0;
+    }
+
     result.m_ops_sec = (double) result.m_ops / test_duration_usec * 1000000;
     if (result.m_ops > 0) {
-        result.m_latency = (double) ((totals.m_total_get_latency + totals.m_total_set_latency) / result.m_ops) / 1000;
+        result.m_latency = (double) ((totals.m_total_get_latency + totals.m_total_set_latency + totals.m_total_wait_latency) / result.m_ops) / 1000;
     } else {
         result.m_latency = 0;
     }
@@ -1407,6 +1477,14 @@ void run_stats::print(FILE *out, bool histogram)
            m_totals.m_bytes_sec_get);
 
     fprintf(out,
+            "%-6s %12.2f %12s %12s %12.05f %12s\n",
+            "Waits",
+            m_totals.m_ops_sec_wait,
+            "---", "---",
+            m_totals.m_latency_wait,
+            "---");
+
+    fprintf(out,
            "%-6s %12.2f %12.2f %12.2f %12.05f %12.2f\n",
            "Totals",
            m_totals.m_ops_sec,
@@ -1436,5 +1514,12 @@ void run_stats::print(FILE *out, bool histogram)
     for( latency_map_itr_const it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++) {
         total_count += it->second;
         fprintf(out, "%-6s %8.3f %12.2f\n", "GET", it->first, (double) total_count / m_totals.m_ops_get * 100);
+    }
+
+    total_count = 0;
+    fprintf(out, "---\n");
+    for( latency_map_itr_const it = m_wait_latency_map.begin() ; it != m_wait_latency_map.end() ; it++) {
+        total_count += it->second;
+        fprintf(out, "%-6s %8.3f %12.2f\n", "WAIT", it->first, (double) total_count / m_totals.m_ops_wait * 100);
     }
 }
