@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2013 Garantia Data Ltd.
+ * Copyright (C) 2011-2016 Redis Labs Ltd.
  *
  * This file is part of memtier_benchmark.
  *
@@ -305,7 +305,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'v':
                     puts(PACKAGE_STRING);
                 // FIXME!!
-                    puts("Copyright (C) 2011-2013 Garantia Data Ltd.");
+                    puts("Copyright (C) 2011-2016 Redis Labs Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
