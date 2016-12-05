@@ -449,7 +449,7 @@ bool client::finished(void)
     return false;    
 }
 
-bool client::send_conn_setup_commands(void)
+bool client::send_conn_setup_commands(struct timeval timestamp)
 {
     bool sent = false;
 
@@ -457,7 +457,7 @@ bool client::send_conn_setup_commands(void)
         if (m_authentication == auth_none) {
             benchmark_debug_log("sending authentication command.\n");
             m_protocol->authenticate(m_config->authenticate);
-            m_pipeline.push(new client::request(rt_auth, 0, NULL, 0));
+            m_pipeline.push(new client::request(rt_auth, 0, &timestamp, 0));
             m_authentication = auth_sent;
             sent = true;
         }
@@ -466,7 +466,7 @@ bool client::send_conn_setup_commands(void)
         if (m_db_selection == select_none) {
             benchmark_debug_log("sending db selection command.\n");
             m_protocol->select_db(m_config->select_db);
-            m_pipeline.push(new client::request(rt_select_db, 0, NULL, 0));
+            m_pipeline.push(new client::request(rt_select_db, 0, &timestamp, 0));
             m_db_selection = select_sent;
             sent = true;
         }
@@ -498,7 +498,7 @@ int obj_iter_type(benchmark_config *cfg, unsigned char index)
 }
 
 // This function could use some urgent TLC -- but we need to do it without altering the behavior
-void client::create_request(void)
+void client::create_request(struct timeval timestamp)
 {
     int cmd_size = 0;
 
@@ -516,7 +516,7 @@ void client::create_request(void)
 
         benchmark_debug_log("WAIT num_slaves=%u timeout=%u\n", num_slaves, timeout);
         cmd_size = m_protocol->write_command_wait(num_slaves, timeout);
-        m_pipeline.push(new client::request(rt_wait, cmd_size, NULL, 0));
+        m_pipeline.push(new client::request(rt_wait, cmd_size, &timestamp, 0));
     }
     // are we set or get? this depends on the ratio
     else if (m_set_ratio_count < m_config->ratio.a) {
@@ -535,7 +535,7 @@ void client::create_request(void)
         cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
             obj->get_expiry(), m_config->data_offset);
 
-        m_pipeline.push(new client::request(rt_set, cmd_size, NULL, 1));
+        m_pipeline.push(new client::request(rt_set, cmd_size, &timestamp, 1));
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // get command
         int iter = obj_iter_type(m_config, 2);
@@ -568,7 +568,7 @@ void client::create_request(void)
 
             cmd_size = m_protocol->write_command_multi_get(m_keylist);
             m_get_ratio_count += keys_count;
-            m_pipeline.push(new client::request(rt_get, cmd_size, NULL, m_keylist->get_keys_count()));
+            m_pipeline.push(new client::request(rt_get, cmd_size, &timestamp, m_keylist->get_keys_count()));
         } else {
             unsigned int keylen;
             const char *key = m_obj_gen->get_key(iter, &keylen);
@@ -579,7 +579,7 @@ void client::create_request(void)
             cmd_size = m_protocol->write_command_get(key, keylen, m_config->data_offset);
 
             m_get_ratio_count++;
-            m_pipeline.push(new client::request(rt_get, cmd_size, NULL, 1));
+            m_pipeline.push(new client::request(rt_get, cmd_size, &timestamp, 1));
         }
     } else {
         // overlap counters
@@ -589,10 +589,12 @@ void client::create_request(void)
 
 void client::fill_pipeline(void)
 {
-   
+    struct timeval now;
+    gettimeofday(&now, NULL);
+
     while (!finished() && m_pipeline.size() < m_config->pipeline) {
         if (!is_conn_setup_done()) {
-            send_conn_setup_commands();
+            send_conn_setup_commands(now);
             return;
         }
 
@@ -607,7 +609,7 @@ void client::fill_pipeline(void)
                 return;
         }
 
-        create_request();
+        create_request(now);
     }
 }
 
@@ -634,24 +636,24 @@ void client::process_first_request(void)
     fill_pipeline();
 }
 
-void client::handle_response(request *request, protocol_response *response)
+void client::handle_response(struct timeval timestamp, request *request, protocol_response *response)
 {
     switch (request->m_type) {
         case rt_get:
-            m_stats.update_get_op(NULL, 
+            m_stats.update_get_op(&timestamp,
                 request->m_size + response->get_total_len(),
-                ts_diff_now(request->m_sent_time),
+                ts_diff(request->m_sent_time, timestamp),
                 response->get_hits(),
                 request->m_keys - response->get_hits());
             break;
         case rt_set:
-            m_stats.update_set_op(NULL,
+            m_stats.update_set_op(&timestamp,
                 request->m_size + response->get_total_len(),
-                ts_diff_now(request->m_sent_time));
+                ts_diff(request->m_sent_time, timestamp));
             break;
         case rt_wait:
-            m_stats.update_wait_op(NULL,
-                ts_diff_now(request->m_sent_time));
+            m_stats.update_wait_op(&timestamp,
+                ts_diff(request->m_sent_time, timestamp));
             break;
         default:
             assert(0);
@@ -663,6 +665,9 @@ void client::process_response(void)
 {
     int ret;
     bool responses_handled = false;
+
+    struct timeval now;
+    gettimeofday(&now, NULL);
     
     while ((ret = m_protocol->parse_response()) > 0) {
         bool error = false;
@@ -697,7 +702,7 @@ void client::process_response(void)
                 benchmark_error_log("error response: %s\n", r->get_status());
             }
 
-            handle_response(req, r);
+            handle_response(now, req, r);
                 
             m_reqs_processed++;
             responses_handled = true;
@@ -782,7 +787,7 @@ unsigned long long int verify_client::get_errors(void)
     return m_errors;
 }
 
-void verify_client::create_request(void)
+void verify_client::create_request(struct timeval timestamp)
 {
     // TODO: Refactor client::create_request so this can be unified.
     if (m_set_ratio_count < m_config->ratio.a) {
@@ -799,7 +804,7 @@ void verify_client::create_request(void)
         cmd_size = m_protocol->write_command_get(key, key_len, m_config->data_offset);
 
         m_pipeline.push(new verify_client::verify_request(rt_get,
-            cmd_size, NULL, 1, key, key_len, value, value_len));
+            cmd_size, &timestamp, 1, key, key_len, value, value_len));
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // We don't really care about GET operations, all we do here is keep
         // the object generator synced.
@@ -836,7 +841,7 @@ void verify_client::create_request(void)
     }
 }
 
-void verify_client::handle_response(request *request, protocol_response *response)
+void verify_client::handle_response(struct timeval timestamp, request *request, protocol_response *response)
 {
     unsigned int rvalue_len;
     const char *rvalue = response->get_value(&rvalue_len);
@@ -1103,12 +1108,6 @@ void run_stats::set_end_time(struct timeval* end_time)
 
 void run_stats::roll_cur_stats(struct timeval* ts)
 {
-    struct timeval tv;
-    if (!ts) {
-        gettimeofday(&tv, NULL);
-        ts = &tv;
-    }
-
     unsigned int sec = ts_diff(m_start_time, *ts) / 1000000;
     if (sec > m_cur_stats.m_second) {
         m_stats.push_back(m_cur_stats);

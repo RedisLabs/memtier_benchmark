@@ -182,10 +182,10 @@ protected:
     int get_sockfd(void) { return m_sockfd; }
 
     virtual bool finished();
-    virtual void create_request(void);
-    virtual void handle_response(request *request, protocol_response *response);
+    virtual void create_request(struct timeval timestamp);
+    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
 
-    bool send_conn_setup_commands(void);
+    bool send_conn_setup_commands(struct timeval timestamp);
     bool is_conn_setup_done(void);
     void fill_pipeline(void);
     void process_first_request(void);
@@ -223,8 +223,8 @@ protected:
     unsigned long long int m_errors;
 
     virtual bool finished(void);
-    virtual void create_request(void);
-    virtual void handle_response(request *request, protocol_response *response);
+    virtual void create_request(struct timeval timestamp);
+    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
 public:
     verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     unsigned long long int get_verified_keys(void);
