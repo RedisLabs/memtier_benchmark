@@ -1,3 +1,9 @@
+* Version 1.2.8
+    * Optimization of gettimeofday() and latency calculations
+    * WAIT command support
+    * Help output fixes and improvements (Nik Sultana)
+    * CSV output fixes (Saman Barghi)
+
 * Version 1.2.7
     * Improvement of --randomize
     * Minor bugfix in instantaneous stats not begin updated
