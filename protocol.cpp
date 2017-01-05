@@ -812,17 +812,16 @@ int memcache_binary_protocol::parse_response(void)
                         m_response_hdr.message.header.response.keylen);
                     assert((unsigned int) ret == 0);
 
+                    int actual_body_len = m_response_hdr.message.header.response.bodylen -
+                        m_response_hdr.message.header.response.extlen -
+                        m_response_hdr.message.header.response.keylen;
                     if (m_keep_value) {
-                        int actual_body_len = m_response_hdr.message.header.response.bodylen -
-                            m_response_hdr.message.header.response.extlen -
-                            m_response_hdr.message.header.response.keylen;                        
                         char *value = (char *) malloc(actual_body_len);
                         assert(value != NULL);
-
                         ret = evbuffer_remove(m_read_buf, value, actual_body_len);
                         m_last_response.set_value(value, actual_body_len);
                     } else {
-                        int ret = evbuffer_drain(m_read_buf, m_response_hdr.message.header.response.bodylen);
+                        int ret = evbuffer_drain(m_read_buf, actual_body_len);
                         assert((unsigned int) ret == 0);
                     }
 
