@@ -64,8 +64,8 @@ struct benchmark_config {
     int verify_only;
     int generate_keys;
     const char *key_prefix;
-    unsigned int key_minimum;
-    unsigned int key_maximum;
+    unsigned long long key_minimum;
+    unsigned long long key_maximum;
     double key_stddev;
     double key_median;
     const char *key_pattern;

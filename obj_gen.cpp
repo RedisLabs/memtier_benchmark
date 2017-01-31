@@ -54,26 +54,40 @@ void random_generator::set_seed(int seed)
 #endif
 }
 
-unsigned int random_generator::get_random()
+unsigned long long random_generator::get_random()
 {
     int rn;
+    unsigned long long llrn;
 #ifdef HAVE_RANDOM_R
     int ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
     assert(ret == 0);
+
+    llrn = rn;
+    llrn = llrn << 32; // move to upper 32bits
+
+    ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
+    assert(ret == 0);
+    llrn |= rn; // set lower 32bits
 #elif (defined HAVE_DRAND48)
     rn = nrand48(m_data_blob); // max is 1<<31
+    llrn = rn;
+    llrn = llrn << 32; // move to upper 32bits
+
+    rn = nrand48(m_data_blob); // max is 1<<31
+    llrn |= rn; // set lower 32bits
 #else
     #error no random function
 #endif
-    return rn;
+    return llrn;
 }
 
-unsigned int random_generator::get_random_max() const
+unsigned long long random_generator::get_random_max() const
 {
 #ifdef HAVE_RANDOM_R
-    return RAND_MAX;
+    unsigned long long rand_max = RAND_MAX;
+    return (rand_max << 32) | RAND_MAX;
 #elif (defined HAVE_DRAND48)
-    return 1<<31;
+    return ((1<<31) << 32) | (1<<31);
 #else
     #error no random function
 #endif
@@ -101,12 +115,13 @@ double gaussian_noise::gaussian_distribution(const double &stddev)
     return stddev * u * s;
 }
 
-int gaussian_noise::gaussian_distribution_range(double stddev, double median, int min, int max)
+unsigned long long gaussian_noise::gaussian_distribution_range(double stddev, double median, unsigned long long min, unsigned long long max)
 {
     if (min==max)
         return min;
 
-    int len = max-min;
+    unsigned long long len = max-min;
+
     double val;
     if (median == 0)
         median = len / 2.0 + min + 0.5;
@@ -312,7 +327,7 @@ void object_generator::set_key_prefix(const char *key_prefix)
     m_key_prefix = key_prefix;
 }
 
-void object_generator::set_key_range(unsigned int key_min, unsigned int key_max)
+void object_generator::set_key_range(unsigned long long key_min, unsigned long long key_max)
 {
     m_key_min = key_min;
     m_key_max = key_max;
@@ -325,23 +340,23 @@ void object_generator::set_key_distribution(double key_stddev, double key_median
 }
 
 // return a random number between r_min and r_max
-unsigned int object_generator::random_range(unsigned int r_min, unsigned int r_max)
+unsigned long long object_generator::random_range(unsigned long long r_min, unsigned long long  r_max)
 {
-    int rn = m_random.get_random();
-    return ((unsigned int) rn % (r_max - r_min + 1)) + r_min;
+    unsigned long long rn = m_random.get_random();
+    return (rn % (r_max - r_min + 1)) + r_min;
 }
 
 // return a random number between r_min and r_max using normal distribution according to r_stddev
-unsigned int object_generator::normal_distribution(unsigned int r_min, unsigned int r_max, double r_stddev, double r_median)
+unsigned long long object_generator::normal_distribution(unsigned long long r_min, unsigned long long r_max, double r_stddev, double r_median)
 {
     return m_random.gaussian_distribution_range(r_stddev, r_median, r_min, r_max);
 }
 
-unsigned int object_generator::get_key_index(int iter)
+unsigned long long object_generator::get_key_index(int iter)
 {
     assert(iter < OBJECT_GENERATOR_KEY_ITERATORS && iter >= OBJECT_GENERATOR_KEY_GAUSSIAN);
 
-    unsigned int k;
+    unsigned long long k;
     if (iter==OBJECT_GENERATOR_KEY_RANDOM) {
         k = random_range(m_key_min, m_key_max);
     } else if(iter==OBJECT_GENERATOR_KEY_GAUSSIAN) {
@@ -355,7 +370,6 @@ unsigned int object_generator::get_key_index(int iter)
         if (m_next_key[iter] > m_key_max)
             m_next_key[iter] = m_key_min;
     }
-
     return k;
 }
 
@@ -366,7 +380,7 @@ const char* object_generator::get_key(int iter, unsigned int *len)
     
     // format key
     l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
-        "%s%u", m_key_prefix, m_key_index);
+        "%s%llu", m_key_prefix, m_key_index);
     if (len != NULL) *len = l;
     
     return m_key_buffer;
@@ -384,7 +398,7 @@ data_object* object_generator::get_object(int iter)
         new_size = m_data_size.size_fixed;
     } else if (m_data_size_type == data_size_range) {
         if (m_data_size_pattern && *m_data_size_pattern=='S') {
-            float a = (m_key_index-m_key_min)/(float)(m_key_max-m_key_min);
+            double a = (m_key_index-m_key_min)/static_cast<double>(m_key_max-m_key_min);
             new_size = (m_data_size.size_range.size_max-m_data_size.size_range.size_min)*a + m_data_size.size_range.size_min;
         } else {
             new_size = random_range(m_data_size.size_range.size_min > 0 ? m_data_size.size_range.size_min : 1,
