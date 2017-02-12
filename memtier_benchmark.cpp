@@ -100,8 +100,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "verify_only = %s\n"
         "generate_keys = %s\n"
         "key_prefix = %s\n"
-        "key_minimum = %u\n"
-        "key_maximum = %u\n"
+        "key_minimum = %llu\n"
+        "key_maximum = %llu\n"
         "key_pattern = %s\n"
         "key_stddev = %f\n"
         "key_median = %f\n"
@@ -485,7 +485,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_minimum:
                     endptr = NULL;
-                    cfg->key_minimum = (unsigned int) strtoul(optarg, &endptr, 10);
+                    cfg->key_minimum = strtoull(optarg, &endptr, 10);
                     if (cfg->key_minimum < 1 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: key-minimum must be greater than zero.\n");
                         return -1;
@@ -493,7 +493,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_maximum:
                     endptr = NULL;
-                    cfg->key_maximum = (unsigned int) strtoul(optarg, &endptr, 10);
+                    cfg->key_maximum = strtoull(optarg, &endptr, 10);
                     if (cfg->key_maximum< 1 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: key-maximum must be greater than zero.\n");
                         return -1;
@@ -868,7 +868,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 
 
 int main(int argc, char *argv[])
-{   
+{
     struct benchmark_config cfg;
 
     memset(&cfg, 0, sizeof(struct benchmark_config));

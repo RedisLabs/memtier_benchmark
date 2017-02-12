@@ -28,8 +28,8 @@ struct config_weight_list;
 class random_generator {
 public:
     random_generator();
-    unsigned int get_random();
-    unsigned int get_random_max() const;
+    unsigned long long get_random();
+    unsigned long long get_random_max() const;
     void set_seed(int seed);
 private:
 #ifdef HAVE_RANDOM_R
@@ -43,7 +43,7 @@ private:
 class gaussian_noise: public random_generator {
 public:
     gaussian_noise() { m_hasSpare = false; }
-    int gaussian_distribution_range(double stddev, double median, int min, int max);
+    unsigned long long gaussian_distribution_range(double stddev, double median, unsigned long long min, unsigned long long max);
 private:
     double gaussian_distribution(const double &stddev);
     bool m_hasSpare;
@@ -94,15 +94,15 @@ protected:
     unsigned int m_expiry_min;
     unsigned int m_expiry_max;
     const char *m_key_prefix;
-    unsigned int m_key_min;
-    unsigned int m_key_max;
+    unsigned long long m_key_min;
+    unsigned long long m_key_max;
     double m_key_stddev;
     double m_key_median;
     data_object m_object;
 
-    unsigned int m_next_key[OBJECT_GENERATOR_KEY_ITERATORS];
+    unsigned long long m_next_key[OBJECT_GENERATOR_KEY_ITERATORS];
 
-    unsigned int m_key_index;
+    unsigned long long m_key_index;
     char m_key_buffer[250];
     char *m_value_buffer;
     int m_random_fd;
@@ -111,15 +111,15 @@ protected:
     void alloc_value_buffer(void);
     void alloc_value_buffer(const char* copy_from);
     void random_init(void);
-    unsigned int get_key_index(int iter);
+    unsigned long long get_key_index(int iter);
 public:    
     object_generator();
     object_generator(const object_generator& copy);
     virtual ~object_generator();
     virtual object_generator* clone(void);
 
-    unsigned int random_range(unsigned int r_min, unsigned int r_max);
-    unsigned int normal_distribution(unsigned int r_min, unsigned int r_max, double r_stddev, double r_median);
+    unsigned long long random_range(unsigned long long r_min, unsigned long long r_max);
+    unsigned long long normal_distribution(unsigned long long r_min, unsigned long long r_max, double r_stddev, double r_median);
 
     void set_random_data(bool random_data);
     void set_data_size_fixed(unsigned int size);
@@ -128,7 +128,7 @@ public:
     void set_data_size_pattern(const char* pattern);
     void set_expiry_range(unsigned int expiry_min, unsigned int expiry_max);
     void set_key_prefix(const char *key_prefix);    
-    void set_key_range(unsigned int key_min, unsigned int key_max);
+    void set_key_range(unsigned long long key_min, unsigned long long key_max);
     void set_key_distribution(double key_stddev, double key_median);
     void set_random_seed(int seed);
 
