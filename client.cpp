@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Redis Labs Ltd.
+ * Copyright (C) 2011-2017 Redis Labs Ltd.
  *
  * This file is part of memtier_benchmark.
  *
@@ -1444,8 +1444,44 @@ void run_stats::summarize(totals& result) const
     result.m_bytes_sec = (result.m_bytes / 1024.0) / test_duration_usec * 1000000;
 }
 
-void run_stats::print(FILE *out, bool histogram)
+void result_print_to_json(json_handler * jsonhandler, const char * type, float ops, float hits, float miss, float latency, float kbs)
 {
+    if (jsonhandler != NULL){ // Added for double verification in case someone accidently send NULL.
+        jsonhandler->open_nesting(type);
+        jsonhandler->write_obj("Ops/sec","%.2f", ops);
+        jsonhandler->write_obj("Hits/sec","%.2f", hits);
+        jsonhandler->write_obj("Misses/sec","%.2f", miss);
+        jsonhandler->write_obj("Latency","%.2f", latency);
+        jsonhandler->write_obj("KB/sec","%.2f", kbs);
+        jsonhandler->close_nesting();
+    }
+}
+
+void histogram_print(FILE * out, json_handler * jsonhandler, const char * type, float msec, float percent)
+{
+    fprintf(out, "%-6s %8.3f %12.2f\n", type, msec, percent);
+    if (jsonhandler != NULL){ 
+        jsonhandler->open_nesting(NULL);
+        jsonhandler->write_obj("<=msec","%.3f", msec);
+        jsonhandler->write_obj("percent","%.2f", percent);
+        jsonhandler->close_nesting();
+    }            
+}
+
+void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  json_handler * jsonhandler/*=NULL*/)
+{
+    // Add header if not printed:
+    if (header != NULL){
+        fprintf(out,"\n\n"
+                        "%s\n"
+                        "========================================================================\n",
+                        header);
+        if (jsonhandler != NULL){jsonhandler->open_nesting(header);}
+    }
+    else{
+        if (jsonhandler != NULL){jsonhandler->open_nesting("UNKNOWN STATS");}
+    }
+    
     // aggregate all one_second_stats; we do this only if we have
     // one_second_stats, otherwise it means we're probably printing previously
     // aggregated data
@@ -1492,33 +1528,70 @@ void run_stats::print(FILE *out, bool histogram)
            m_totals.m_latency,
            m_totals.m_bytes_sec);
 
-    if (!histogram)
-        return;
-        
-    fprintf(out,
+    ////////////////////////////////////////
+    // JSON print handling
+    // ------------------
+    if (jsonhandler != NULL){
+        result_print_to_json(jsonhandler,"Sets",m_totals.m_ops_sec_set,
+                                                0.0,
+                                                0.0,
+                                                m_totals.m_latency_set,
+                                                m_totals.m_bytes_sec_set);
+        result_print_to_json(jsonhandler,"Gets",m_totals.m_ops_sec_get,
+                                                m_totals.m_hits_sec,
+                                                m_totals.m_misses_sec,
+                                                m_totals.m_latency_get,
+                                                m_totals.m_bytes_sec_get);
+        result_print_to_json(jsonhandler,"Waits",m_totals.m_ops_sec_wait,
+                                                0.0,
+                                                0.0,
+                                                m_totals.m_latency_wait,
+                                                0.0);
+        result_print_to_json(jsonhandler,"Totals",m_totals.m_ops_sec,
+                                                m_totals.m_hits_sec,
+                                                m_totals.m_misses_sec,
+                                                m_totals.m_latency,
+                                                m_totals.m_bytes_sec);
+    }
+
+    if (histogram)
+    {
+        fprintf(out,
             "\n\n"
             "Request Latency Distribution\n"
             "%-6s %12s %12s\n"
             "------------------------------------------------------------------------\n",
             "Type", "<= msec   ", "Percent");    
             
-    unsigned long int total_count = 0;
-    for( latency_map_itr_const it = m_set_latency_map.begin() ; it != m_set_latency_map.end() ; it++) {
-        total_count += it->second;
-        fprintf(out, "%-6s %8.3f %12.2f\n", "SET", it->first, (double) total_count / m_totals.m_ops_set * 100);
-    }
-    total_count = 0;
-
-    fprintf(out, "---\n");
-    for( latency_map_itr_const it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++) {
-        total_count += it->second;
-        fprintf(out, "%-6s %8.3f %12.2f\n", "GET", it->first, (double) total_count / m_totals.m_ops_get * 100);
-    }
-
-    total_count = 0;
-    fprintf(out, "---\n");
-    for( latency_map_itr_const it = m_wait_latency_map.begin() ; it != m_wait_latency_map.end() ; it++) {
-        total_count += it->second;
-        fprintf(out, "%-6s %8.3f %12.2f\n", "WAIT", it->first, (double) total_count / m_totals.m_ops_wait * 100);
+        unsigned long int total_count = 0;
+        // SETs
+        // ----
+        if (jsonhandler != NULL){ jsonhandler->open_nesting("SET",NESTED_ARRAY);}
+        for( latency_map_itr_const it = m_set_latency_map.begin() ; it != m_set_latency_map.end() ; it++) {
+            total_count += it->second;
+            histogram_print(out, jsonhandler, "SET",it->first,(double) total_count / m_totals.m_ops_set * 100);
+        }
+        if (jsonhandler != NULL){ jsonhandler->close_nesting();}
+        fprintf(out, "---\n");
+        // GETs
+        // ----
+        total_count = 0;
+        if (jsonhandler != NULL){ jsonhandler->open_nesting("GET",NESTED_ARRAY);}
+        for( latency_map_itr_const it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++) {
+            total_count += it->second;
+            histogram_print(out, jsonhandler, "GET",it->first,(double) total_count / m_totals.m_ops_get * 100);
+        }
+        if (jsonhandler != NULL){ jsonhandler->close_nesting();}
+        fprintf(out, "---\n");
+        // WAITs
+        // ----
+        total_count = 0;
+        if (jsonhandler != NULL){ jsonhandler->open_nesting("WAIT",NESTED_ARRAY);}
+        for( latency_map_itr_const it = m_wait_latency_map.begin() ; it != m_wait_latency_map.end() ; it++) {
+            total_count += it->second;
+            histogram_print(out, jsonhandler, "WAIT",it->first,(double) total_count / m_totals.m_ops_wait * 100);
+        }
+        if (jsonhandler != NULL){ jsonhandler->close_nesting();}
     }
 }
+
