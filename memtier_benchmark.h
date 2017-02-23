@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Redis Labs Ltd.
+ * Copyright (C) 2011-2017 Redis Labs Ltd.
  *
  * This file is part of memtier_benchmark.
  *
@@ -79,6 +79,8 @@ struct benchmark_config {
     config_ratio wait_ratio;
     config_range num_slaves;
     config_range wait_timeout;
+    // JSON additions
+    const char *json_out_file;
 };
 
 

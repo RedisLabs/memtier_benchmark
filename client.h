@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Redis Labs Ltd.
+ * Copyright (C) 2011-2017 Redis Labs Ltd.
  *
  * This file is part of memtier_benchmark.
  *
@@ -32,6 +32,7 @@
 #include <event2/buffer.h>
 
 #include "protocol.h"
+#include "JSON_handler.h"
 
 class client;               // forward decl
 class client_group;         // forward decl
@@ -121,7 +122,7 @@ public:
     void merge(const run_stats& other, int iteration);
     bool save_csv(const char *filename);
     void debug_dump(void);
-    void print(FILE *file, bool histogram);
+    void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL);
     
     unsigned int get_duration(void);
     unsigned long int get_duration_usec(void);

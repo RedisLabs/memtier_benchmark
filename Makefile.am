@@ -1,5 +1,5 @@
 # Makefile for memtier_benchmark
-# Copyright (C) 2011-2016 Redis Labs Ltd.
+# Copyright (C) 2011-2017 Redis Labs Ltd.
 
 # This file is part of memtier_benchmark.
 
@@ -25,6 +25,7 @@ memtier_benchmark_CPPFLAGS = $(LIBEVENT_CFLAGS)
 memtier_benchmark_SOURCES = \
 	memtier_benchmark.cpp memtier_benchmark.h \
 	client.cpp client.h \
+	JSON_handler.cpp JSON_handler.h \
 	protocol.cpp protocol.h \
 	obj_gen.cpp obj_gen.h \
 	item.cpp item.h \
