@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Redis Labs Ltd.
+ * Copyright (C) 2011-2017 Redis Labs Ltd.
  *
  * This file is part of memtier_benchmark.
  *
@@ -36,8 +36,10 @@
 #include <stdexcept>
 
 #include "client.h"
+#include "JSON_handler.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+
 
 static int log_level = 0;
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
@@ -112,13 +114,14 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "no-expiry = %s\n"
         "wait-ratio = %u:%u\n"
         "num-slaves = %u-%u\n"
-        "wait-timeout = %u-%u\n",
+        "wait-timeout = %u-%u\n"
+        "json-out-file = %s\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
         cfg->protocol,
         cfg->out_file,
-        cfg->client_stats,
+        cfg->client_stats,	
         cfg->run_count,
         cfg->debug,
         cfg->requests,
@@ -151,7 +154,57 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->no_expiry ? "yes" : "no",
         cfg->wait_ratio.a, cfg->wait_ratio.b,
         cfg->num_slaves.min, cfg->num_slaves.max,
-        cfg->wait_timeout.min, cfg->wait_timeout.max);
+        cfg->wait_timeout.min, cfg->wait_timeout.max,
+        cfg->json_out_file);
+}
+
+static void config_print_to_json(json_handler * jsonhandler, struct benchmark_config *cfg)
+{
+    char tmpbuf[512];
+    
+    jsonhandler->open_nesting("configuration");  
+	
+    jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
+    jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
+    jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
+    jsonhandler->write_obj("protocol"          ,"\"%s\"",      	cfg->protocol);
+    jsonhandler->write_obj("out_file"          ,"\"%s\"",      	cfg->out_file);
+    jsonhandler->write_obj("client_stats"      ,"\"%s\"",      	cfg->client_stats);
+    jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
+    jsonhandler->write_obj("debug"             ,"%u",          	cfg->debug);
+    jsonhandler->write_obj("requests"          ,"%u",          	cfg->requests);
+    jsonhandler->write_obj("clients"           ,"%u",          	cfg->clients);
+    jsonhandler->write_obj("threads"           ,"%u",          	cfg->threads);
+    jsonhandler->write_obj("test_time"         ,"%u",          	cfg->test_time);
+    jsonhandler->write_obj("ratio"             ,"\"%u:%u\"",   	cfg->ratio.a, cfg->ratio.b);
+    jsonhandler->write_obj("pipeline"          ,"%u",          	cfg->pipeline);
+    jsonhandler->write_obj("data_size"         ,"%u",          	cfg->data_size);
+    jsonhandler->write_obj("data_offset"       ,"%u",          	cfg->data_offset);
+    jsonhandler->write_obj("random_data"       ,"\"%s\"",      	cfg->random_data ? "true" : "false");
+    jsonhandler->write_obj("data_size_range"   ,"\"%u:%u\"",	cfg->data_size_range.min, cfg->data_size_range.max);
+    jsonhandler->write_obj("data_size_list"    ,"\"%s\"",   	cfg->data_size_list.print(tmpbuf, sizeof(tmpbuf)-1));
+    jsonhandler->write_obj("data_size_pattern" ,"\"%s\"", 		cfg->data_size_pattern);
+    jsonhandler->write_obj("expiry_range"      ,"\"%u:%u\"",   	cfg->expiry_range.min, cfg->expiry_range.max);
+    jsonhandler->write_obj("data_import"       ,"\"%s\"",       cfg->data_import);
+    jsonhandler->write_obj("data_verify"       ,"\"%s\"",       cfg->data_verify ? "true" : "false");
+    jsonhandler->write_obj("verify_only"       ,"\"%s\"",       cfg->verify_only ? "true" : "false");
+    jsonhandler->write_obj("generate_keys"     ,"\"%s\"",     	cfg->generate_keys ? "true" : "false");
+    jsonhandler->write_obj("key_prefix"        ,"\"%s\"",       cfg->key_prefix);
+    jsonhandler->write_obj("key_minimum"       ,"%11u",        	cfg->key_minimum);
+    jsonhandler->write_obj("key_maximum"       ,"%11u",        	cfg->key_maximum);
+    jsonhandler->write_obj("key_pattern"       ,"\"%s\"",       cfg->key_pattern);
+    jsonhandler->write_obj("key_stddev"        ,"%f",           cfg->key_stddev);
+    jsonhandler->write_obj("key_median"        ,"%f",           cfg->key_median);
+    jsonhandler->write_obj("reconnect_interval","%u",    		cfg->reconnect_interval);
+    jsonhandler->write_obj("multi_key_get"     ,"%u",         	cfg->multi_key_get);
+    jsonhandler->write_obj("authenticate"      ,"\"%s\"",      	cfg->authenticate ? cfg->authenticate : "");
+    jsonhandler->write_obj("select-db"         ,"%d",           cfg->select_db);
+    jsonhandler->write_obj("no-expiry"         ,"\"%s\"",       cfg->no_expiry ? "true" : "false");
+    jsonhandler->write_obj("wait-ratio"        ,"\"%u:%u\"",    cfg->wait_ratio.a, cfg->wait_ratio.b);
+    jsonhandler->write_obj("num-slaves"        ,"\"%u:%u\"",    cfg->num_slaves.min, cfg->num_slaves.max);
+    jsonhandler->write_obj("wait-timeout"      ,"\"%u-%u\"",   	cfg->wait_timeout.min, cfg->wait_timeout.max);
+
+	jsonhandler->close_nesting();
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -240,7 +293,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_no_expiry,
         o_wait_ratio,
         o_num_slaves,
-        o_wait_timeout
+        o_wait_timeout, 
+        o_json_out_file
     };
     
     static struct option long_options[] = {
@@ -287,6 +341,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "wait-ratio",                 1, 0, o_wait_ratio },
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
+        { "json-out-file",              1, 0, o_json_out_file },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { NULL,                         0, 0, 0 }
@@ -305,7 +360,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'v':
                     puts(PACKAGE_STRING);
                 // FIXME!!
-                    puts("Copyright (C) 2011-2016 Redis Labs Ltd.");
+                    puts("Copyright (C) 2011-2017 Redis Labs Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
@@ -577,6 +632,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_json_out_file:
+                    cfg->json_out_file = optarg;
+                    break;
             default:
                     return -1;
                     break;
@@ -601,6 +659,7 @@ void usage() {
             "  -D, --debug                    Print debug output\n"
             "      --client-stats=FILE        Produce per-client stats file\n"
             "      --out-file=FILE            Name of output file (default: stdout)\n"
+            "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
             "      --help                     Display this help\n"
@@ -883,6 +942,14 @@ int main(int argc, char *argv[])
         config_print(stdout, &cfg);
         fprintf(stderr, "===================================================\n");
     }
+    //
+    // JSON file initiation
+    json_handler *jsonhandler = NULL;
+    if (cfg.json_out_file != NULL){
+        jsonhandler = new json_handler((const char *)cfg.json_out_file);
+        // We allways print the configuration to the JSON file      
+        config_print_to_json(jsonhandler,&cfg);
+    }
 
     struct rlimit rlim;
     if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
@@ -990,6 +1057,9 @@ int main(int argc, char *argv[])
                 usage();
         }
     }
+    if (!cfg.data_import) {
+        obj_gen->set_random_data(cfg.random_data);
+    }
 
     if (cfg.select_db > 0 && strcmp(cfg.protocol, "redis")) {
         fprintf(stderr, "error: select-db can only be used with redis protocol.\n");
@@ -1024,10 +1094,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "error: data-size, data-size-list or data-size-range must be specified.\n");
         usage();
     }
-
-    if (!cfg.data_import) {
-        obj_gen->set_random_data(cfg.random_data);
-    }
     
     if (!cfg.data_import || cfg.generate_keys) {
         obj_gen->set_key_prefix(cfg.key_prefix);
@@ -1037,7 +1103,7 @@ int main(int argc, char *argv[])
         if (cfg.key_pattern[0]!='G' && cfg.key_pattern[2]!='G') {
             fprintf(stderr, "error: key-stddev and key-median are only allowed together with key-pattern set to G.\n");
             usage();
-        }
+        }   
         if (cfg.key_median!=0 && (cfg.key_median<cfg.key_minimum || cfg.key_median>cfg.key_maximum)) {
             fprintf(stderr, "error: key-median must be between key-minimum and key-maximum.\n");
             usage();
@@ -1050,7 +1116,6 @@ int main(int argc, char *argv[])
     FILE *outfile;
     if (cfg.out_file != NULL) {
         fprintf(stderr, "Writing results to %s...\n", cfg.out_file);
-        
         outfile = fopen(cfg.out_file, "w");
         if (!outfile) {
             perror(cfg.out_file);
@@ -1066,11 +1131,10 @@ int main(int argc, char *argv[])
                 sleep(1);   // let connections settle
             
             run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
-
             all_stats.push_back(stats);
         }
-        
-        // Print some run information
+        //
+        // Print some run information        
         fprintf(outfile,
                "%-9u Threads\n"
                "%-9u Connections per thread\n"
@@ -1078,6 +1142,14 @@ int main(int argc, char *argv[])
                cfg.threads, cfg.clients, 
                cfg.requests > 0 ? cfg.requests : cfg.test_time,
                cfg.requests > 0 ? "Requests per thread"  : "Seconds");
+        if (jsonhandler != NULL){
+            jsonhandler->open_nesting("run information");
+            jsonhandler->write_obj("Threads","%u",cfg.threads);
+            jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
+            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per thread"  : "Seconds","%u",
+                                   cfg.requests > 0 ? cfg.requests : cfg.test_time);
+            jsonhandler->close_nesting();
+        }
 
         // If more than 1 run was used, compute best, worst and average
         if (cfg.run_count > 1) {
@@ -1098,26 +1170,18 @@ int main(int argc, char *argv[])
                 }
             }
 
-
-            fprintf(outfile, "\n\n"
-                             "BEST RUN RESULTS\n"
-                             "========================================================================\n");        
-            best->print(outfile, !cfg.hide_histogram);
-
-            fprintf(outfile, "\n\n"
-                             "WORST RUN RESULTS\n"
-                             "========================================================================\n");        
-            worst->print(outfile, !cfg.hide_histogram);
-
-            fprintf(outfile, "\n\n"
-                             "AGGREGATED AVERAGE RESULTS (%u runs)\n"
-                             "========================================================================\n", cfg.run_count);
-
+            // Best results:
+            best->print(outfile, !cfg.hide_histogram, "BEST RUN RESULTS", jsonhandler);
+            // worst results:
+            worst->print(outfile, !cfg.hide_histogram, "WORST RUN RESULTS", jsonhandler);
+            // average results:
             run_stats average;
             average.aggregate_average(all_stats);
-            average.print(outfile, !cfg.hide_histogram);
+            char average_header[50];
+            sprintf(average_header,"AGGREGATED AVERAGE RESULTS (%u runs)", cfg.run_count);
+            average.print(outfile, !cfg.hide_histogram, average_header, jsonhandler);
         } else {
-            all_stats.begin()->print(outfile, !cfg.hide_histogram);
+            all_stats.begin()->print(outfile, !cfg.hide_histogram, "ALL STATS", jsonhandler);
         }
     }
 
@@ -1138,6 +1202,13 @@ int main(int argc, char *argv[])
                         "%-10llu keys failed.\n",
                         client->get_verified_keys(),
                         client->get_errors());
+        
+        if (jsonhandler != NULL){
+            jsonhandler->open_nesting("client verifications results");
+            jsonhandler->write_obj("keys verified successfuly", "%-10llu",  client->get_verified_keys());
+            jsonhandler->write_obj("keys failed", "%-10llu",  client->get_errors());
+            jsonhandler->close_nesting();
+        }
 
         // Clean up...
         delete client;
@@ -1147,6 +1218,11 @@ int main(int argc, char *argv[])
 
     if (outfile != stdout) {
         fclose(outfile);
+    }
+
+    if (jsonhandler != NULL) {
+        // closing the JSON
+        delete jsonhandler;
     }
 
     delete obj_gen;
