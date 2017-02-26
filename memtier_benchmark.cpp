@@ -1057,6 +1057,9 @@ int main(int argc, char *argv[])
                 usage();
         }
     }
+    if (!cfg.data_import) {
+        obj_gen->set_random_data(cfg.random_data);
+    }
 
     if (cfg.select_db > 0 && strcmp(cfg.protocol, "redis")) {
         fprintf(stderr, "error: select-db can only be used with redis protocol.\n");
@@ -1090,10 +1093,6 @@ int main(int argc, char *argv[])
     } else if (!cfg.data_import) {
         fprintf(stderr, "error: data-size, data-size-list or data-size-range must be specified.\n");
         usage();
-    }
-
-    if (!cfg.data_import) {
-        obj_gen->set_random_data(cfg.random_data);
     }
     
     if (!cfg.data_import || cfg.generate_keys) {
