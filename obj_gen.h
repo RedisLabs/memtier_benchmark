@@ -107,6 +107,8 @@ protected:
     char *m_value_buffer;
     int m_random_fd;
     gaussian_noise m_random;
+    unsigned int m_value_buffer_size;
+    unsigned int m_value_buffer_mutation_pos;
     
     void alloc_value_buffer(void);
     void alloc_value_buffer(const char* copy_from);
