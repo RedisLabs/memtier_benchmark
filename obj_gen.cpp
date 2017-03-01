@@ -146,7 +146,9 @@ object_generator::object_generator() :
     m_key_stddev(0),
     m_key_median(0),
     m_value_buffer(NULL),
-    m_random_fd(-1)
+    m_random_fd(-1),
+    m_value_buffer_size(0),
+    m_value_buffer_mutation_pos(0)
 {
     for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
         m_next_key[i] = 0;
@@ -218,6 +220,7 @@ void object_generator::alloc_value_buffer(void)
         size = m_data_size.size_list->largest();
     }
 
+    m_value_buffer_size = size;
     if (size > 0) {
         m_value_buffer = (char*) malloc(size);
         assert(m_value_buffer != NULL);
@@ -274,6 +277,7 @@ void object_generator::alloc_value_buffer(const char* copy_from)
     else if (m_data_size_type == data_size_weighted)
         size = m_data_size.size_list->largest();
 
+    m_value_buffer_size = size;
     if (size > 0) {
         m_value_buffer = (char*) malloc(size);
         assert(m_value_buffer != NULL);
@@ -416,6 +420,13 @@ data_object* object_generator::get_object(int iter)
         expiry = random_range(m_expiry_min, m_expiry_max);
     }
     
+    // modify object content in case of random data
+    if (m_random_data) {
+        m_value_buffer[m_value_buffer_mutation_pos++]++;
+        if (m_value_buffer_mutation_pos > m_value_buffer_size)
+            m_value_buffer_mutation_pos = 0;
+    }
+
     // set object
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
     m_object.set_value(m_value_buffer, new_size);
