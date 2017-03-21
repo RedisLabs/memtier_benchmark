@@ -1593,5 +1593,6 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         }
         if (jsonhandler != NULL){ jsonhandler->close_nesting();}
     }
+    if (jsonhandler != NULL){ jsonhandler->close_nesting();}
 }
 
