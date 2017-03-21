@@ -1593,6 +1593,10 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         }
         if (jsonhandler != NULL){ jsonhandler->close_nesting();}
     }
+    // This close_nesting closes either:
+    //      jsonhandler->open_nesting(header); or
+    //      jsonhandler->open_nesting("UNKNOWN STATS");
+    //      From the top (beginning of function). 
     if (jsonhandler != NULL){ jsonhandler->close_nesting();}
 }
 
