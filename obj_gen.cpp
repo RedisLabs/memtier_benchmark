@@ -169,9 +169,10 @@ object_generator::object_generator(const object_generator& copy) :
     m_key_stddev(copy.m_key_stddev),
     m_key_median(copy.m_key_median),
     m_value_buffer(NULL),
-    m_random_fd(-1)
-
-{    
+    m_random_fd(-1),
+    m_value_buffer_size(0),
+    m_value_buffer_mutation_pos(0)
+{
     if (m_data_size_type == data_size_weighted &&
         m_data_size.size_list != NULL) {
         m_data_size.size_list = new config_weight_list(*m_data_size.size_list);
@@ -423,7 +424,7 @@ data_object* object_generator::get_object(int iter)
     // modify object content in case of random data
     if (m_random_data) {
         m_value_buffer[m_value_buffer_mutation_pos++]++;
-        if (m_value_buffer_mutation_pos > m_value_buffer_size)
+        if (m_value_buffer_mutation_pos >= m_value_buffer_size)
             m_value_buffer_mutation_pos = 0;
     }
 
