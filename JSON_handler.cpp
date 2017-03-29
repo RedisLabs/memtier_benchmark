@@ -19,8 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "memtier_benchmark.h"
 #include "JSON_handler.h"
-
 
 /**
  * C'tor
@@ -36,7 +36,7 @@ json_handler::json_handler(const char * jsonfilename) : m_json_file(NULL)
         perror(jsonfilename);
     }                  
     // opening the JSON
-    fprintf(stderr, "Json file %s created...\n", jsonfilename);
+    benchmark_debug_log("Json file %s created...\n", jsonfilename);
     fprintf(m_json_file,"{"); 
     m_nest_closer_types.push_back(NESTED_GENERAL);
     beutify();    
@@ -53,7 +53,7 @@ json_handler::~json_handler()
         // close nesting...
         while (close_nesting());
         fclose(m_json_file);
-        fprintf(stderr, "Json file closed.\n");
+        benchmark_debug_log("Json file closed.\n");
     }
 }
 
@@ -71,6 +71,19 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
     va_end(argptr);
     beutify();
     fprintf(m_json_file, ",");
+}
+
+void json_handler::write_error(const char * format, ...)
+{
+    // Close all the nesting until the end properly
+    while (nest_level > 1){
+        close_nesting();
+    }
+    // Add object with "FATAL_ERROR" object name + the errorr
+    va_list argptr;
+    va_start(argptr, format);
+    write_obj("FATAL_ERROR", format, argptr);
+    va_end(argptr);
 }
 
 /** 

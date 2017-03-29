@@ -44,6 +44,9 @@ public:
     // Write a single object to JSON
     void write_obj(const char * objectname, const char * format, ...);
 
+    // Write error to JSON object
+    void write_error(const char * format, ...);
+
     // Starts nesting, the type is used for deciding which charecter to be used for opening and closing 
     // the nesting ('{}','[]')
     void open_nesting(const char * objectname,eJSON_NESTED_TYPE type = NESTED_GENERAL);
