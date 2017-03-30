@@ -76,7 +76,7 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
 void json_handler::write_error(const char * format, ...)
 {
     // Close all the nesting until the end properly
-    while (nest_level > 1){
+    while (m_nest_closer_types.size() > 1){
         close_nesting();
     }
     // Add object with "FATAL_ERROR" object name + the errorr
