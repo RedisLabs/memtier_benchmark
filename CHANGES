@@ -1,3 +1,9 @@
+* Version 1.2.11
+    * Version bump
+
+* Version 1.2.10
+    * Fix memory corruption when using randomized values
+
 * Version 1.2.9 
     * Add JSON output support: add thin json handling class that could be overridden for extensive uses
     * Add --json-out-file: Name of JSON output file, if not set, will not print to json
