@@ -1,5 +1,4 @@
 FROM ubuntu:16.04
-MAINTAINER Roey Prat
 LABEL Description="memtier_benchmark"
 
 RUN apt-get update
