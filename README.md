@@ -84,6 +84,13 @@ $ make
 $ make install
 ```
 
+## Using Docker
+
+```
+$ docker build -t memtier_benchmark .
+$ docker run --rm memtier_benchmark --help
+```
+
 ## Using memtier_benchmark
 
 See the included manpage or run::
