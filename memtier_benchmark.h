@@ -81,6 +81,7 @@ struct benchmark_config {
     config_range wait_timeout;
     // JSON additions
     const char *json_out_file;
+    bool cluster_mode;
 };
 
 

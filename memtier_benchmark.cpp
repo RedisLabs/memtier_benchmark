@@ -261,6 +261,24 @@ static int generate_random_seed()
     return (int)time(NULL)^getpid()^R;
 }
 
+static bool verify_cluster_option(struct benchmark_config *cfg) {
+    if (cfg->reconnect_interval) {
+        fprintf(stderr, "error: cluster mode dose not support reconnect-interval option.\n");
+        return false;
+    } else if (cfg->multi_key_get) {
+        fprintf(stderr, "error: cluster mode dose not support multi-key-get option.\n");
+        return false;
+    } else if (cfg->wait_ratio.is_defined()) {
+        fprintf(stderr, "error: cluster mode dose not support wait-ratio option.\n");
+        return false;
+    } else if (cfg->protocol && strcmp(cfg->protocol, "redis")) {
+        fprintf(stderr, "error: cluster mode supported only in redis protocol.\n");
+        return false;
+    }
+
+    return true;
+}
+
 static int config_parse_args(int argc, char *argv[], struct benchmark_config *cfg)
 {
     enum extended_options {
@@ -294,7 +312,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_wait_ratio,
         o_num_slaves,
         o_wait_timeout, 
-        o_json_out_file
+        o_json_out_file,
+        o_cluster_mode
     };
     
     static struct option long_options[] = {
@@ -342,6 +361,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
+        { "cluster-mode",                0, 0, o_cluster_mode },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { NULL,                         0, 0, 0 }
@@ -635,11 +655,17 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_json_out_file:
                     cfg->json_out_file = optarg;
                     break;
+                case o_cluster_mode:
+                    cfg->cluster_mode = true;
+                    break;
             default:
                     return -1;
                     break;
         }
     }
+
+    if (cfg->cluster_mode && !verify_cluster_option(cfg))
+        return -1;
 
     return 0;
 }
@@ -662,6 +688,7 @@ void usage() {
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --cluster-mode             Run client in cluster mode\n"
             "      --help                     Display this help\n"
             "      --version                  Display version information\n"
             "\n"
