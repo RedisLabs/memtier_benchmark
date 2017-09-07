@@ -33,6 +33,7 @@
 
 #include "protocol.h"
 #include "JSON_handler.h"
+#include "config_types.h"
 
 class client;               // forward decl
 class client_group;         // forward decl
@@ -131,6 +132,17 @@ public:
     unsigned long int get_total_latency(void);
  };
 
+enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_auth, rt_select_db, rt_cluster_slots };
+struct request {
+    request_type m_type;
+    struct timeval m_sent_time;
+    unsigned int m_size;
+    unsigned int m_keys;
+
+    request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys);
+    virtual ~request(void) {}
+};
+
 class client {
 protected:
     friend void client_event_handler(evutil_socket_t sfd, short evtype, void *opaque);
@@ -154,17 +166,7 @@ protected:
     run_stats m_stats;
 
     // pipeline management
-    enum request_type { rt_unknown, rt_set, rt_get, rt_wait,rt_auth, rt_select_db };
-    struct request {
-        request_type m_type;
-        struct timeval m_sent_time;
-        unsigned int m_size;
-        unsigned int m_keys;
-
-        request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys);
-        virtual ~request(void) {}
-    };
-    std::queue<request *> m_pipeline;
+    std::queue<request *>* m_pipeline;
 
     unsigned int m_reqs_processed;      // requests processed (responses received)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
@@ -175,29 +177,30 @@ protected:
 
     keylist *m_keylist;                 // used to construct multi commands
 
-    bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
-    int connect(void);
     void disconnect(void);
 
-    void handle_event(short evtype);
     int get_sockfd(void) { return m_sockfd; }
 
     virtual bool finished();
     virtual void create_request(struct timeval timestamp);
     virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
+    virtual bool send_conn_setup_commands(struct timeval timestamp);
+    virtual bool is_conn_setup_done(void);
+    virtual void process_response(void);
+    virtual void handle_event(short evtype);
+    virtual void fill_pipeline(void);
+    virtual int connect(void);
 
-    bool send_conn_setup_commands(struct timeval timestamp);
-    bool is_conn_setup_done(void);
-    void fill_pipeline(void);
     void process_first_request(void);
-    void process_response(void);
 public:
     client(client_group* group);
     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     virtual ~client();
+    virtual bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+    virtual int prepare(void);
 
     bool initialized(void);
-    int prepare(void);
+
     run_stats* get_stats(void) { return &m_stats; }
 };
 

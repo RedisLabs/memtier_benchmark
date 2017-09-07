@@ -294,7 +294,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_wait_ratio,
         o_num_slaves,
         o_wait_timeout, 
-        o_json_out_file
+        o_json_out_file,
+        o_oss_cluster
     };
     
     static struct option long_options[] = {
@@ -342,6 +343,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
+        { "oss-cluster",                0, 0, o_oss_cluster },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { NULL,                         0, 0, 0 }
@@ -635,6 +637,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_json_out_file:
                     cfg->json_out_file = optarg;
                     break;
+                case o_oss_cluster:
+                    cfg->oss_cluster = true;
+                    break;
             default:
                     return -1;
                     break;
@@ -662,6 +667,7 @@ void usage() {
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --oss-cluster              Run client in oss-cluster mode\n"
             "      --help                     Display this help\n"
             "      --version                  Display version information\n"
             "\n"
