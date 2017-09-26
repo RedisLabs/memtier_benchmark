@@ -1141,12 +1141,12 @@ int main(int argc, char *argv[])
                "%-9u %s\n",
                cfg.threads, cfg.clients, 
                cfg.requests > 0 ? cfg.requests : cfg.test_time,
-               cfg.requests > 0 ? "Requests per thread"  : "Seconds");
+               cfg.requests > 0 ? "Requests per client"  : "Seconds");
         if (jsonhandler != NULL){
             jsonhandler->open_nesting("run information");
             jsonhandler->write_obj("Threads","%u",cfg.threads);
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
-            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per thread"  : "Seconds","%u",
+            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%u",
                                    cfg.requests > 0 ? cfg.requests : cfg.test_time);
             jsonhandler->close_nesting();
         }
