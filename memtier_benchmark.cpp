@@ -575,7 +575,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[1] != ':' ||
                         (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S' && cfg->key_pattern[0] != 'G' && cfg->key_pattern[0] != 'P') ||
                         (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S' && cfg->key_pattern[2] != 'G' && cfg->key_pattern[2] != 'P')) {
-                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G].\n");
+                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]:[S/R/G/P].\n");
                             return -1;
                     }
                     break;
