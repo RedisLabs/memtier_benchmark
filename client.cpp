@@ -50,6 +50,7 @@
 #include "client.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+#include "oss_client.h"
 
 float get_2_meaningful_digits(float val)
 {
@@ -98,7 +99,7 @@ inline timeval timeval_factorial_average(timeval a, timeval b, unsigned int weig
     return (tv);
 }
 
-client::request::request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys)
+request::request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys)
     : m_type(type), m_size(size), m_keys(keys)
 {
     if (sent_time != NULL)
@@ -126,11 +127,14 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     assert(m_read_buf != NULL);
 
     m_write_buf = evbuffer_new();
-    assert(m_write_buf != NULL);    
+    assert(m_write_buf != NULL);
 
     m_protocol = protocol->clone();
     assert(m_protocol != NULL);
     m_protocol->set_buffers(m_read_buf, m_write_buf);
+
+    m_pipeline = new std::queue<request *>;
+    assert(m_pipeline != NULL);
 
     m_obj_gen = objgen->clone();
     assert(m_obj_gen != NULL);
@@ -155,36 +159,31 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     m_keylist = new keylist(m_config->multi_key_get + 1);
     assert(m_keylist != NULL);
 
+    benchmark_debug_log("new client %p successfully set up.\n", this);
+    m_initialized = true;
     return true;
 }
 
-client::client(client_group* group) : 
-    m_sockfd(-1), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL),
-    m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
-    m_authentication(auth_none), m_db_selection(select_none),
-    m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
-    m_reqs_processed(0),
-    m_set_ratio_count(0),
-    m_get_ratio_count(0)    
+client::client(client_group* group) :
+        m_sockfd(-1), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL),
+        m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
+        m_authentication(auth_none), m_db_selection(select_none),
+        m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
+        m_reqs_processed(0),
+        m_set_ratio_count(0),
+        m_get_ratio_count(0)
 {
     m_event_base = group->get_event_base();
-
-    if (!setup_client(group->get_config(), group->get_protocol(), group->get_obj_gen())) {
-        return;
-    }
-    
-    benchmark_debug_log("new client %p successfully set up.\n", this);
-    m_initialized = true;
 }
 
 client::client(struct event_base *event_base,
     benchmark_config *config,
     abstract_protocol *protocol,
-    object_generator *obj_gen) : 
+    object_generator *obj_gen) :
     m_sockfd(-1), m_unix_sockaddr(NULL), m_event(NULL), m_event_base(NULL),
     m_read_buf(NULL), m_write_buf(NULL), m_initialized(false), m_connected(false),
     m_authentication(auth_none), m_db_selection(select_none),
-    m_config(NULL), m_protocol(NULL), m_obj_gen(NULL),
+    m_config(NULL), m_protocol(NULL), m_obj_gen(NULL), m_pipeline(NULL),
     m_reqs_processed(0),
     m_set_ratio_count(0),
     m_get_ratio_count(0),
@@ -230,6 +229,11 @@ client::~client()
     if (m_protocol != NULL) {
         delete m_protocol;
         m_protocol = NULL;
+    }
+
+    if (m_pipeline != NULL) {
+        delete m_pipeline;
+        m_pipeline = NULL;
     }
 
     if (m_obj_gen != NULL) {
@@ -319,7 +323,7 @@ int client::connect(void)
     // set up event
     if (!m_event) {
         m_event = event_new(m_event_base,
-            m_sockfd, EV_WRITE, client_event_handler, (void *)this);    
+            m_sockfd, EV_WRITE, client_event_handler, (void *)this);
         assert(m_event != NULL);
     } else {
         int ret = event_del(m_event);
@@ -373,7 +377,7 @@ void client::handle_event(short evtype)
             fill_pipeline();
         }
     }
-   
+
     assert(m_connected == true);
     if ((evtype & EV_WRITE) == EV_WRITE && evbuffer_get_length(m_write_buf) > 0) {
         if (evbuffer_write(m_write_buf, m_sockfd) < 0) {
@@ -457,7 +461,7 @@ bool client::send_conn_setup_commands(struct timeval timestamp)
         if (m_authentication == auth_none) {
             benchmark_debug_log("sending authentication command.\n");
             m_protocol->authenticate(m_config->authenticate);
-            m_pipeline.push(new client::request(rt_auth, 0, &timestamp, 0));
+            m_pipeline->push(new request(rt_auth, 0, &timestamp, 0));
             m_authentication = auth_sent;
             sent = true;
         }
@@ -466,7 +470,7 @@ bool client::send_conn_setup_commands(struct timeval timestamp)
         if (m_db_selection == select_none) {
             benchmark_debug_log("sending db selection command.\n");
             m_protocol->select_db(m_config->select_db);
-            m_pipeline.push(new client::request(rt_select_db, 0, &timestamp, 0));
+            m_pipeline->push(new request(rt_select_db, 0, &timestamp, 0));
             m_db_selection = select_sent;
             sent = true;
         }
@@ -516,7 +520,7 @@ void client::create_request(struct timeval timestamp)
 
         benchmark_debug_log("WAIT num_slaves=%u timeout=%u\n", num_slaves, timeout);
         cmd_size = m_protocol->write_command_wait(num_slaves, timeout);
-        m_pipeline.push(new client::request(rt_wait, cmd_size, &timestamp, 0));
+        m_pipeline->push(new request(rt_wait, cmd_size, &timestamp, 0));
     }
     // are we set or get? this depends on the ratio
     else if (m_set_ratio_count < m_config->ratio.a) {
@@ -535,7 +539,7 @@ void client::create_request(struct timeval timestamp)
         cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
             obj->get_expiry(), m_config->data_offset);
 
-        m_pipeline.push(new client::request(rt_set, cmd_size, &timestamp, 1));
+        m_pipeline->push(new request(rt_set, cmd_size, &timestamp, 1));
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // get command
         int iter = obj_iter_type(m_config, 2);
@@ -568,7 +572,7 @@ void client::create_request(struct timeval timestamp)
 
             cmd_size = m_protocol->write_command_multi_get(m_keylist);
             m_get_ratio_count += keys_count;
-            m_pipeline.push(new client::request(rt_get, cmd_size, &timestamp, m_keylist->get_keys_count()));
+            m_pipeline->push(new request(rt_get, cmd_size, &timestamp, m_keylist->get_keys_count()));
         } else {
             unsigned int keylen;
             const char *key = m_obj_gen->get_key(iter, &keylen);
@@ -579,7 +583,7 @@ void client::create_request(struct timeval timestamp)
             cmd_size = m_protocol->write_command_get(key, keylen, m_config->data_offset);
 
             m_get_ratio_count++;
-            m_pipeline.push(new client::request(rt_get, cmd_size, &timestamp, 1));
+            m_pipeline->push(new request(rt_get, cmd_size, &timestamp, 1));
         }
     } else {
         // overlap counters
@@ -592,20 +596,20 @@ void client::fill_pipeline(void)
     struct timeval now;
     gettimeofday(&now, NULL);
 
-    while (!finished() && m_pipeline.size() < m_config->pipeline) {
+    while (!finished() && m_pipeline->size() < m_config->pipeline) {
         if (!is_conn_setup_done()) {
             send_conn_setup_commands(now);
             return;
         }
 
         // don't exceed requests
-        if (m_config->requests > 0 && m_reqs_processed + m_pipeline.size() >= m_config->requests)
+        if (m_config->requests > 0 && m_reqs_processed + m_pipeline->size() >= m_config->requests)
             break;
 
         // if we have reconnect_interval stop enlarging the pipeline
         // on time
         if (m_config->reconnect_interval) {
-            if ((m_reqs_processed % m_config->reconnect_interval) + m_pipeline.size() >= m_config->reconnect_interval)
+            if ((m_reqs_processed % m_config->reconnect_interval) + m_pipeline->size() >= m_config->reconnect_interval)
                 return;
         }
 
@@ -614,7 +618,7 @@ void client::fill_pipeline(void)
 }
 
 int client::prepare(void)
-{       
+{
     if (!m_unix_sockaddr && (!m_config->server_addr || !m_protocol))
         return -1;
     
@@ -631,7 +635,7 @@ void client::process_first_request(void)
 {
     struct timeval now;
 
-    gettimeofday(&now, NULL);    
+    gettimeofday(&now, NULL);
     m_stats.set_start_time(&now);
     fill_pipeline();
 }
@@ -673,8 +677,8 @@ void client::process_response(void)
         bool error = false;
         protocol_response *r = m_protocol->get_response();
 
-        client::request* req = m_pipeline.front();
-        m_pipeline.pop();
+        request* req = m_pipeline->front();
+        m_pipeline->pop();
 
         if (req->m_type == rt_auth) {
             if (r->is_error()) {
@@ -685,7 +689,7 @@ void client::process_response(void)
                 benchmark_debug_log("authentication successful.\n");
             }
         } else if (req->m_type == rt_select_db) {
-           if (strcmp(r->get_status(), "+OK") != 0) {
+            if (strcmp(r->get_status(), "+OK") != 0) {
                 benchmark_error_log("database selection failed.\n");
                 error = true;
             } else {
@@ -703,7 +707,7 @@ void client::process_response(void)
             }
 
             handle_response(now, req, r);
-                
+
             m_reqs_processed++;
             responses_handled = true;
         }
@@ -719,7 +723,7 @@ void client::process_response(void)
 
     if (m_config->reconnect_interval > 0 && responses_handled) {
         if ((m_reqs_processed % m_config->reconnect_interval) == 0) {
-            assert(m_pipeline.size() == 0);
+            assert(m_pipeline->size() == 0);
             benchmark_debug_log("reconnecting, m_reqs_processed = %u\n", m_reqs_processed);
             disconnect();
 
@@ -743,7 +747,7 @@ verify_client::verify_request::verify_request(request_type type,
     unsigned int key_len,
     const char *value,
     unsigned int value_len) : 
-    client::request(type, size, sent_time, keys), 
+    request(type, size, sent_time, keys),
     m_key(NULL), m_key_len(0),
     m_value(NULL), m_value_len(0)
 {
@@ -803,7 +807,7 @@ void verify_client::create_request(struct timeval timestamp)
         m_set_ratio_count++;
         cmd_size = m_protocol->write_command_get(key, key_len, m_config->data_offset);
 
-        m_pipeline.push(new verify_client::verify_request(rt_get,
+        m_pipeline->push(new verify_client::verify_request(rt_get,
             cmd_size, &timestamp, 1, key, key_len, value, value_len));
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // We don't really care about GET operations, all we do here is keep
@@ -904,8 +908,15 @@ client_group::~client_group(void)
 int client_group::create_clients(int num)
 {
     for (int i = 0; i < num; i++) {
-        client* c = new client(this);
+        client* c;
+
+        if (m_config->oss_cluster)
+            c = new oss_client(this);
+        else
+            c = new client(this);
+
         assert(c != NULL);
+        c->setup_client(get_config(), get_protocol(), get_obj_gen());
 
         if (!c->initialized()) {
             delete c;
