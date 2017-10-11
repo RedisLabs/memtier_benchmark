@@ -21,3 +21,9 @@ libtool
 stamp-h1
 compile
 config.h.in~
+memtier_benchmark
+.libs 
+_libs
+*.lo
+.cproject
+.project
