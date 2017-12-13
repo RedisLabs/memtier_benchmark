@@ -1444,10 +1444,11 @@ void run_stats::summarize(totals& result) const
     result.m_bytes_sec = (result.m_bytes / 1024.0) / test_duration_usec * 1000000;
 }
 
-void result_print_to_json(json_handler * jsonhandler, const char * type, float ops, float hits, float miss, float latency, float kbs)
+void result_print_to_json(json_handler * jsonhandler, const char * type, unsigned long int total_ops, float ops, float hits, float miss, float latency, float kbs)
 {
     if (jsonhandler != NULL){ // Added for double verification in case someone accidently send NULL.
         jsonhandler->open_nesting(type);
+        jsonhandler->write_obj("Ops","%llu", total_ops);
         jsonhandler->write_obj("Ops/sec","%.2f", ops);
         jsonhandler->write_obj("Hits/sec","%.2f", hits);
         jsonhandler->write_obj("Misses/sec","%.2f", miss);
@@ -1532,22 +1533,26 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
     // JSON print handling
     // ------------------
     if (jsonhandler != NULL){
-        result_print_to_json(jsonhandler,"Sets",m_totals.m_ops_sec_set,
+        result_print_to_json(jsonhandler,"Sets",m_totals.m_ops_set,
+                                                m_totals.m_ops_sec_set,
                                                 0.0,
                                                 0.0,
                                                 m_totals.m_latency_set,
                                                 m_totals.m_bytes_sec_set);
-        result_print_to_json(jsonhandler,"Gets",m_totals.m_ops_sec_get,
+        result_print_to_json(jsonhandler,"Gets",m_totals.m_ops_get,
+                                                m_totals.m_ops_sec_get,
                                                 m_totals.m_hits_sec,
                                                 m_totals.m_misses_sec,
                                                 m_totals.m_latency_get,
                                                 m_totals.m_bytes_sec_get);
-        result_print_to_json(jsonhandler,"Waits",m_totals.m_ops_sec_wait,
+        result_print_to_json(jsonhandler,"Waits",m_totals.m_ops_wait,
+                                                m_totals.m_ops_sec_wait,
                                                 0.0,
                                                 0.0,
                                                 m_totals.m_latency_wait,
                                                 0.0);
-        result_print_to_json(jsonhandler,"Totals",m_totals.m_ops_sec,
+        result_print_to_json(jsonhandler,"Totals", m_totals.m_ops,
+                                                m_totals.m_ops_sec,
                                                 m_totals.m_hits_sec,
                                                 m_totals.m_misses_sec,
                                                 m_totals.m_latency,
