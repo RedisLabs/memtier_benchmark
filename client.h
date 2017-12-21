@@ -33,6 +33,13 @@
 
 #include "protocol.h"
 #include "JSON_handler.h"
+#include "config_types.h"
+#include "shard_connection.h"
+#include "connections_manager.h"
+#include "obj_gen.h"
+#include "memtier_benchmark.h"
+
+#define MAIN_CONNECTION m_connections[0]
 
 class client;               // forward decl
 class client_group;         // forward decl
@@ -131,42 +138,22 @@ public:
     unsigned long int get_total_latency(void);
  };
 
-class client {
+class client : public connections_manager {
 protected:
-    friend void client_event_handler(evutil_socket_t sfd, short evtype, void *opaque);
 
-    // connection related
-    int m_sockfd;
-    struct sockaddr_un* m_unix_sockaddr;
-    struct event* m_event;
+    std::vector<shard_connection*> m_connections;
+
     struct event_base* m_event_base;
-    struct evbuffer *m_read_buf;
-    struct evbuffer *m_write_buf;
     bool m_initialized;
-    bool m_connected;
-    enum authentication_state { auth_none, auth_sent, auth_done } m_authentication;
-    enum select_db_state { select_none, select_sent, select_done } m_db_selection;
+    bool m_end_set;
 
     // test related
     benchmark_config* m_config;
-    abstract_protocol* m_protocol;
     object_generator* m_obj_gen;
     run_stats m_stats;
 
-    // pipeline management
-    enum request_type { rt_unknown, rt_set, rt_get, rt_wait,rt_auth, rt_select_db };
-    struct request {
-        request_type m_type;
-        struct timeval m_sent_time;
-        unsigned int m_size;
-        unsigned int m_keys;
-
-        request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys);
-        virtual ~request(void) {}
-    };
-    std::queue<request *> m_pipeline;
-
     unsigned int m_reqs_processed;      // requests processed (responses received)
+    unsigned int m_reqs_generated;      // requests generated (wait for responses)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
     unsigned int m_get_ratio_count;     // number of gets counter (overlaps on ratio)
 
@@ -175,56 +162,67 @@ protected:
 
     keylist *m_keylist;                 // used to construct multi commands
 
-    bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
-    int connect(void);
-    void disconnect(void);
-
-    void handle_event(short evtype);
-    int get_sockfd(void) { return m_sockfd; }
-
-    virtual bool finished();
-    virtual void create_request(struct timeval timestamp);
-    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
-
-    bool send_conn_setup_commands(struct timeval timestamp);
-    bool is_conn_setup_done(void);
-    void fill_pipeline(void);
-    void process_first_request(void);
-    void process_response(void);
 public:
     client(client_group* group);
     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     virtual ~client();
+    virtual bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+    virtual int prepare(void);
 
     bool initialized(void);
-    int prepare(void);
+
     run_stats* get_stats(void) { return &m_stats; }
+
+    // client manager api's
+    unsigned int get_reqs_processed() {
+        return m_reqs_processed;
+    }
+
+    void inc_reqs_processed() {
+        m_reqs_processed++;
+    }
+
+    unsigned int get_reqs_generated() {
+        return m_reqs_generated;
+    }
+
+    void inc_reqs_generated() {
+        m_reqs_generated++;
+    }
+
+    virtual void handle_cluster_slots(protocol_response *r) {
+        assert(false && "handle_cluster_slots not supported");
+    }
+
+    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
+    virtual bool finished(void);
+    virtual void set_start_time();
+    virtual void set_end_time();
+    virtual void create_request(struct timeval timestamp, unsigned int conn_id);
+    virtual bool hold_pipeline(unsigned int conn_id);
+    virtual int connect(void);
+    virtual void disconnect(void);
+    //
+
+    // Utility function to get the object iterator type based on the config
+    inline int obj_iter_type(benchmark_config *cfg, unsigned char index)
+    {
+        if (cfg->key_pattern[index] == 'R')
+            return OBJECT_GENERATOR_KEY_RANDOM;
+        else if (cfg->key_pattern[index] == 'G')
+            return OBJECT_GENERATOR_KEY_GAUSSIAN;
+        return OBJECT_GENERATOR_KEY_SET_ITER;
+    }
 };
 
 class verify_client : public client {
 protected:
-    struct verify_request : public request {
-        char *m_key;
-        unsigned int m_key_len;
-        char *m_value;
-        unsigned int m_value_len;
-
-        verify_request(request_type type, 
-            unsigned int size, 
-            struct timeval* sent_time,
-            unsigned int keys,
-            const char *key,
-            unsigned int key_len,
-            const char *value,
-            unsigned int value_len);
-        virtual ~verify_request(void);
-    };
     bool m_finished;
     unsigned long long int m_verified_keys;
     unsigned long long int m_errors;
 
     virtual bool finished(void);
-    virtual void create_request(struct timeval timestamp);
+    virtual void create_request(struct timeval timestamp, unsigned int conn_id);
     virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
 public:
     verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);

@@ -20,36 +20,74 @@
 #define _PROTOCOL_H
 
 #include <event2/buffer.h>
+#include <vector>
+
+struct mbulk_element {
+    mbulk_element() : value(NULL), value_len(0) {;}
+    mbulk_element(char* val, unsigned int len) : value(val), value_len(len) {;}
+
+    void free_mbulk() {
+        if (value != NULL) {
+            free((void *) value);
+        } else {
+            for (unsigned int i=0; i<mbulk_array.size(); i++) {
+                mbulk_array[i]->free_mbulk();
+                free((void *)mbulk_array[i]);
+            }
+            mbulk_array.clear();
+        }
+    }
+
+    char* value;
+    unsigned int value_len;
+
+    std::vector<mbulk_element*> mbulk_array;
+};
+
+struct mbulk_level {
+    mbulk_level (int count, mbulk_element* mbulk_el) : mbulk_count(count), mbulk(mbulk_el) {;}
+
+    unsigned int mbulk_count;
+    mbulk_element* mbulk;
+};
+
+typedef std::vector<mbulk_level*> mbulk_level_array;
 
 class protocol_response {
 protected:
     const char *m_status;
     const char *m_value;
+    mbulk_element *m_mbulk_value;
     unsigned int m_value_len;
     unsigned int m_total_len;
     unsigned int m_hits;
     bool m_error;
 
 public:
-     protocol_response();
-     virtual ~protocol_response();
+    protocol_response();
+    virtual ~protocol_response();
 
-     void set_status(const char *status);
-     const char *get_status(void);
+    void set_status(const char *status);
+    const char *get_status(void);
 
-     void set_error(bool error);
-     bool is_error(void);
+    void set_error(bool error);
+    bool is_error(void);
 
-     void set_value(const char *value, unsigned int value_len);
-     const char *get_value(unsigned int *value_len);
-        
-     void set_total_len(unsigned int total_len);
-     unsigned int get_total_len(void);
+    void set_value(const char *value, unsigned int value_len);
+    const char *get_value(unsigned int *value_len);
 
-     void incr_hits(void);
-     unsigned int get_hits(void);
+    void set_total_len(unsigned int total_len);
+    unsigned int get_total_len(void);
 
-     void clear();
+    void incr_hits(void);
+    unsigned int get_hits(void);
+
+    void clear();
+
+    void set_mbulk_value(mbulk_element* element);
+    void add_mbulk_array(mbulk_level_array* mbulk_level, mbulk_element* element, int count);
+    void add_mbulk_value(mbulk_level_array* mbulk_level, mbulk_element* element);
+    const mbulk_element* get_mbulk_value();
 };
 
 class keylist {
@@ -94,6 +132,7 @@ public:
 
     virtual int select_db(int db) = 0;
     virtual int authenticate(const char *credentials) = 0;
+    virtual int write_command_cluster_slots() = 0;
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset) = 0;
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;
     virtual int write_command_multi_get(const keylist *keylist) = 0;

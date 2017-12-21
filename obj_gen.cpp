@@ -391,7 +391,6 @@ const char* object_generator::get_key(int iter, unsigned int *len)
     return m_key_buffer;
 }
 
-
 data_object* object_generator::get_object(int iter)
 {
     // compute key
@@ -434,6 +433,50 @@ data_object* object_generator::get_object(int iter)
     m_object.set_expiry(expiry);    
     
     return &m_object;
+}
+
+const char* object_generator::get_key_prefix() {
+    return m_key_prefix;
+}
+
+const char* object_generator::get_value(unsigned long long key_index, unsigned int *len) {
+    // compute size
+    unsigned int new_size = 0;
+    if (m_data_size_type == data_size_fixed) {
+        new_size = m_data_size.size_fixed;
+    } else if (m_data_size_type == data_size_range) {
+        if (m_data_size_pattern && *m_data_size_pattern=='S') {
+            double a = (key_index-m_key_min)/static_cast<double>(m_key_max-m_key_min);
+            new_size = (m_data_size.size_range.size_max-m_data_size.size_range.size_min)*a + m_data_size.size_range.size_min;
+        } else {
+            new_size = random_range(m_data_size.size_range.size_min > 0 ? m_data_size.size_range.size_min : 1,
+                                    m_data_size.size_range.size_max);
+        }
+    } else if (m_data_size_type == data_size_weighted) {
+        new_size = m_data_size.size_list->get_next_size();
+    } else {
+        assert(0);
+    }
+
+    // modify object content in case of random data
+    if (m_random_data) {
+        m_value_buffer[m_value_buffer_mutation_pos++]++;
+        if (m_value_buffer_mutation_pos >= m_value_buffer_size)
+            m_value_buffer_mutation_pos = 0;
+    }
+
+    *len = new_size;
+    return m_value_buffer;
+}
+
+unsigned int object_generator::get_expiry() {
+    // compute expiry
+    unsigned int expiry = 0;
+    if (m_expiry_max > 0) {
+        expiry = random_range(m_expiry_min, m_expiry_max);
+    }
+
+    return expiry;
 }
 
 ///////////////////////////////////////////////////////////////////////////
