@@ -294,7 +294,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_wait_ratio,
         o_num_slaves,
         o_wait_timeout, 
-        o_json_out_file
+        o_json_out_file,
+        o_cpu_split,
+        o_taskset
     };
     
     static struct option long_options[] = {
@@ -313,6 +315,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "requests",                   1, 0, 'n' },
         { "clients",                    1, 0, 'c' },
         { "threads",                    1, 0, 't' },        
+        { "cpu-split",                  0, 0, o_cpu_split },
+        { "taskset",                    1, 0, o_taskset },
         { "test-time",                  1, 0, o_test_time },
         { "ratio",                      1, 0, o_ratio },
         { "pipeline",                   1, 0, o_pipeline },
@@ -447,6 +451,26 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->threads = (unsigned int) strtoul(optarg, &endptr, 10);
                     if (!cfg->threads || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: threads must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_cpu_split:
+                    cfg->cpu_split = true;
+                    break;
+                case o_taskset:
+                    try {
+                        cfg->taskset = config_cpu_list(optarg);
+                    } catch (config_cpu_list::illegal_list_format& e) {
+                        fprintf(stderr, "error: taskset must be expressed as [cpu1],...[cpuN] or [cpu1]-...[cpuN].\n");
+                        return -1;
+                    } catch (config_cpu_list::illegal_range& e) {
+                        fprintf(stderr, "error: illegal range %u-%u.\n", e.begin, e.end);
+                        return -1;
+                    } catch (config_cpu_list::duplicate_cpu& e) {
+                        fprintf(stderr, "error: duplicate cpu %u.\n", e.cpu);
+                        return -1;
+                    } catch (config_cpu_list::bad_cpu& e) {
+                        fprintf(stderr, "error: unavailable cpu %u.\n", e.cpu);
                         return -1;
                     }
                     break;
@@ -670,6 +694,8 @@ void usage() {
             "                                 use 'allkeys' to run on the entire key-range\n"
             "  -c, --clients=NUMBER           Number of clients per thread (default: 50)\n"
             "  -t, --threads=NUMBER           Number of threads (default: 4)\n"
+            "      --cpu-split                Each thread will run on a single cpu\n"
+            "      --taskset=LIST             Use cpus from taskset to run threads on\n"
             "      --test-time=SECS           Number of seconds to run the test\n"
             "      --ratio=RATIO              Set:Get ratio (default: 1:10)\n"
             "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
