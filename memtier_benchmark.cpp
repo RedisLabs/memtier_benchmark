@@ -221,6 +221,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->clients = 50;
     if (!cfg->threads)
         cfg->threads = 4;
+    if (!cfg->taskset.is_defined() && cfg->cpu_split)
+        cfg->taskset = config_cpu_list(get_nprocs());
     if (!cfg->ratio.is_defined())
         cfg->ratio = config_ratio("1:10");
     if (!cfg->pipeline)
