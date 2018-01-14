@@ -49,6 +49,8 @@ struct benchmark_config {
     unsigned int requests;
     unsigned int clients;
     unsigned int threads;
+    bool cpu_split;
+    config_cpu_list taskset;
     unsigned int test_time;
     config_ratio ratio;
     unsigned int pipeline;
