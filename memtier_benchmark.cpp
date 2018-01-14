@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/sysinfo.h>
 
 #include <stdexcept>
 
@@ -796,6 +797,19 @@ struct cg_thread {
         return pthread_create(&m_thread, NULL, cg_thread_start, (void *)this);        
     }
 
+    int start(std::set<unsigned int> cpu_list)
+    {
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        cpu_set_t cpus;
+        CPU_ZERO(&cpus);
+        for (std::set<unsigned int>::iterator it = cpu_list.begin(); it != cpu_list.end(); ++it)
+            CPU_SET(*it, &cpus);
+
+        pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+        return pthread_create(&m_thread, &attr, cg_thread_start, (void *)this);
+    }
+
     void join(void)
     {
         int* retval;
@@ -850,7 +864,12 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     // launch threads
     fprintf(stderr, "[RUN #%u] Launching threads now...\n", run_id);
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
-        (*i)->start();
+        if (cfg->taskset.is_defined()) {
+            std::set<unsigned int> cpu_list = cfg->cpu_split ? cfg->taskset.get_next_cpu() : cfg->taskset.get_cpu_list();
+            (*i)->start(cpu_list);
+        }
+        else
+            (*i)->start();
     }
 
     unsigned long int prev_ops = 0;
