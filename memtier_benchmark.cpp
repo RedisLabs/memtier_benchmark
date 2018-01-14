@@ -74,7 +74,8 @@ void benchmark_log(int level, const char *fmt, ...)
 
 static void config_print(FILE *file, struct benchmark_config *cfg)
 {
-    char tmpbuf[512];
+    char taskset_buf[512];
+    char size_list_buf[512];
     
     fprintf(file,
         "server = %s\n"
@@ -88,6 +89,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "requests = %u\n"
         "clients = %u\n"
         "threads = %u\n"
+        "cpu_split = %s\n"
+        "taskset = %s\n"
         "test_time = %u\n"
         "ratio = %u:%u\n"
         "pipeline = %u\n"
@@ -128,6 +131,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->requests,
         cfg->clients,
         cfg->threads,
+        cfg->cpu_split ? "yes" : "no",
+        cfg->taskset.print(taskset_buf, sizeof(taskset_buf)-1),
         cfg->test_time,
         cfg->ratio.a, cfg->ratio.b,
         cfg->pipeline,
@@ -135,7 +140,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->data_offset,
         cfg->random_data ? "yes" : "no",
         cfg->data_size_range.min, cfg->data_size_range.max,
-        cfg->data_size_list.print(tmpbuf, sizeof(tmpbuf)-1),
+        cfg->data_size_list.print(size_list_buf, sizeof(size_list_buf)-1),
         cfg->data_size_pattern,
         cfg->expiry_range.min, cfg->expiry_range.max,
         cfg->data_import,
@@ -176,6 +181,8 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("requests"          ,"%u",          	cfg->requests);
     jsonhandler->write_obj("clients"           ,"%u",          	cfg->clients);
     jsonhandler->write_obj("threads"           ,"%u",          	cfg->threads);
+    jsonhandler->write_obj("cpu_split"         ,"\"%s\"",              cfg->cpu_split ? "true" : "false");
+    jsonhandler->write_obj("taskset"           ,"\"%s\"",              cfg->taskset.print(tmpbuf, sizeof(tmpbuf)-1));
     jsonhandler->write_obj("test_time"         ,"%u",          	cfg->test_time);
     jsonhandler->write_obj("ratio"             ,"\"%u:%u\"",   	cfg->ratio.a, cfg->ratio.b);
     jsonhandler->write_obj("pipeline"          ,"%u",          	cfg->pipeline);
