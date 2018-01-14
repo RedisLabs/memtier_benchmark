@@ -27,6 +27,7 @@
 
 #include <vector>
 #include <string>
+#include <set>
 
 struct config_range {
     int min;
@@ -91,6 +92,49 @@ protected:
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
     int m_last_error;
+};
+
+struct config_cpu_list {
+    std::set<unsigned int> cpu_list;
+    std::set<unsigned int>::iterator next_cpu;
+
+    config_cpu_list() {}
+    explicit config_cpu_list(unsigned int cores);
+    explicit config_cpu_list(std::string str);
+    config_cpu_list(const config_cpu_list& copy);
+    config_cpu_list& operator=(const config_cpu_list& cl);
+
+    bool is_defined() const;
+    std::set<unsigned int> get_next_cpu();
+    std::set<unsigned int> get_cpu_list() const;
+    const char *print(char* buf, unsigned int size) const;
+
+    struct illegal_list_format {};
+    struct bad_cpu {
+        int cpu;
+
+        explicit bad_cpu(int cpu) : cpu(cpu) {}
+    };
+
+    struct illegal_range {
+        unsigned int begin;
+        unsigned int end;
+
+        explicit illegal_range(unsigned int begin, unsigned int end) : begin(begin), end(end) {}
+    };
+
+    struct duplicate_cpu {
+        int cpu;
+
+        explicit duplicate_cpu(int cpu) : cpu(cpu) {}
+    };
+
+private:
+    std::vector<std::string> parse_str(std::string str, char delimeter) const;
+    unsigned int parse_cpu(std::string str) const;
+    void add_cpu(unsigned int cpu);
+    void add_cpu_range(unsigned int cpu1, unsigned int cpu2);
+    void check_list_is_legal() const;
 };
 
 #endif /* _CONFIG_TYPES_H */

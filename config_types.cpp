@@ -24,6 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <sstream>
+#include <iterator>
+#include <sys/sysinfo.h>
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -262,4 +265,141 @@ int server_addr::get_connect_info(struct connect_info *ci)
 const char* server_addr::get_last_error(void) const
 {
     return gai_strerror(m_last_error);
+}
+
+std::vector<std::string> config_cpu_list::parse_str(std::string str, char delimeter) const
+{
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream(str);
+
+    while (std::getline(tokenStream, token, delimeter)) {
+        tokens.push_back(token);
+    }
+
+    return tokens;
+}
+
+unsigned int config_cpu_list::parse_cpu(std::string str) const
+{
+    if (str.empty())
+        throw illegal_list_format();
+
+    char *endptr = NULL;
+    unsigned int base = 10;
+    int cpu = strtol(str.c_str(), &endptr, base);
+    if (*endptr != '\0')
+        throw illegal_list_format();
+
+    return cpu;
+}
+
+void config_cpu_list::add_cpu(unsigned int cpu)
+{
+    if (cpu_list.find(cpu) != cpu_list.end())
+        throw duplicate_cpu(cpu);
+
+    cpu_list.insert(cpu);
+}
+
+void config_cpu_list::add_cpu_range(unsigned int cpu1, unsigned int cpu2)
+{
+    if (cpu1 > cpu2)
+        throw illegal_range(cpu1, cpu2);
+
+    for (unsigned int i = cpu1; i <= cpu2; ++i) {
+        add_cpu(i);
+    }
+}
+
+void config_cpu_list::check_list_is_legal() const
+{
+    unsigned int max_core = get_nprocs();
+
+    for (std::set<unsigned int>::const_iterator it = cpu_list.begin(); it != cpu_list.end(); ++it) {
+        if (*it >= max_core)
+            throw bad_cpu(*it);
+    }
+}
+
+config_cpu_list::config_cpu_list(unsigned int cores)
+{
+    for (unsigned int i = 0; i < cores; ++i)
+        cpu_list.insert(i);
+
+    next_cpu = cpu_list.begin();
+}
+
+config_cpu_list::config_cpu_list(std::string str)
+{
+    std::vector<std::string> tokens = parse_str(str, ',');
+
+    for (std::vector<std::string>::const_iterator it = tokens.begin(); it != tokens.end(); ++it) {
+        std::vector<std::string> split_token = parse_str(*it, '-');
+        if (split_token.size() == 1) {
+            unsigned int cpu = parse_cpu(split_token[0]);
+            add_cpu(cpu);
+        }
+        else if (split_token.size() == 2) {
+            unsigned int cpu1 = parse_cpu(split_token[0]);
+            unsigned int cpu2 = parse_cpu(split_token[1]);
+            add_cpu_range(cpu1, cpu2);
+        }
+        else
+            throw illegal_list_format();
+
+    }
+
+    check_list_is_legal();
+    next_cpu = cpu_list.begin();
+}
+
+config_cpu_list::config_cpu_list(const config_cpu_list& copy) :
+        cpu_list(copy.cpu_list)
+{
+    next_cpu = cpu_list.begin();
+}
+
+config_cpu_list& config_cpu_list::operator=(const config_cpu_list& cl)
+{
+    if (this == &cl)
+        return *this;
+
+    cpu_list = cl.cpu_list;
+    next_cpu = cpu_list.begin();
+    return *this;
+}
+
+bool config_cpu_list::is_defined() const
+{
+    return !cpu_list.empty();
+}
+
+std::set<unsigned int> config_cpu_list::get_next_cpu()
+{
+    if (next_cpu == cpu_list.end())
+        next_cpu = cpu_list.begin();
+
+    std::set<unsigned int> next;
+    next.insert(*(next_cpu++));
+    return next;
+}
+
+std::set<unsigned int> config_cpu_list::get_cpu_list() const
+{
+    return std::set<unsigned int>(cpu_list);
+}
+
+const char* config_cpu_list::print(char* buf, unsigned int size) const
+{
+    if (!is_defined())
+        return "";
+
+    std::stringstream result;
+    std::copy(cpu_list.begin(), cpu_list.end(), std::ostream_iterator<unsigned int>(result, ","));
+    std::string str_res = result.str();
+    str_res.erase(str_res.size()-1);
+
+    strncpy(buf, str_res.c_str(), size);
+    return buf;
 }
