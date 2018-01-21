@@ -780,6 +780,7 @@ int memcache_binary_protocol::parse_response(void)
 
                 m_response_len = sizeof(m_response_hdr);
                 m_last_response.clear();
+                m_last_response.set_total_len(m_response_len);
                 if (status_text()) {
                     m_last_response.set_status(strdup(status_text()));
                 }
@@ -829,6 +830,7 @@ int memcache_binary_protocol::parse_response(void)
                         m_last_response.incr_hits();
                     
                     m_response_len += m_response_hdr.message.header.response.bodylen;
+                    m_last_response.set_total_len(m_response_len);
                     m_response_state = rs_initial;
 
                     return 1;
