@@ -64,6 +64,7 @@ struct benchmark_config {
     const char *data_import;
     int data_verify;
     int verify_only;
+    bool crc_verify;
     int generate_keys;
     const char *key_prefix;
     unsigned long long key_minimum;

@@ -104,6 +104,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "data_import = %s\n"
         "data_verify = %s\n"
         "verify_only = %s\n"
+        "crc_verify = %s\n"
         "generate_keys = %s\n"
         "key_prefix = %s\n"
         "key_minimum = %llu\n"
@@ -146,6 +147,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->data_import,
         cfg->data_verify ? "yes" : "no",
         cfg->verify_only ? "yes" : "no",
+        cfg->crc_verify ? "yes" : "no",
         cfg->generate_keys ? "yes" : "no",
         cfg->key_prefix,
         cfg->key_minimum,
@@ -196,6 +198,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("data_import"       ,"\"%s\"",       cfg->data_import);
     jsonhandler->write_obj("data_verify"       ,"\"%s\"",       cfg->data_verify ? "true" : "false");
     jsonhandler->write_obj("verify_only"       ,"\"%s\"",       cfg->verify_only ? "true" : "false");
+    jsonhandler->write_obj("crc_verify"        ,"\"%s\"",       cfg->crc_verify ? "true" : "false");
     jsonhandler->write_obj("generate_keys"     ,"\"%s\"",     	cfg->generate_keys ? "true" : "false");
     jsonhandler->write_obj("key_prefix"        ,"\"%s\"",       cfg->key_prefix);
     jsonhandler->write_obj("key_minimum"       ,"%11u",        	cfg->key_minimum);
@@ -306,7 +309,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_wait_timeout, 
         o_json_out_file,
         o_cpu_split,
-        o_taskset
+        o_taskset,
+        o_crc_verify
     };
     
     static struct option long_options[] = {
@@ -340,6 +344,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "data-import",                1, 0, o_data_import },
         { "data-verify",                0, 0, o_data_verify },
         { "verify-only",                0, 0, o_verify_only },
+        { "crc-verify",                 0, 0, o_crc_verify },
         { "generate-keys",              0, 0, o_generate_keys },
         { "key-prefix",                 1, 0, o_key_prefix },
         { "key-minimum",                1, 0, o_key_minimum },
@@ -569,6 +574,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->verify_only = 1;
                     cfg->data_verify = 1;   // Implied
                     break;
+                case o_crc_verify:
+                    cfg->crc_verify = true;
+                    break;
                 case o_key_prefix:
                     cfg->key_prefix = optarg;
                     break;
@@ -734,6 +742,7 @@ void usage() {
             "      --data-import=FILE         Read object data from file\n"
             "      --data-verify              Enable data verification when test is complete\n"
             "      --verify-only              Only perform --data-verify, without any other test\n"
+            "      --crc-verify               Perform test using crc verification\n"
             "      --generate-keys            Generate keys for imported objects\n"
             "      --no-expiry                Ignore expiry information in imported data\n"
             "\n"
