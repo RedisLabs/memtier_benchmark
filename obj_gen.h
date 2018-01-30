@@ -20,6 +20,7 @@
 #define _OBJ_GEN_H
 
 #include <vector>
+#include <stdint.h>
 #include "file_io.h"
 
 struct random_data;
@@ -68,6 +69,14 @@ public:
     const char* get_value(unsigned int* value_len);
     void set_expiry(unsigned int expiry);
     unsigned int get_expiry(void);    
+};
+
+class crc32 {
+public:
+    static const unsigned int size = 4;
+    static uint32_t calc_crc32(const void *buffer, unsigned long length);
+private:
+    static const unsigned int crctab[256];
 };
 
 #define OBJECT_GENERATOR_KEY_ITERATORS  2 /* number of iterators */
