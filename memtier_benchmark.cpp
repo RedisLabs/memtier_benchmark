@@ -1061,7 +1061,7 @@ int main(int argc, char *argv[])
     // create and configure object generator
     object_generator* obj_gen = NULL;
     imported_keylist* keylist = NULL;
-    if (!cfg.data_import) {
+    if (!cfg.data_import && !cfg.crc_verify) {
         if (cfg.data_verify) {
             fprintf(stderr, "error: use data-verify only with data-import\n");
             exit(1);
@@ -1070,8 +1070,28 @@ int main(int argc, char *argv[])
             fprintf(stderr, "error: use no-expiry only with data-import\n");
             exit(1);
         }
-        
         obj_gen = new object_generator();
+        assert(obj_gen != NULL);
+    }
+    else if (cfg.crc_verify) {
+        if (cfg.data_verify) {
+            fprintf(stderr, "error: use data-verify only with data-import\n");
+            exit(1);
+        }
+        if (cfg.no_expiry) {
+            fprintf(stderr, "error: use no-expiry only with data-import\n");
+            exit(1);
+        }
+        if (cfg.data_size_list.is_defined() ||
+            cfg.data_size_range.is_defined()) {
+            fprintf(stderr, "error: crc verification can only be used with fixed data size.\n");
+            exit(1);
+        }
+        if (!strcmp(cfg.key_pattern, "P:P")==0) {
+            fprintf(stderr, "error: crc verification can only be used with P:P key pattern.\n");
+            exit(1);
+        }
+        obj_gen = new crc_object_generator();
         assert(obj_gen != NULL);
     } else {
         // check paramters
