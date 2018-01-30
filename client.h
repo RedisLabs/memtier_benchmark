@@ -37,6 +37,7 @@
 class client;               // forward decl
 class client_group;         // forward decl
 struct benchmark_config;
+class verify_client_group;  // forward decl
 
 class object_generator;
 class data_object;
@@ -230,6 +231,31 @@ public:
     verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     unsigned long long int get_verified_keys(void);
     unsigned long long int get_errors(void);
+};
+
+class crc_verify_client : public client {
+protected:
+    struct verify_request : public request {
+        char *m_key;
+        unsigned int m_key_len;
+
+        verify_request(request_type type,
+                       unsigned int size,
+                       struct timeval* sent_time,
+                       unsigned int keys,
+                       const char *key,
+                       unsigned int key_len);
+        virtual ~verify_request(void);
+    };
+    unsigned long int m_verified_keys;
+    unsigned long int m_errors;
+
+    virtual void create_request(struct timeval timestamp);
+    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
+public:
+    explicit crc_verify_client(verify_client_group* group);
+    unsigned long int get_verified_keys(void);
+    unsigned long int get_errors(void);
 };
 
 class client_group {
