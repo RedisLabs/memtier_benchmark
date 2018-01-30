@@ -1310,6 +1310,49 @@ int main(int argc, char *argv[])
         event_base_free(verify_event_base);
     }
 
+    // If needed, crc data verification is done now...
+    if (cfg.crc_verify) {
+        fprintf(outfile, "\n\nPerforming CRC data verification...\n\n");
+
+        std::vector<run_stats> all_stats;
+        cfg.next_client_idx = 0;
+        dynamic_cast<crc_object_generator*>(obj_gen)->reset_next_key();
+        for (unsigned int run_id = 1; run_id <= cfg.run_count; run_id++) {
+            if (run_id > 1)
+                sleep(1);   // let connections settle
+
+            run_stats stats = run_benchmark(run_id, &cfg, obj_gen, true);
+            all_stats.push_back(stats);
+        }
+        //
+        // Print some run information
+        fprintf(outfile,
+                "%-9u Threads\n"
+                        "%-9u Connections per thread\n"
+                        "%-9u %s\n",
+                cfg.threads, cfg.clients,
+                cfg.requests > 0 ? cfg.requests : cfg.test_time,
+                cfg.requests > 0 ? "Requests per thread"  : "Seconds");
+        if (jsonhandler != NULL){
+            jsonhandler->open_nesting("client verifications results");
+            jsonhandler->write_obj("Threads","%u",cfg.threads);
+            jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
+            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per thread"  : "Seconds","%u",
+                                   cfg.requests > 0 ? cfg.requests : cfg.test_time);
+            jsonhandler->write_obj("keys verified successfuly", "%-10lu",  all_stats.begin()->get_verified_keys());
+            jsonhandler->write_obj("keys failed", "%-10lu",  all_stats.begin()->get_errors());
+            jsonhandler->close_nesting();
+        }
+
+        all_stats.begin()->print(outfile, cfg.hide_histogram, "VERIFICATION STATS", jsonhandler);
+
+        fprintf(outfile, "\nData verification completed:\n"
+                        "%-10lu keys verified successfuly.\n"
+                        "%-10lu keys failed.\n",
+                all_stats.begin()->get_verified_keys(),
+                all_stats.begin()->get_errors());
+    }
+
     if (outfile != stdout) {
         fclose(outfile);
     }
