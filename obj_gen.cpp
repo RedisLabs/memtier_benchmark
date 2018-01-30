@@ -714,3 +714,84 @@ data_object* import_object_generator::get_object(int iter)
     return &m_object;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
+crc_object_generator::crc_object_generator() :
+        m_crc_size(crc32::size),
+        m_crc_buffer(NULL) {}
+
+crc_object_generator::crc_object_generator(const crc_object_generator& from) :
+        object_generator(from),
+        m_crc_size(from.m_crc_size),
+        m_actual_value_size(from.m_actual_value_size)
+{
+    m_crc_buffer = m_value_buffer + m_actual_value_size;
+}
+
+crc_object_generator* crc_object_generator::clone(void)
+{
+    return new crc_object_generator(*this);
+}
+
+void crc_object_generator::alloc_value_buffer(void)
+{
+    object_generator::alloc_value_buffer();
+    m_actual_value_size = m_value_buffer_size - m_crc_size;
+    m_crc_buffer = m_value_buffer + m_actual_value_size;
+}
+
+void crc_object_generator::alloc_value_buffer(const char* copy_from)
+{
+    object_generator::alloc_value_buffer(copy_from);
+    m_crc_buffer = m_value_buffer + m_actual_value_size;
+}
+
+data_object* crc_object_generator::get_object(int iter)
+{
+    // compute key
+    get_key(iter, NULL);
+
+    // compute size
+    unsigned int new_size = 0;
+    if (m_data_size_type == data_size_fixed) {
+        new_size = m_data_size.size_fixed;
+    } else {
+        assert(0);
+    }
+
+    // compute expiry
+    int expiry = 0;
+    if (m_expiry_max > 0) {
+        expiry = random_range(m_expiry_min, m_expiry_max);
+    }
+
+    // modify object content in case of random data
+    if (m_random_data) {
+        m_value_buffer[m_value_buffer_mutation_pos++]++;
+        if (m_value_buffer_mutation_pos >= m_actual_value_size)
+            m_value_buffer_mutation_pos = 0;
+    }
+
+    //calc and set crc
+    uint32_t crc = crc32::calc_crc32(m_value_buffer, m_actual_value_size);
+    memcpy(m_crc_buffer, &crc, m_crc_size);
+
+    // set object
+    m_object.set_key(m_key_buffer, strlen(m_key_buffer));
+    m_object.set_value(m_value_buffer, new_size);
+    m_object.set_expiry(expiry);
+
+    return &m_object;
+}
+
+unsigned int crc_object_generator::get_actual_value_size()
+{
+    return m_actual_value_size;
+}
+
+void crc_object_generator::reset_next_key()
+{
+    for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
+        m_next_key[i] = 0;
+}
+
