@@ -235,7 +235,7 @@ static void config_init_defaults(struct benchmark_config *cfg)
     if (!cfg->taskset.is_defined() && cfg->cpu_split)
         cfg->taskset = config_cpu_list(get_nprocs());
     if (!cfg->ratio.is_defined())
-        cfg->ratio = config_ratio("1:10");
+        cfg->ratio = cfg->crc_verify ? config_ratio("1:0") : config_ratio("1:10");
     if (!cfg->pipeline)
         cfg->pipeline = 1;
     if (!cfg->data_size && !cfg->data_size_list.is_defined() && !cfg->data_size_range.is_defined() && !cfg->data_import)
@@ -507,6 +507,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         fprintf(stderr, "error: ratio must be expressed as [0-n]:[0-n].\n");
                         return -1;
                     }
+                    if (cfg->crc_verify) {
+                        fprintf(stderr, "error: --ratio and --crc-verify are mutually exclusive.\n");
+                        return -1;
+                    }
                     break;
                 case o_pipeline:
                     endptr = NULL;
@@ -576,6 +580,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_crc_verify:
                     cfg->crc_verify = true;
+                    if (cfg->ratio.is_defined()) {
+                        fprintf(stderr, "error: --ratio and --crc-verify are mutually exclusive.\n");
+                        return -1;
+                    }
                     break;
                 case o_key_prefix:
                     cfg->key_prefix = optarg;
