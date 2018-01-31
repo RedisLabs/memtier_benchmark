@@ -790,13 +790,16 @@ struct cg_thread {
     pthread_t m_thread;
     bool m_finished;
     
-    cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen) :
+    cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen, bool verify) :
         m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false)
     {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);
-        
-        m_cg = new client_group(m_config, m_protocol, m_obj_gen);
+
+        if (!verify)
+            m_cg = new client_group(m_config, m_protocol, m_obj_gen);
+        else
+            m_cg = new verify_client_group(m_config, m_protocol, m_obj_gen);
     }
         
     ~cg_thread()
@@ -868,14 +871,14 @@ void size_to_str(unsigned long int size, char *buf, int buf_len)
     }    
 }
 
-run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen)
+run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen, bool verify)
 {
     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
 
     // prepare threads data
     std::vector<cg_thread*> threads;
     for (unsigned int i = 0; i < cfg->threads; i++) {
-        cg_thread* t = new cg_thread(i, cfg, obj_gen);
+        cg_thread* t = new cg_thread(i, cfg, obj_gen, verify);
         assert(t != NULL);
 
         if (t->prepare() < 0) {
@@ -1221,7 +1224,7 @@ int main(int argc, char *argv[])
             if (run_id > 1)
                 sleep(1);   // let connections settle
             
-            run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
+            run_stats stats = run_benchmark(run_id, &cfg, obj_gen, false);
             all_stats.push_back(stats);
         }
         //
