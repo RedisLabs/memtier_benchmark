@@ -97,6 +97,9 @@ protected:
         unsigned long int m_ops_wait;
         unsigned long int m_ops;
 
+        unsigned long int m_verified_keys;
+        unsigned long int m_errors;
+
         totals();
         void add(const totals& other);
     } m_totals;
@@ -118,6 +121,9 @@ public:
     void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
     void update_wait_op(struct timeval* ts, unsigned int latency);
 
+    void update_verified_keys(unsigned long int keys);
+    void update_errors(unsigned long int errors);
+
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
     void merge(const run_stats& other, int iteration);
@@ -130,6 +136,8 @@ public:
     unsigned long int get_total_bytes(void);
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
+    unsigned long int get_verified_keys();
+    unsigned long int get_errors();
  };
 
 class client {

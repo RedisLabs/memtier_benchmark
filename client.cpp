@@ -1138,7 +1138,9 @@ run_stats::totals::totals() :
     m_ops_set(0),
     m_ops_get(0),
     m_ops_wait(0),
-    m_ops(0)
+    m_ops(0),
+    m_verified_keys(0),
+    m_errors(0)
 {
 }
     
@@ -1162,6 +1164,8 @@ void run_stats::totals::add(const run_stats::totals& other)
     m_ops_get += other.m_ops_get;
     m_ops_wait += other.m_ops_wait;
     m_ops += other.m_ops;
+    m_verified_keys += other.m_verified_keys;
+    m_errors += other.m_errors;
 }
 
 run_stats::run_stats() :
@@ -1247,6 +1251,16 @@ void run_stats::update_wait_op(struct timeval *ts, unsigned int latency)
     m_wait_latency_map[get_2_meaningful_digits((float)latency/1000)]++;
 }
 
+void run_stats::update_verified_keys(unsigned long int keys)
+{
+    m_totals.m_verified_keys += keys;
+}
+
+void run_stats::update_errors(unsigned long int errors)
+{
+    m_totals.m_errors += errors;
+}
+
 unsigned int run_stats::get_duration(void)
 {
     return m_cur_stats.m_second;
@@ -1276,6 +1290,16 @@ unsigned long int run_stats::get_total_ops(void)
 unsigned long int run_stats::get_total_latency(void)
 {
     return m_totals.m_latency;
+}
+
+unsigned long int run_stats::get_verified_keys()
+{
+    return m_totals.m_verified_keys;
+}
+
+unsigned long int run_stats::get_errors()
+{
+    return m_totals.m_errors;
 }
 
 #define AVERAGE(total, count) \
