@@ -50,6 +50,7 @@ struct benchmark_config {
     unsigned int clients;
     unsigned int threads;
     bool cpu_split;
+    unsigned int compress_perc;
     config_cpu_list taskset;
     unsigned int test_time;
     config_ratio ratio;

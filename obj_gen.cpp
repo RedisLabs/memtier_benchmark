@@ -140,6 +140,7 @@ object_generator::object_generator() :
     m_random_data(false),
     m_expiry_min(0),
     m_expiry_max(0),
+    m_compress_perc(0),
     m_key_prefix(NULL),
     m_key_min(0),
     m_key_max(0),
@@ -163,6 +164,7 @@ object_generator::object_generator(const object_generator& copy) :
     m_random_data(copy.m_random_data),
     m_expiry_min(copy.m_expiry_min),
     m_expiry_max(copy.m_expiry_max),
+    m_compress_perc(copy.m_compress_perc),
     m_key_prefix(copy.m_key_prefix),
     m_key_min(copy.m_key_min),
     m_key_max(copy.m_key_max),
@@ -221,7 +223,14 @@ void object_generator::alloc_value_buffer(void)
         size = m_data_size.size_list->largest();
     }
 
-    m_value_buffer_size = size;
+    if (!m_compress_perc)
+        m_value_buffer_size = size;
+    else {
+        float decimal = static_cast<float>(m_compress_perc)/100;
+        m_value_buffer_size = static_cast<unsigned int>(size*(1-decimal));
+        m_zeros_buffer_size = size - m_value_buffer_size;
+        m_zeros_buffer = (char*) calloc(m_zeros_buffer_size,1);
+    }
     if (size > 0) {
         m_value_buffer = (char*) malloc(m_value_buffer_size);
         assert(m_value_buffer != NULL);
@@ -278,12 +287,24 @@ void object_generator::alloc_value_buffer(const char* copy_from)
     else if (m_data_size_type == data_size_weighted)
         size = m_data_size.size_list->largest();
 
-    m_value_buffer_size = size;
+    if (!m_compress_perc)
+        m_value_buffer_size = size;
+    else {
+        m_value_buffer_size = (float)size*(1-(float)m_compress_perc/100);
+        m_zeros_buffer_size = size - m_value_buffer_size;
+        m_zeros_buffer = (char*) calloc(m_zeros_buffer_size,1);
+    }
     if (m_value_buffer_size > 0) {
         m_value_buffer = (char*) malloc(m_value_buffer_size);
+        m_zeros_buffer = (char*) calloc(m_value_buffer_size,1);
         assert(m_value_buffer != NULL);
         memcpy(m_value_buffer, copy_from, m_value_buffer_size);
     }
+}
+
+void object_generator::set_compress_precentile(unsigned int compress_perc)
+{
+    m_compress_perc = compress_perc;
 }
 
 void object_generator::set_random_data(bool random_data)
@@ -430,7 +451,13 @@ data_object* object_generator::get_object(int iter)
 
     // set object
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
-    m_object.add_value(m_value_buffer, new_size, true);
+    if (!m_compress_perc)
+        m_object.add_value(m_value_buffer, new_size, true);
+    else {
+        unsigned int data_size = (float)new_size*(1-(float)m_compress_perc/100);
+        m_object.add_value(m_value_buffer, data_size, true);
+        m_object.add_value(m_zeros_buffer, new_size-data_size);
+    }
     m_object.set_expiry(expiry);    
     
     return &m_object;
