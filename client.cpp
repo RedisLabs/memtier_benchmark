@@ -1088,6 +1088,46 @@ void client_group::write_client_stats(const char *prefix)
         }
     }        
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+verify_client_group::verify_client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen) :
+        client_group(cfg, protocol, obj_gen)
+{
+}
+
+int verify_client_group::create_clients(int num)
+{
+    for (int i = 0; i < num; i++) {
+        client* c = new crc_verify_client(this);
+        assert(c != NULL);
+
+        if (!c->initialized()) {
+            delete c;
+            return i;
+        }
+
+        m_clients.push_back(c);
+    }
+
+    return num;
+}
+
+void verify_client_group::merge_run_stats(run_stats* target)
+{
+    client_group::merge_run_stats(target);
+
+    unsigned long int verified_keys = 0;
+    unsigned long int errors = 0;
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        verified_keys += dynamic_cast<crc_verify_client*>(*i)->get_verified_keys();
+        errors += dynamic_cast<crc_verify_client*>(*i)->get_errors();
+    }
+
+    target->update_verified_keys(verified_keys);
+    target->update_errors(errors);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 run_stats::one_second_stats::one_second_stats(unsigned int second)

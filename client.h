@@ -275,9 +275,9 @@ protected:
     std::vector<client*> m_clients;
 public:
     client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen);
-    ~client_group();
+    virtual ~client_group();
 
-    int create_clients(int count);
+    virtual int create_clients(int count);
     int prepare(void);
     void run(void);
 
@@ -293,8 +293,15 @@ public:
     unsigned long int get_total_latency(void);
     unsigned long int get_duration_usec(void);
 
-    void merge_run_stats(run_stats* target);
+    virtual void merge_run_stats(run_stats* target);
 };
 
+class verify_client_group : public client_group {
+public:
+    verify_client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen);
+
+    virtual int create_clients(int count);
+    virtual void merge_run_stats(run_stats* target);
+};
 
 #endif	/* _CLIENT_H */
