@@ -524,15 +524,15 @@ void client::create_request(struct timeval timestamp)
         data_object *obj = m_obj_gen->get_object(obj_iter_type(m_config, 0));
         unsigned int key_len;
         const char *key = obj->get_key(&key_len);
-        unsigned int value_len;
-        const char *value = obj->get_value(&value_len);
+        unsigned int total_buffers_len;
+        const val_list* values_list = obj->get_values(total_buffers_len);
 
         m_set_ratio_count++;
         m_tot_set_ops++;
 
         benchmark_debug_log("SET key=[%.*s] value_len=%u expiry=%u\n",
-            key_len, key, value_len, obj->get_expiry());
-        cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
+            key_len, key, total_buffers_len, obj->get_expiry());
+        cmd_size = m_protocol->write_command_set(key, key_len, values_list, total_buffers_len,
             obj->get_expiry(), m_config->data_offset);
 
         m_pipeline.push(new client::request(rt_set, cmd_size, &timestamp, 1));
@@ -796,15 +796,14 @@ void verify_client::create_request(struct timeval timestamp)
         data_object *obj = m_obj_gen->get_object(obj_iter_type(m_config, 0));
         unsigned int key_len;
         const char *key = obj->get_key(&key_len);
-        unsigned int value_len;
-        const char *value = obj->get_value(&value_len);
+        std::pair<const char*,unsigned int> value_info = obj->get_values()->front();
         unsigned int cmd_size;
 
         m_set_ratio_count++;
         cmd_size = m_protocol->write_command_get(key, key_len, m_config->data_offset);
 
         m_pipeline.push(new verify_client::verify_request(rt_get,
-            cmd_size, &timestamp, 1, key, key_len, value, value_len));
+            cmd_size, &timestamp, 1, key, key_len, value_info.first, value_info.second));
     } else if (m_get_ratio_count < m_config->ratio.b) {
         // We don't really care about GET operations, all we do here is keep
         // the object generator synced.

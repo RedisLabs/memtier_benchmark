@@ -31,6 +31,8 @@
 #include "memtier_benchmark.h"
 #include "libmemcached_protocol/binary.h"
 
+typedef std::list<std::pair<const char*,unsigned int>>::const_iterator val_list_it;
+
 /////////////////////////////////////////////////////////////////////////
 
 abstract_protocol::abstract_protocol() :
@@ -152,7 +154,7 @@ public:
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
+    virtual int write_command_set(const char *key, int key_len, const val_list *values_list, unsigned int total_buffers_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
@@ -190,12 +192,11 @@ int redis_protocol::authenticate(const char *credentials)
     return size;
 }
 
-int redis_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
+int redis_protocol::write_command_set(const char *key, int key_len, const val_list *values_list, unsigned int total_buffers_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
-    assert(value != NULL);
-    assert(value_len > 0);
+    assert(total_buffers_len > 0);
     int size = 0;
     
     if (!expiry && !offset) {
@@ -208,7 +209,7 @@ int redis_protocol::write_command_set(const char *key, int key_len, const char *
         size += key_len;
         size += evbuffer_add_printf(m_write_buf,
             "\r\n"
-            "$%u\r\n", value_len);
+            "$%u\r\n", total_buffers_len);
     } else if(offset) {
         char offset_str[30];
         snprintf(offset_str, sizeof(offset_str)-1, "%u", offset);
@@ -224,7 +225,7 @@ int redis_protocol::write_command_set(const char *key, int key_len, const char *
             "\r\n"
             "$%u\r\n"
             "%s\r\n"
-            "$%u\r\n", (unsigned int) strlen(offset_str), offset_str, value_len);
+            "$%u\r\n", (unsigned int) strlen(offset_str), offset_str, total_buffers_len);
     } else {
         char expiry_str[30];
         snprintf(expiry_str, sizeof(expiry_str)-1, "%u", expiry);
@@ -240,11 +241,16 @@ int redis_protocol::write_command_set(const char *key, int key_len, const char *
             "\r\n"
             "$%u\r\n"
             "%s\r\n"
-            "$%u\r\n", (unsigned int) strlen(expiry_str), expiry_str, value_len);
+            "$%u\r\n", (unsigned int) strlen(expiry_str), expiry_str, total_buffers_len);
     }
-    evbuffer_add(m_write_buf, value, value_len);
+
+    for (val_list_it it = values_list->begin(); it != values_list->end(); ++it)
+    {
+        evbuffer_add(m_write_buf, (*it).first, (*it).second);
+    }
+
     evbuffer_add(m_write_buf, "\r\n", 2);
-    size += value_len + 2;
+    size += total_buffers_len + 2;
 
     return size;
 }
@@ -421,7 +427,7 @@ public:
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
+    virtual int write_command_set(const char *key, int key_len, const val_list *values_list, unsigned int total_buffers_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
@@ -438,19 +444,21 @@ int memcache_text_protocol::authenticate(const char *credentials)
     assert(0);
 }
 
-int memcache_text_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
+int memcache_text_protocol::write_command_set(const char *key, int key_len, const val_list  *values_list, unsigned int total_buffers_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
-    assert(value != NULL);
-    assert(value_len > 0);
+    assert(total_buffers_len > 0);
     int size = 0;
     
     size = evbuffer_add_printf(m_write_buf,
-        "set %.*s 0 %u %u\r\n", key_len, key, expiry, value_len);
-    evbuffer_add(m_write_buf, value, value_len);
+        "set %.*s 0 %u %u\r\n", key_len, key, expiry, total_buffers_len);
+    for (val_list_it it = values_list->begin(); it != values_list->end(); ++it)
+    {
+        evbuffer_add(m_write_buf, (*it).first, (*it).second);
+    }
     evbuffer_add(m_write_buf, "\r\n", 2);
-    size += value_len + 2;
+    size += total_buffers_len + 2;
 
     return size;
 }
@@ -613,7 +621,7 @@ public:
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
+    virtual int write_command_set(const char *key, int key_len, const val_list *values_list, unsigned int total_buffers_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
@@ -662,12 +670,11 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
 }
 
-int memcache_binary_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)
+int memcache_binary_protocol::write_command_set(const char *key, int key_len, const val_list *values_list,unsigned int total_buffers_len, int expiry, unsigned int offset)
 {
     assert(key != NULL);
     assert(key_len > 0);
-    assert(value != NULL);
-    assert(value_len > 0);
+    assert(total_buffers_len>0);
 
     protocol_binary_request_set req;
 
@@ -676,15 +683,18 @@ int memcache_binary_protocol::write_command_set(const char *key, int key_len, co
     req.message.header.request.opcode = PROTOCOL_BINARY_CMD_SET;
     req.message.header.request.keylen = htons(key_len);
     req.message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
-    req.message.header.request.bodylen = htonl(sizeof(req.message.body) + value_len + key_len);
+    req.message.header.request.bodylen = htonl(sizeof(req.message.body) + total_buffers_len + key_len);
     req.message.header.request.extlen = sizeof(req.message.body);
     req.message.body.expiration = htonl(expiry);
 
     evbuffer_add(m_write_buf, &req, sizeof(req));
     evbuffer_add(m_write_buf, key, key_len);
-    evbuffer_add(m_write_buf, value, value_len);
+    for (val_list_it it = values_list->begin(); it != values_list->end(); ++it)
+    {
+        evbuffer_add(m_write_buf, (*it).first, (*it).second);
+    }
 
-    return sizeof(req) + key_len + value_len;
+    return sizeof(req) + key_len + total_buffers_len;
 }
 
 int memcache_binary_protocol::write_command_get(const char *key, int key_len, unsigned int offset)

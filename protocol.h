@@ -20,6 +20,10 @@
 #define _PROTOCOL_H
 
 #include <event2/buffer.h>
+#include <utility>
+#include <list>
+
+typedef std::list<std::pair<const char*, unsigned int> > val_list;
 
 class protocol_response {
 protected:
@@ -94,7 +98,7 @@ public:
 
     virtual int select_db(int db) = 0;
     virtual int authenticate(const char *credentials) = 0;
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset) = 0;
+    virtual int write_command_set(const char *key, int key_len, const val_list* value_list, unsigned int total_buffers_len, int expiry, unsigned int offset) = 0;
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;
     virtual int write_command_multi_get(const keylist *keylist) = 0;
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout) = 0;
