@@ -204,6 +204,7 @@ object_generator::object_generator() :
     m_data_size_type(data_size_unknown),
     m_data_size_pattern(NULL),
     m_random_data(false),
+    m_compression_ratio(0.0),
     m_expiry_min(0),
     m_expiry_max(0),
     m_key_prefix(NULL),
@@ -214,6 +215,7 @@ object_generator::object_generator() :
     m_value_buffer(NULL),
     m_random_fd(-1),
     m_value_buffer_size(0),
+    m_value_buffer_random_part_size(0),
     m_value_buffer_mutation_pos(0)
 {
     for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
@@ -227,6 +229,7 @@ object_generator::object_generator(const object_generator& copy) :
     m_data_size(copy.m_data_size),
     m_data_size_pattern(copy.m_data_size_pattern),
     m_random_data(copy.m_random_data),
+    m_compression_ratio(copy.m_compression_ratio),
     m_expiry_min(copy.m_expiry_min),
     m_expiry_max(copy.m_expiry_max),
     m_key_prefix(copy.m_key_prefix),
@@ -237,6 +240,7 @@ object_generator::object_generator(const object_generator& copy) :
     m_value_buffer(NULL),
     m_random_fd(-1),
     m_value_buffer_size(0),
+    m_value_buffer_random_part_size(copy.m_value_buffer_random_part_size),
     m_value_buffer_mutation_pos(0)
 {
     if (m_data_size_type == data_size_weighted &&
@@ -288,12 +292,23 @@ void object_generator::alloc_value_buffer(void)
     }
 
     m_value_buffer_size = size;
+    m_value_buffer_random_part_size = size;
     if (size > 0) {
         m_value_buffer = (char*) malloc(size);
         assert(m_value_buffer != NULL);
         if (!m_random_data) {
             memset(m_value_buffer, 'x', size);
         } else {
+            if (m_compression_ratio > 0.0) {
+                char *comp_part_start;
+                unsigned int comp_part_size = (unsigned int)(size * m_compression_ratio);
+
+                m_value_buffer_random_part_size = size - comp_part_size;
+                comp_part_start = m_value_buffer + m_value_buffer_random_part_size;
+                memset(comp_part_start, 0, comp_part_size);
+                benchmark_debug_log("rand part size: %u\n", m_value_buffer_random_part_size);
+                benchmark_debug_log("comp part size: %u\n", comp_part_size);
+            }
             if (m_random_fd == -1) {
                 m_random_fd = open("/dev/urandom",  O_RDONLY);
                 assert(m_random_fd != -1);
@@ -301,8 +316,8 @@ void object_generator::alloc_value_buffer(void)
 
             int ret;
 
-            ret = read(m_random_fd, m_value_buffer, size);
-            assert(ret == (int)size);
+            ret = read(m_random_fd, m_value_buffer, m_value_buffer_random_part_size);
+            assert(ret == (int)m_value_buffer_random_part_size);
         }
     }
 }
@@ -332,6 +347,11 @@ void object_generator::alloc_value_buffer(const char* copy_from)
 void object_generator::set_random_data(bool random_data)
 {
     m_random_data = random_data;
+}
+
+void object_generator::set_compression_ratio(float compression_ratio)
+{
+    m_compression_ratio = compression_ratio;
 }
 
 void object_generator::set_data_size_fixed(unsigned int size)
@@ -442,6 +462,10 @@ data_object* object_generator::get_object(int iter)
     
     // compute size
     unsigned int new_size = 0;
+
+    // take value starting from this position in the value buffer
+    unsigned int value_buffer_pos = 0;
+
     if (m_data_size_type == data_size_fixed) {
         new_size = m_data_size.size_fixed;
     } else if (m_data_size_type == data_size_range) {
@@ -466,14 +490,22 @@ data_object* object_generator::get_object(int iter)
     
     // modify object content in case of random data
     if (m_random_data) {
+        if (m_compression_ratio > 0.0) {
+            unsigned int comp_part_new_size = (unsigned int)(new_size * m_compression_ratio);
+            unsigned int random_part_new_size = new_size - comp_part_new_size;
+
+            value_buffer_pos = m_value_buffer_random_part_size - random_part_new_size;
+        }
+
+        // modify only the random part, not the compressible part!
         m_value_buffer[m_value_buffer_mutation_pos++]++;
-        if (m_value_buffer_mutation_pos >= m_value_buffer_size)
+        if (m_value_buffer_mutation_pos >= m_value_buffer_random_part_size)
             m_value_buffer_mutation_pos = 0;
     }
 
     // set object
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
-    m_object.set_value(m_value_buffer, new_size);
+    m_object.set_value(m_value_buffer + value_buffer_pos, new_size);
     m_object.set_expiry(expiry);    
     
     return &m_object;

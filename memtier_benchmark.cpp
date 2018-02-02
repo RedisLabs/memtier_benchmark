@@ -1174,6 +1174,7 @@ int main(int argc, char *argv[])
             usage();
         }
         obj_gen->set_random_data(cfg.random_data);
+        obj_gen->set_compression_ratio(cfg.compression_ratio);
     }
 
     if (cfg.select_db > 0 && strcmp(cfg.protocol, "redis")) {

@@ -100,6 +100,7 @@ protected:
     } m_data_size;
     const char *m_data_size_pattern;
     bool m_random_data;
+    float m_compression_ratio;
     unsigned int m_expiry_min;
     unsigned int m_expiry_max;
     const char *m_key_prefix;
@@ -117,6 +118,7 @@ protected:
     int m_random_fd;
     gaussian_noise m_random;
     unsigned int m_value_buffer_size;
+    unsigned int m_value_buffer_random_part_size;
     unsigned int m_value_buffer_mutation_pos;
     
     virtual void alloc_value_buffer(void);
@@ -133,6 +135,7 @@ public:
     unsigned long long normal_distribution(unsigned long long r_min, unsigned long long r_max, double r_stddev, double r_median);
 
     void set_random_data(bool random_data);
+    void set_compression_ratio(float compression_ratio);
     void set_data_size_fixed(unsigned int size);
     void set_data_size_range(unsigned int size_min, unsigned int size_max);
     void set_data_size_list(config_weight_list* data_size_list);
