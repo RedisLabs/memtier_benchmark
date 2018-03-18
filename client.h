@@ -121,6 +121,8 @@ public:
     void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
     void update_wait_op(struct timeval* ts, unsigned int latency);
 
+	void update_get_latency_map(unsigned int latency);
+
     void update_verified_keys(unsigned long int keys);
     void update_errors(unsigned long int errors);
 
@@ -244,15 +246,13 @@ public:
 class crc_verify_client : public client {
 protected:
     struct verify_request : public request {
-        char *m_key;
-        unsigned int m_key_len;
+        keylist m_keylist;
 
         verify_request(request_type type,
                        unsigned int size,
                        struct timeval* sent_time,
                        unsigned int keys,
-                       const char *key,
-                       unsigned int key_len);
+                       keylist keylist);
         virtual ~verify_request(void);
     };
     unsigned long int m_verified_keys;

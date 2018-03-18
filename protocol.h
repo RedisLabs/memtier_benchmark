@@ -20,10 +20,22 @@
 #define _PROTOCOL_H
 
 #include <event2/buffer.h>
+#include <list>
+
+class key_val_node {
+public:
+    key_val_node(const char* value, unsigned int value_len, const char* key) :
+                 key(key), value(value), value_len(value_len) {};
+    const char* key;
+    const char* value;
+    unsigned int value_len;
+};
 
 class protocol_response {
 protected:
     const char *m_status;
+    std::list<key_val_node> m_values;
+    std::list<unsigned int> m_latencies;
     const char *m_value;
     unsigned int m_value_len;
     unsigned int m_total_len;
@@ -40,11 +52,17 @@ public:
      void set_error(bool error);
      bool is_error(void);
 
-     void set_value(const char *value, unsigned int value_len);
-     const char *get_value(unsigned int *value_len);
-        
+     void set_value(const char *value, unsigned int value_len , const char* key);
+     const char *get_value(unsigned int *value_len, const char* key);
+
+     void set_latency(unsigned int latency);
+     unsigned int get_latency();
+     unsigned int get_latencies_count();
+
      void set_total_len(unsigned int total_len);
      unsigned int get_total_len(void);
+
+     unsigned int get_values_count();
 
      void incr_hits(void);
      unsigned int get_hits(void);
@@ -66,9 +84,12 @@ protected:
     key_entry *m_keys;
     unsigned int m_keys_size;
     unsigned int m_keys_count;
-    
+
+    void init(unsigned int max_keys);
+
 public:
     keylist(unsigned int max_keys);
+    keylist(const keylist &source);
     ~keylist();
 
     bool add_key(const char *key, unsigned int key_len);
@@ -98,7 +119,7 @@ public:
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;
     virtual int write_command_multi_get(const keylist *keylist) = 0;
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout) = 0;
-    virtual int parse_response() = 0;
+    virtual int parse_response(unsigned int latency) = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }
 };

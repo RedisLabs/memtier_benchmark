@@ -87,22 +87,44 @@ const char* protocol_response::get_status(void)
     return m_status;
 }
 
-void protocol_response::set_value(const char* value, unsigned int value_len)
+void protocol_response::set_value(const char* value, unsigned int value_len, const char* key)
 {
-    if (m_value != NULL)
-        free((void *)m_value);
-    m_value = value;
+    key_val_node node(value, value_len, key);
+    m_values.push_back(node);
     m_value_len = value_len;
 }
 
-const char* protocol_response::get_value(unsigned int* value_len)
+const char* protocol_response::get_value(unsigned int *value_len, const char* key)
 {
     assert(value_len != NULL);
-
-    *value_len = m_value_len;
-    return m_value;
+    *value_len = m_values.front().value_len;
+    key = m_values.front().key;
+    const char* value = m_values.front().value;
+    m_values.pop_front();
+    return value;
 }
 
+unsigned int protocol_response::get_values_count()
+{
+    return m_values.size();
+}
+
+void protocol_response::set_latency(unsigned int latency)
+{
+    m_latencies.push_back(latency);
+}
+
+unsigned int protocol_response::get_latency()
+{
+    unsigned int latency = m_latencies.front();
+    m_latencies.pop_front();
+    return latency;
+}
+
+unsigned int protocol_response::get_latencies_count()
+{
+    return m_latencies.size();
+}
 void protocol_response::set_total_len(unsigned int total_len)
 {
     m_total_len = total_len;
@@ -123,16 +145,26 @@ unsigned int protocol_response::get_hits(void)
     return m_hits;
 }
 
+static bool deleteValues(key_val_node node) {
+    if (node.value != NULL)
+        free((void *)node.value);
+    if (node.key != NULL)
+        free((void *)node.key);
+        return true;
+}
+
 void protocol_response::clear(void)
 {
     if (m_status != NULL) {
         free((void *)m_status);
         m_status = NULL;
     }
-    if (m_value != NULL) {
-        free((void *)m_value);
-        m_value = NULL;
+    if (!m_values.empty()) {
+        m_values.remove_if(deleteValues);
     }
+	if (!m_latencies.empty()) {
+		m_latencies.clear();
+	}
     m_value_len = 0;
     m_total_len = 0;
     m_hits = 0;
@@ -156,7 +188,7 @@ public:
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
-    virtual int parse_response(void);
+    virtual int parse_response(unsigned int latency);
 };
 
 int redis_protocol::select_db(int db)
@@ -325,7 +357,7 @@ int redis_protocol::write_command_wait(unsigned int num_slaves, unsigned int tim
     return size;
 }
 
-int redis_protocol::parse_response(void)
+int redis_protocol::parse_response(unsigned int latency)
 {
     char *line;
 
@@ -346,6 +378,7 @@ int redis_protocol::parse_response(void)
 
                 // clear last response
                 m_last_response.clear();
+                m_last_response.set_latency(latency);
 
                 // bulk?
                 if (line[0] == '$') {
@@ -385,7 +418,7 @@ int redis_protocol::parse_response(void)
                         ret = evbuffer_drain(m_read_buf, 2);
                         assert(ret != -1);
 
-                        m_last_response.set_value(bulk_value, m_bulk_len);
+                        m_last_response.set_value(bulk_value, m_bulk_len, NULL);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, m_bulk_len + 2);
                         assert(ret != -1);
@@ -425,7 +458,7 @@ public:
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
-    virtual int parse_response(void);
+    virtual int parse_response(unsigned int latency);
 };
 
 int memcache_text_protocol::select_db(int db)
@@ -507,7 +540,7 @@ int memcache_text_protocol::write_command_wait(unsigned int num_slaves, unsigned
     assert(0);
 }
 
-int memcache_text_protocol::parse_response(void)
+int memcache_text_protocol::parse_response(unsigned int latency)
 {
     char *line;
     size_t tmplen;
@@ -545,6 +578,7 @@ int memcache_text_protocol::parse_response(void)
                         return -1;
                     }
 
+                    m_last_response.set_latency(latency);
                     m_response_state = rs_read_value;
                     continue;
                 } else if (memcmp(line, "END", 3) == 0 ||
@@ -552,12 +586,12 @@ int memcache_text_protocol::parse_response(void)
                     if (m_last_response.get_status() != line)
                         free(line);
                     m_response_state = rs_read_end;
-                    break;
                 } else {
                     m_last_response.set_error(true);
                     benchmark_debug_log("unknown response: %s\n", line);
                     return -1;
                 }
+                m_last_response.set_latency(latency);
                 break;
                 
             case rs_read_value:                
@@ -569,7 +603,7 @@ int memcache_text_protocol::parse_response(void)
                         int ret = evbuffer_remove(m_read_buf, value, m_value_len);
                         assert((unsigned int) ret == 0);
 
-                        m_last_response.set_value(value, m_value_len);
+                        m_last_response.set_value(value, m_value_len, NULL);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, m_value_len);
                         assert((unsigned int) ret == 0);
@@ -602,7 +636,7 @@ int memcache_text_protocol::parse_response(void)
 
 class memcache_binary_protocol : public abstract_protocol {
 protected:
-    enum response_state { rs_initial, rs_read_body };
+    enum response_state { rs_initial, rs_multi_initial, rs_read_body };
     response_state m_response_state;
     protocol_binary_response_no_extras m_response_hdr;
     size_t m_response_len;
@@ -617,7 +651,7 @@ public:
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
-    virtual int parse_response(void);
+    virtual int parse_response(unsigned int latency);
 };
 
 int memcache_binary_protocol::select_db(int db)
@@ -710,8 +744,46 @@ int memcache_binary_protocol::write_command_get(const char *key, int key_len, un
 
 int memcache_binary_protocol::write_command_multi_get(const keylist *keylist)
 {
-    fprintf(stderr, "error: multi get not implemented for binary memcache yet!\n");
-    assert(0);
+    int cmd_size = 0;
+    unsigned int last_key_len = 0;
+    const char *last_key;
+    // should we implement this with GETQ?
+    for (unsigned int i=0; i < keylist->get_keys_count() - 1; i++) {
+        unsigned int key_len = 0;
+        const char *key;
+
+        key =  keylist->get_key(i, &key_len);
+        protocol_binary_request_getkq req;
+
+        memset(&req, 0, sizeof(req));
+        req.message.header.request.magic = PROTOCOL_BINARY_REQ;
+        req.message.header.request.opcode = PROTOCOL_BINARY_CMD_GETKQ;
+        req.message.header.request.keylen = htons(key_len);
+        req.message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
+        req.message.header.request.bodylen = htonl(key_len);
+        req.message.header.request.extlen = 0;
+
+        evbuffer_add(m_write_buf, &req, sizeof(req));
+        evbuffer_add(m_write_buf, key, key_len);
+
+        cmd_size += sizeof(req) + key_len;
+    }
+
+    last_key = keylist->get_key(keylist->get_keys_count() - 1, &last_key_len);
+    protocol_binary_request_getk req;
+
+    memset(&req, 0, sizeof(req));
+    req.message.header.request.magic = PROTOCOL_BINARY_REQ;
+    req.message.header.request.opcode = PROTOCOL_BINARY_CMD_GETK;
+    req.message.header.request.keylen = htons(last_key_len);
+    req.message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
+    req.message.header.request.bodylen = htonl(last_key_len);
+    req.message.header.request.extlen = 0;
+
+    evbuffer_add(m_write_buf, &req, sizeof(req));
+    evbuffer_add(m_write_buf, last_key, last_key_len);
+
+    return sizeof(req) + last_key_len + cmd_size;
 }
 
 const char* memcache_binary_protocol::status_text(void)
@@ -759,7 +831,7 @@ int memcache_binary_protocol::write_command_wait(unsigned int num_slaves, unsign
     assert(0);
 }
 
-int memcache_binary_protocol::parse_response(void)
+int memcache_binary_protocol::parse_response(unsigned int latency)
 {
     while (true) {
         int ret;
@@ -767,6 +839,11 @@ int memcache_binary_protocol::parse_response(void)
         
         switch (m_response_state) {
             case rs_initial:
+                m_last_response.clear();
+                m_response_state = rs_multi_initial;
+                m_response_len = 0;
+
+            case rs_multi_initial:
                 if (evbuffer_get_length(m_read_buf) < sizeof(m_response_hdr))
                     return 0;               // no header yet?
 
@@ -778,8 +855,7 @@ int memcache_binary_protocol::parse_response(void)
                     return -1;
                 }
 
-                m_response_len = sizeof(m_response_hdr);
-                m_last_response.clear();
+                m_response_len += sizeof(m_response_hdr);
                 m_last_response.set_total_len(m_response_len);
                 if (status_text()) {
                     m_last_response.set_status(strdup(status_text()));
@@ -795,7 +871,9 @@ int memcache_binary_protocol::parse_response(void)
                     status == PROTOCOL_BINARY_RESPONSE_EBUSY) {
                     m_last_response.set_error(true);
                 }
-                
+
+                m_last_response.set_latency(latency);
+
                 if (ntohl(m_response_hdr.message.header.response.bodylen) > 0) {
                     m_response_hdr.message.header.response.bodylen = ntohl(m_response_hdr.message.header.response.bodylen);
                     m_response_hdr.message.header.response.keylen = ntohs(m_response_hdr.message.header.response.keylen);
@@ -805,23 +883,33 @@ int memcache_binary_protocol::parse_response(void)
                 }
 
                 return 1;                
-                break;
+
             case rs_read_body:
                 if (evbuffer_get_length(m_read_buf) >= m_response_hdr.message.header.response.bodylen) {
-                    // get rid of extras and key, we don't care about them
+                    // get rid of extras , we don't care about them
                     ret = evbuffer_drain(m_read_buf, 
-                        m_response_hdr.message.header.response.extlen +
-                        m_response_hdr.message.header.response.keylen);
+                        m_response_hdr.message.header.response.extlen);
                     assert((unsigned int) ret == 0);
 
                     int actual_body_len = m_response_hdr.message.header.response.bodylen -
-                        m_response_hdr.message.header.response.extlen -
-                        m_response_hdr.message.header.response.keylen;
+                        m_response_hdr.message.header.response.extlen;
+
                     if (m_keep_value) {
+                        uint16_t keylen = m_response_hdr.message.header.response.keylen;
+                        uint8_t opcode = m_response_hdr.message.header.response.opcode;
+                        char* key = NULL;
+                        actual_body_len = actual_body_len - keylen;
+                        if (opcode == PROTOCOL_BINARY_CMD_GETK || opcode == PROTOCOL_BINARY_CMD_GETKQ) {
+                            key = (char *) malloc(keylen);
+                            assert(key != NULL);
+                            ret = evbuffer_remove(m_read_buf, key, keylen);
+                        } else {
+                            evbuffer_drain(m_read_buf, keylen);
+                        }
                         char *value = (char *) malloc(actual_body_len);
                         assert(value != NULL);
                         ret = evbuffer_remove(m_read_buf, value, actual_body_len);
-                        m_last_response.set_value(value, actual_body_len);
+                        m_last_response.set_value(value, actual_body_len, key);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, actual_body_len);
                         assert((unsigned int) ret == 0);
@@ -833,12 +921,15 @@ int memcache_binary_protocol::parse_response(void)
                     m_response_len += m_response_hdr.message.header.response.bodylen;
                     m_last_response.set_total_len(m_response_len);
                     m_response_state = rs_initial;
-
+                    if (m_response_hdr.message.header.response.opcode == PROTOCOL_BINARY_CMD_GETKQ) {
+                        m_response_state = rs_multi_initial;
+                        continue;
+                    }
+                    m_response_state = rs_initial;
                     return 1;
-                } else {
-                    return 0;
                 }
-                break;
+                return 0;
+
             default:
                 benchmark_debug_log("unknown response state.\n");
                 return -1;
@@ -872,19 +963,21 @@ keylist::keylist(unsigned int max_keys) :
     m_buffer(NULL), m_buffer_ptr(NULL), m_buffer_size(0),
     m_keys(NULL), m_keys_size(0), m_keys_count(0)
 {
-    m_keys_size = max_keys;
-    m_keys = (key_entry *) malloc(m_keys_size * sizeof(key_entry));
-    assert(m_keys != NULL);
-    memset(m_keys, 0, m_keys_size * sizeof(key_entry));
+    init(max_keys);
+}
 
-    /* allocate buffer for actual keys */
-    m_buffer_size = 256 * m_keys_size;
-    m_buffer = (char *) malloc(m_buffer_size);
-    assert(m_buffer != NULL);
-    memset(m_buffer, 0, m_buffer_size);
-
-    m_buffer_ptr = m_buffer;    
-}        
+keylist::keylist(const keylist &source) :
+    m_buffer(NULL), m_buffer_ptr(NULL), m_buffer_size(0),
+    m_keys(NULL), m_keys_size(0), m_keys_count(0)
+{
+    init(source.get_keys_count());
+    for (unsigned int i = 0; i<source.get_keys_count(); i++) {
+        unsigned int key_length = 0;
+        const char* key;
+        key = source.get_key(i, &key_length);
+        add_key(key, key_length);
+    }
+}
 
 keylist::~keylist()
 {
@@ -896,6 +989,22 @@ keylist::~keylist()
         free(m_keys);
         m_keys = NULL;
     }
+}
+
+void keylist::init(unsigned int max_keys)
+{
+    m_keys_size = max_keys;
+    m_keys = (key_entry *) malloc(m_keys_size * sizeof(key_entry));
+    assert(m_keys != NULL);
+    memset(m_keys, 0, m_keys_size * sizeof(key_entry));
+
+    /* allocate buffer for actual keys */
+    m_buffer_size = 256 * m_keys_size;
+    m_buffer = (char *) malloc(m_buffer_size);
+    assert(m_buffer != NULL);
+    memset(m_buffer, 0, m_buffer_size);
+
+    m_buffer_ptr = m_buffer;
 }
 
 bool keylist::add_key(const char *key, unsigned int key_len)
