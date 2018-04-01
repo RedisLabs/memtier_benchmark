@@ -134,13 +134,16 @@ unsigned long long gaussian_noise::gaussian_distribution_range(double stddev, do
     return val;
 }
 
-uint32_t crc32::calc_crc32(const void *buffer, unsigned long length)
+uint32_t crc32::calc_crc32(const void *buffer, unsigned long length, const void *key, unsigned int key_length)
 {
     const unsigned char *cp = (const unsigned char *) buffer;
+    const unsigned char *kp = (const unsigned char *) key;
     uint32_t crc = 0;
 
     while (length--)
         crc = (crc << 8) ^ crctab[((crc >> 24) ^ *(cp++)) & 0xFF];
+    while (key_length--)
+        crc = (crc << 8) ^ crctab[((crc >> 24) ^ *(kp++)) & 0xFF];
 
     return crc;
 }
@@ -758,7 +761,8 @@ void crc_object_generator::alloc_value_buffer(const char* copy_from)
 data_object* crc_object_generator::get_object(int iter)
 {
     // compute key
-    get_key(iter, NULL);
+    unsigned int key_len;
+    const char* key = get_key(iter, &key_len);
 
     // compute size
     unsigned int new_size = 0;
@@ -782,7 +786,7 @@ data_object* crc_object_generator::get_object(int iter)
     }
 
     //calc and set crc
-    uint32_t crc = crc32::calc_crc32(m_value_buffer, m_actual_value_size);
+    uint32_t crc = crc32::calc_crc32(m_value_buffer, m_actual_value_size, key, key_len);
     memcpy(m_crc_buffer, &crc, m_crc_size);
 
     // set object

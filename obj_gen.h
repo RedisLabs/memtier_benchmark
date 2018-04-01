@@ -74,7 +74,7 @@ public:
 class crc32 {
 public:
     static const unsigned int size = 4;
-    static uint32_t calc_crc32(const void *buffer, unsigned long length);
+    static uint32_t calc_crc32(const void *buffer, unsigned long length, const void *key, unsigned int key_length);
 private:
     static const unsigned int crctab[256];
 };
