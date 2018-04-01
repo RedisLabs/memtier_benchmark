@@ -852,8 +852,9 @@ void verify_client::create_request(struct timeval timestamp)
 void verify_client::handle_response(struct timeval timestamp, request *request, protocol_response *response)
 {
     unsigned int rvalue_len;
+    unsigned int key_len;
     const char* key = NULL;
-    const char *rvalue = response->get_value(&rvalue_len, key);
+    const char *rvalue = response->get_value(&rvalue_len, &key, &key_len);
     verify_request *vr = static_cast<verify_request *>(request);
 
     assert(vr->m_type == rt_get);
@@ -1004,9 +1005,11 @@ void crc_verify_client::handle_response(struct timeval timestamp, request *reque
         unsigned int values_count = response->get_values_count();
         for (unsigned int i = 0; i < values_count; i++) {
             unsigned int rvalue_len;
-            const char* key = NULL;
-            const char *rvalue = response->get_value(&rvalue_len, key);
-            uint32_t crc = crc32::calc_crc32(rvalue, rvalue_len - crc32::size);
+            unsigned int key_len;
+            bool get_key_req = true;
+            const char *key = NULL;
+            const char *rvalue = response->get_value(&rvalue_len, &key, &key_len);
+            uint32_t crc = crc32::calc_crc32(rvalue, rvalue_len - crc32::size, key, key_len);
             const char *crc_buffer = rvalue + dynamic_cast<crc_object_generator *>(m_obj_gen)->get_actual_value_size();
             if (memcmp(crc_buffer, &crc, crc32::size) == 0) {
                 benchmark_debug_log("key verified successfuly.\n");

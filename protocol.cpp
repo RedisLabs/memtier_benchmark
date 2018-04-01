@@ -87,18 +87,19 @@ const char* protocol_response::get_status(void)
     return m_status;
 }
 
-void protocol_response::set_value(const char* value, unsigned int value_len, const char* key)
+void protocol_response::set_value(const char* value, unsigned int value_len, const char* key, unsigned int key_len)
 {
-    key_val_node node(value, value_len, key);
+    key_val_node node(value, value_len, key, key_len);
     m_values.push_back(node);
     m_value_len = value_len;
 }
 
-const char* protocol_response::get_value(unsigned int *value_len, const char* key)
+const char* protocol_response::get_value(unsigned int *value_len, const char** key, unsigned int *key_len)
 {
     assert(value_len != NULL);
     *value_len = m_values.front().value_len;
-    key = m_values.front().key;
+    *key_len = m_values.front().key_len;
+    *key = m_values.front().key;
     const char* value = m_values.front().value;
     m_values.pop_front();
     return value;
@@ -418,7 +419,7 @@ int redis_protocol::parse_response(unsigned int latency)
                         ret = evbuffer_drain(m_read_buf, 2);
                         assert(ret != -1);
 
-                        m_last_response.set_value(bulk_value, m_bulk_len, NULL);
+                        m_last_response.set_value(bulk_value, m_bulk_len, NULL, 0);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, m_bulk_len + 2);
                         assert(ret != -1);
@@ -603,7 +604,7 @@ int memcache_text_protocol::parse_response(unsigned int latency)
                         int ret = evbuffer_remove(m_read_buf, value, m_value_len);
                         assert((unsigned int) ret == 0);
 
-                        m_last_response.set_value(value, m_value_len, NULL);
+                        m_last_response.set_value(value, m_value_len, NULL, 0);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, m_value_len);
                         assert((unsigned int) ret == 0);
@@ -909,7 +910,7 @@ int memcache_binary_protocol::parse_response(unsigned int latency)
                         char *value = (char *) malloc(actual_body_len);
                         assert(value != NULL);
                         ret = evbuffer_remove(m_read_buf, value, actual_body_len);
-                        m_last_response.set_value(value, actual_body_len, key);
+                        m_last_response.set_value(value, actual_body_len, key, keylen);
                     } else {
                         int ret = evbuffer_drain(m_read_buf, actual_body_len);
                         assert((unsigned int) ret == 0);

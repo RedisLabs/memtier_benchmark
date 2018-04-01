@@ -24,9 +24,10 @@
 
 class key_val_node {
 public:
-    key_val_node(const char* value, unsigned int value_len, const char* key) :
-                 key(key), value(value), value_len(value_len) {};
+    key_val_node(const char* value, unsigned int value_len, const char* key, unsigned int key_len) :
+                 key(key), key_len(key_len), value(value), value_len(value_len) {};
     const char* key;
+    unsigned int key_len;
     const char* value;
     unsigned int value_len;
 };
@@ -52,8 +53,8 @@ public:
      void set_error(bool error);
      bool is_error(void);
 
-     void set_value(const char *value, unsigned int value_len , const char* key);
-     const char *get_value(unsigned int *value_len, const char* key);
+     void set_value(const char *value, unsigned int value_len , const char* key, unsigned int key_len);
+     const char *get_value(unsigned int *value_len, const char** key, unsigned int *key_len);
 
      void set_latency(unsigned int latency);
      unsigned int get_latency();
