@@ -1009,6 +1009,10 @@ void crc_verify_client::handle_response(struct timeval timestamp, request *reque
             bool get_key_req = true;
             const char *key = NULL;
             const char *rvalue = response->get_value(&rvalue_len, &key, &key_len);
+            if (values_count == 1 && key == NULL) {
+                key = vr->m_keylist.get_key(0, &key_len);
+                get_key_req = false;
+            }
             uint32_t crc = crc32::calc_crc32(rvalue, rvalue_len - crc32::size, key, key_len);
             const char *crc_buffer = rvalue + dynamic_cast<crc_object_generator *>(m_obj_gen)->get_actual_value_size();
             if (memcmp(crc_buffer, &crc, crc32::size) == 0) {
@@ -1019,7 +1023,7 @@ void crc_verify_client::handle_response(struct timeval timestamp, request *reque
                                     crc, *(uint32_t *) crc_buffer);
                 m_errors++;
             }
-            if (key != NULL)
+            if (key != NULL && get_key_req)
                 free((void*)key);
             if (rvalue != NULL)
                 free((void*)rvalue);
