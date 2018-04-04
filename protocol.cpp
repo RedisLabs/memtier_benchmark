@@ -187,6 +187,7 @@ public:
     virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
+    virtual int write_command_get_key(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(unsigned int latency);
@@ -325,6 +326,12 @@ int redis_protocol::write_command_get(const char *key, int key_len, unsigned int
     return size;
 }
 
+int redis_protocol::write_command_get_key(const char *key, int key_len, unsigned int offset)
+{
+    fprintf(stderr, "error: get key is not supported for redis!\n");
+	assert(0);
+}
+
 /*
  * Utility function to get the number of digits in a number
  */
@@ -457,6 +464,7 @@ public:
     virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
+    virtual int write_command_get_key(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(unsigned int latency);
@@ -498,6 +506,12 @@ int memcache_text_protocol::write_command_get(const char *key, int key_len, unsi
     size = evbuffer_add_printf(m_write_buf,
         "get %.*s\r\n", key_len, key);
     return size;
+}
+
+int memcache_text_protocol::write_command_get_key(const char *key, int key_len, unsigned int offset)
+{
+	// in memecache text protocol get also returns key
+    return this->write_command_get(key, key_len, offset);
 }
 
 int memcache_text_protocol::write_command_multi_get(const keylist *keylist)
@@ -650,6 +664,7 @@ public:
     virtual int authenticate(const char *credentials);
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
+    virtual int write_command_get_key(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(unsigned int latency);
@@ -732,6 +747,27 @@ int memcache_binary_protocol::write_command_get(const char *key, int key_len, un
     memset(&req, 0, sizeof(req));
     req.message.header.request.magic = PROTOCOL_BINARY_REQ;
     req.message.header.request.opcode = PROTOCOL_BINARY_CMD_GET;
+    req.message.header.request.keylen = htons(key_len);
+    req.message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
+    req.message.header.request.bodylen = htonl(key_len);
+    req.message.header.request.extlen = 0;
+
+    evbuffer_add(m_write_buf, &req, sizeof(req));
+    evbuffer_add(m_write_buf, key, key_len);
+
+    return sizeof(req) + key_len;
+}
+
+int memcache_binary_protocol::write_command_get_key(const char *key, int key_len, unsigned int offset)
+{
+    assert(key != NULL);
+    assert(key_len > 0);
+
+    protocol_binary_request_get req;
+
+    memset(&req, 0, sizeof(req));
+    req.message.header.request.magic = PROTOCOL_BINARY_REQ;
+    req.message.header.request.opcode = PROTOCOL_BINARY_CMD_GETK;
     req.message.header.request.keylen = htons(key_len);
     req.message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
     req.message.header.request.bodylen = htonl(key_len);
