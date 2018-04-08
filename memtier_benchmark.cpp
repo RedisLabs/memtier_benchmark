@@ -105,6 +105,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "data_import = %s\n"
         "data_verify = %s\n"
         "verify_only = %s\n"
+        "verify_set_only = %s\n"
         "crc_verify = %s\n"
         "generate_keys = %s\n"
         "key_prefix = %s\n"
@@ -149,6 +150,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->data_import,
         cfg->data_verify ? "yes" : "no",
         cfg->verify_only ? "yes" : "no",
+        cfg->verify_set_only ? "yes" : "no",
         cfg->crc_verify ? "yes" : "no",
         cfg->generate_keys ? "yes" : "no",
         cfg->key_prefix,
@@ -201,6 +203,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("data_import"       ,"\"%s\"",       cfg->data_import);
     jsonhandler->write_obj("data_verify"       ,"\"%s\"",       cfg->data_verify ? "true" : "false");
     jsonhandler->write_obj("verify_only"       ,"\"%s\"",       cfg->verify_only ? "true" : "false");
+    jsonhandler->write_obj("verify_set_only"   ,"\"%s\"",       cfg->verify_set_only ? "true" : "false");
     jsonhandler->write_obj("crc_verify"        ,"\"%s\"",       cfg->crc_verify ? "true" : "false");
     jsonhandler->write_obj("generate_keys"     ,"\"%s\"",     	cfg->generate_keys ? "true" : "false");
     jsonhandler->write_obj("key_prefix"        ,"\"%s\"",       cfg->key_prefix);
@@ -294,6 +297,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_data_import,
         o_data_verify,
         o_verify_only,
+        o_verify_set_only,
         o_key_prefix,
         o_key_minimum,
         o_key_maximum,
@@ -351,6 +355,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "data-import",                1, 0, o_data_import },
         { "data-verify",                0, 0, o_data_verify },
         { "verify-only",                0, 0, o_verify_only },
+        { "verify-set-only",            0, 0, o_verify_set_only },
         { "crc-verify",                 0, 0, o_crc_verify },
         { "generate-keys",              0, 0, o_generate_keys },
         { "key-prefix",                 1, 0, o_key_prefix },
@@ -590,6 +595,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->verify_only = 1;
                     cfg->data_verify = 1;   // Implied
                     break;
+                case o_verify_set_only:
+                    cfg->verify_set_only = 1;
+                    cfg->data_verify = 1;
+                    if (cfg->verify_only) {
+                        fprintf(stderr, "error: --verify_only and --verify_set_only cannot be set in parallel\n");
+                    }
                 case o_crc_verify:
                     cfg->crc_verify = true;
                     if (cfg->ratio.is_defined()) {
@@ -703,8 +714,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         }
     }
 
-    if (cfg->verify_only && cfg->crc_verify)
-	    cfg->data_verify = 0;
+    if ((cfg->verify_only || cfg->verify_set_only) && cfg->crc_verify)
+        cfg->data_verify = 0;
 
     if (cfg->crc_verify && !cfg->verify_only && cfg->ratio.is_defined()) {
 	    fprintf(stderr, "error: --ratio and --crc-verify are mutually exclusive.\n");
@@ -770,6 +781,7 @@ void usage() {
             "Imported Data Options:\n"
             "      --data-import=FILE         Read object data from file\n"
             "      --data-verify              Enable data verification when test is complete\n"
+            "      --verify-set-only		  Only set the volumes to verify\n"
             "      --verify-only              Only perform --data-verify, without any other test\n"
             "      --crc-verify               Perform test using crc verification\n"
             "      --generate-keys            Generate keys for imported objects\n"
@@ -1337,7 +1349,7 @@ int main(int argc, char *argv[])
     }
 
     // If needed, crc data verification is done now...
-    if (cfg.crc_verify) {
+    if (cfg.crc_verify && !cfg.verify_set_only) {
         fprintf(outfile, "\n\nPerforming CRC data verification...\n\n");
 
         std::vector<run_stats> all_stats;
