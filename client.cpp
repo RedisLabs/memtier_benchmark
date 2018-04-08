@@ -1006,7 +1006,6 @@ void crc_verify_client::handle_response(struct timeval timestamp, request *reque
         for (unsigned int i = 0; i < values_count; i++) {
             unsigned int rvalue_len;
             unsigned int key_len;
-            bool get_key_req = true;
             const char *key = NULL;
             const char *rvalue = response->get_value(&rvalue_len, &key, &key_len);
             uint32_t crc = crc32::calc_crc32(rvalue, rvalue_len - crc32::size, key, key_len);
