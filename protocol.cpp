@@ -900,6 +900,7 @@ int memcache_binary_protocol::parse_response(unsigned int latency)
 
                 status = ntohs(m_response_hdr.message.header.response.status);
                 if (status == PROTOCOL_BINARY_RESPONSE_EINVAL ||
+                    status == PROTOCOL_BINARY_RESPONSE_KEY_ENOENT ||
                     status == PROTOCOL_BINARY_RESPONSE_AUTH_ERROR ||
                     status == PROTOCOL_BINARY_RESPONSE_AUTH_CONTINUE ||
                     status == PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED ||
