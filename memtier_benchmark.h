@@ -64,7 +64,7 @@ struct benchmark_config {
     struct config_range expiry_range;
     const char *data_import;
     int data_verify;
-    int verify_only;
+    int verify_get_only;
     int verify_set_only;
     bool crc_verify;
     int generate_keys;

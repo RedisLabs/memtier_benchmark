@@ -104,7 +104,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "expiry_range = %u-%u\n"
         "data_import = %s\n"
         "data_verify = %s\n"
-        "verify_only = %s\n"
+        "verify_get_only = %s\n"
         "verify_set_only = %s\n"
         "crc_verify = %s\n"
         "generate_keys = %s\n"
@@ -149,7 +149,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->expiry_range.min, cfg->expiry_range.max,
         cfg->data_import,
         cfg->data_verify ? "yes" : "no",
-        cfg->verify_only ? "yes" : "no",
+        cfg->verify_get_only ? "yes" : "no",
         cfg->verify_set_only ? "yes" : "no",
         cfg->crc_verify ? "yes" : "no",
         cfg->generate_keys ? "yes" : "no",
@@ -202,7 +202,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("expiry_range"      ,"\"%u:%u\"",   	cfg->expiry_range.min, cfg->expiry_range.max);
     jsonhandler->write_obj("data_import"       ,"\"%s\"",       cfg->data_import);
     jsonhandler->write_obj("data_verify"       ,"\"%s\"",       cfg->data_verify ? "true" : "false");
-    jsonhandler->write_obj("verify_only"       ,"\"%s\"",       cfg->verify_only ? "true" : "false");
+    jsonhandler->write_obj("verify_get_only"   ,"\"%s\"",       cfg->verify_get_only ? "true" : "false");
     jsonhandler->write_obj("verify_set_only"   ,"\"%s\"",       cfg->verify_set_only ? "true" : "false");
     jsonhandler->write_obj("crc_verify"        ,"\"%s\"",       cfg->crc_verify ? "true" : "false");
     jsonhandler->write_obj("generate_keys"     ,"\"%s\"",     	cfg->generate_keys ? "true" : "false");
@@ -296,7 +296,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_expiry_range,
         o_data_import,
         o_data_verify,
-        o_verify_only,
+        o_verify_get_only,
         o_verify_set_only,
         o_key_prefix,
         o_key_minimum,
@@ -354,7 +354,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "expiry-range",               1, 0, o_expiry_range },
         { "data-import",                1, 0, o_data_import },
         { "data-verify",                0, 0, o_data_verify },
-        { "verify-only",                0, 0, o_verify_only },
+        { "verify-get-only",            0, 0, o_verify_get_only },
         { "verify-set-only",            0, 0, o_verify_set_only },
         { "crc-verify",                 0, 0, o_crc_verify },
         { "generate-keys",              0, 0, o_generate_keys },
@@ -591,15 +591,15 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_data_verify:
                     cfg->data_verify = 1;
                     break;
-                case o_verify_only:
-                    cfg->verify_only = 1;
+                case o_verify_get_only:
+                    cfg->verify_get_only = 1;
                     cfg->data_verify = 1;   // Implied
                     break;
                 case o_verify_set_only:
                     cfg->verify_set_only = 1;
                     cfg->data_verify = 1;
-                    if (cfg->verify_only) {
-                        fprintf(stderr, "error: --verify_only and --verify_set_only cannot be set in parallel\n");
+                    if (cfg->verify_get_only) {
+                        fprintf(stderr, "error: --verify_get_only and --verify_set_only cannot be set in parallel\n");
                     }
                 case o_crc_verify:
                     cfg->crc_verify = true;
@@ -714,12 +714,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         }
     }
 
-    if ((cfg->verify_only || cfg->verify_set_only) && cfg->crc_verify)
+    if ((cfg->verify_get_only || cfg->verify_set_only) && cfg->crc_verify)
         cfg->data_verify = 0;
 
-    if (cfg->crc_verify && !cfg->verify_only && cfg->ratio.is_defined()) {
-	    fprintf(stderr, "error: --ratio and --crc-verify are mutually exclusive.\n");
-	    return -1;
+    if (cfg->crc_verify && !cfg->verify_get_only && cfg->ratio.is_defined()) {
+        fprintf(stderr, "error: --ratio and --crc-verify are mutually exclusive.\n");
+        return -1;
     }
 
     return 0;
@@ -782,7 +782,7 @@ void usage() {
             "      --data-import=FILE         Read object data from file\n"
             "      --data-verify              Enable data verification when test is complete\n"
             "      --verify-set-only		  Only set the volumes to verify\n"
-            "      --verify-only              Only perform --data-verify, without any other test\n"
+            "      --verify-get-only          Only perform --data-verify, without any other test\n"
             "      --crc-verify               Perform test using crc verification\n"
             "      --generate-keys            Generate keys for imported objects\n"
             "      --no-expiry                Ignore expiry information in imported data\n"
@@ -1256,7 +1256,7 @@ int main(int argc, char *argv[])
         outfile = stdout;
     }
 
-    if (!cfg.verify_only) {
+    if (!cfg.verify_get_only) {
         std::vector<run_stats> all_stats;
         for (unsigned int run_id = 1; run_id <= cfg.run_count; run_id++) {
             if (run_id > 1)
