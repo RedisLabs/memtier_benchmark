@@ -1,8 +1,21 @@
-* Version 1.2.9 
+* Version 1.2.12
+    * Fix 64bit keyspace support
+
+* Version 1.2.11
+    * Basic support for redis cluster API.
+    * Dockerfile support for building & running memtier benchmark in a container
+
+* Version 1.2.10
+    * Fix memory corruption when using randomized values
+
+* Version 1.2.9
     * Add JSON output support: add thin json handling class that could be overridden for extensive uses
     * Add --json-out-file: Name of JSON output file, if not set, will not print to json
     * Refactor some code duplications in the prints sections
     * Change license to 2017
+    * 64bits keyspace
+    * Fix binary protocol pipelining: always use the actual body length
+    * Use different values for each key when random data is set
 
 * Version 1.2.8
     * Optimization of gettimeofday() and latency calculations
