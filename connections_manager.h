@@ -21,9 +21,9 @@
 
 class connections_manager {
 public:
-    virtual unsigned int get_reqs_processed(void) = 0;
+    virtual unsigned long long get_reqs_processed(void) = 0;
     virtual void inc_reqs_processed(void) = 0;
-    virtual unsigned int get_reqs_generated(void) = 0;
+    virtual unsigned long long get_reqs_generated(void) = 0;
     virtual void inc_reqs_generated(void) = 0;
     virtual bool finished(void) = 0;
 

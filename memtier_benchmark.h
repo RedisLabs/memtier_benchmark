@@ -46,7 +46,7 @@ struct benchmark_config {
     int distinct_client_seed;
     int randomize;
     int next_client_idx;
-    unsigned int requests;
+    unsigned long long requests;
     unsigned int clients;
     unsigned int threads;
     unsigned int test_time;

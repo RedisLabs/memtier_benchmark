@@ -152,13 +152,13 @@ protected:
     object_generator* m_obj_gen;
     run_stats m_stats;
 
-    unsigned int m_reqs_processed;      // requests processed (responses received)
-    unsigned int m_reqs_generated;      // requests generated (wait for responses)
+    unsigned long long m_reqs_processed;      // requests processed (responses received)
+    unsigned long long m_reqs_generated;      // requests generated (wait for responses)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
     unsigned int m_get_ratio_count;     // number of gets counter (overlaps on ratio)
 
-    unsigned long m_tot_set_ops;        // Total number of SET ops
-    unsigned long m_tot_wait_ops;       // Total number of WAIT ops
+    unsigned long long m_tot_set_ops;        // Total number of SET ops
+    unsigned long long m_tot_wait_ops;       // Total number of WAIT ops
 
     keylist *m_keylist;                 // used to construct multi commands
 
@@ -174,7 +174,7 @@ public:
     run_stats* get_stats(void) { return &m_stats; }
 
     // client manager api's
-    unsigned int get_reqs_processed() {
+    unsigned long long get_reqs_processed() {
         return m_reqs_processed;
     }
 
@@ -182,7 +182,7 @@ public:
         m_reqs_processed++;
     }
 
-    unsigned int get_reqs_generated() {
+    unsigned long long get_reqs_generated() {
         return m_reqs_generated;
     }
 
