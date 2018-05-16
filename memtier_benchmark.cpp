@@ -84,7 +84,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "client_stats = %s\n"
         "run_count = %u\n"
         "debug = %u\n"
-        "requests = %u\n"
+        "requests = %llu\n"
         "clients = %u\n"
         "threads = %u\n"
         "test_time = %u\n"
@@ -172,7 +172,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("client_stats"      ,"\"%s\"",      	cfg->client_stats);
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
     jsonhandler->write_obj("debug"             ,"%u",          	cfg->debug);
-    jsonhandler->write_obj("requests"          ,"%u",          	cfg->requests);
+    jsonhandler->write_obj("requests"          ,"%llu",        	cfg->requests);
     jsonhandler->write_obj("clients"           ,"%u",          	cfg->clients);
     jsonhandler->write_obj("threads"           ,"%u",          	cfg->threads);
     jsonhandler->write_obj("test_time"         ,"%u",          	cfg->test_time);
@@ -237,11 +237,11 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->key_pattern = "R:R";
     if (!cfg->data_size_pattern)
         cfg->data_size_pattern = "R";
-    if (cfg->requests == (unsigned int)-1) {
+    if (cfg->requests == (unsigned long long)-1) {
         cfg->requests = cfg->key_maximum - cfg->key_minimum;
         if (strcmp(cfg->key_pattern, "P:P")==0)
             cfg->requests = cfg->requests / (cfg->clients * cfg->threads) + 1;
-        printf("setting requests to %d\n", cfg->requests);
+        printf("setting requests to %llu\n", cfg->requests);
     }
     if (!cfg->requests && !cfg->test_time)
         cfg->requests = 10000;
@@ -443,7 +443,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     if (strcmp(optarg, "allkeys")==0)
                         cfg->requests = -1;
                     else {
-                        cfg->requests = (unsigned int) strtoul(optarg, &endptr, 10);
+                        cfg->requests = (unsigned long long) strtoull(optarg, &endptr, 10);
                         if (!cfg->requests || !endptr || *endptr != '\0') {
                             fprintf(stderr, "error: requests must be greater than zero.\n");
                             return -1;
@@ -1165,16 +1165,16 @@ int main(int argc, char *argv[])
         fprintf(outfile,
                "%-9u Threads\n"
                "%-9u Connections per thread\n"
-               "%-9u %s\n",
+               "%-9llu %s\n",
                cfg.threads, cfg.clients, 
-               cfg.requests > 0 ? cfg.requests : cfg.test_time,
+               (unsigned long long)(cfg.requests > 0 ? cfg.requests : cfg.test_time),
                cfg.requests > 0 ? "Requests per thread"  : "Seconds");
         if (jsonhandler != NULL){
             jsonhandler->open_nesting("run information");
             jsonhandler->write_obj("Threads","%u",cfg.threads);
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
-            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per thread"  : "Seconds","%u",
-                                   cfg.requests > 0 ? cfg.requests : cfg.test_time);
+            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per thread"  : "Seconds","%llu",
+                                   cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
             jsonhandler->close_nesting();
         }
 

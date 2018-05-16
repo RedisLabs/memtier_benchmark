@@ -50,31 +50,39 @@ void random_generator::set_seed(int seed)
     assert(ret == 0);
 #elif (defined HAVE_DRAND48)
     memset(&m_data_blob, 0, sizeof(m_data_blob));
-    memcpy(&m_data_blob, &seed, MIN(sizeof(seed), sizeof(m_data_blob)));
+    size_t seed_size = sizeof(seed); //get MIN size between seed and m_data_blob
+    if (seed_size > sizeof(m_data_blob))
+        seed_size = sizeof(m_data_blob);
+    memcpy(&m_data_blob, &seed, seed_size);
 #endif
 }
 
 unsigned long long random_generator::get_random()
 {
-    int rn;
     unsigned long long llrn;
 #ifdef HAVE_RANDOM_R
-    int ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
+    int32_t rn;
+    // max is RAND_MAX, which is usually 2^31-1 (although can be as low as 2^16-1, which we ignore now)
+    // this is fine, especially considering that random_r is a nonstandard glibc extension
+    // it returns a positive int32_t, so either way the MSB is off
+    int ret = random_r(&m_data_blob, &rn);
     assert(ret == 0);
-
     llrn = rn;
-    llrn = llrn << 32; // move to upper 32bits
+    llrn = llrn << 31;
 
-    ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
+    ret = random_r(&m_data_blob, &rn);
     assert(ret == 0);
-    llrn |= rn; // set lower 32bits
+    llrn |= rn;
 #elif (defined HAVE_DRAND48)
-    rn = nrand48(m_data_blob); // max is 1<<31
+    long rn;
+    // jrand48's range is -2^31..+2^31 (i.e. all 32 bits)
+    rn = jrand48(m_data_blob);
     llrn = rn;
-    llrn = llrn << 32; // move to upper 32bits
+    llrn = llrn << 32;
 
-    rn = nrand48(m_data_blob); // max is 1<<31
-    llrn |= rn; // set lower 32bits
+    rn = jrand48(m_data_blob);
+    llrn |= rn & 0xffffffff; // reset the sign extension bits of negative numbers
+    llrn &= 0x8000000000000000; // avoid any trouble from sign mismatch and negative numbers
 #else
     #error no random function
 #endif
@@ -84,12 +92,9 @@ unsigned long long random_generator::get_random()
 unsigned long long random_generator::get_random_max() const
 {
 #ifdef HAVE_RANDOM_R
-    unsigned long long rand_max = RAND_MAX;
-    return (rand_max << 32) | RAND_MAX;
+    return 0x3fffffffffffffff;//62 bits
 #elif (defined HAVE_DRAND48)
-    return ((1<<31) << 32) | (1<<31);
-#else
-    #error no random function
+    return 0x7fffffffffffffff;//63 bits
 #endif
 }
 
