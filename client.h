@@ -26,18 +26,16 @@
 #include <sys/un.h>
 #include <vector>
 #include <queue>
-#include <map>
-#include <iterator>
 #include <event2/event.h>
 #include <event2/buffer.h>
 
 #include "protocol.h"
-#include "JSON_handler.h"
 #include "config_types.h"
 #include "shard_connection.h"
 #include "connections_manager.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+#include "run_stats.h"
 
 #define MAIN_CONNECTION m_connections[0]
 
@@ -47,96 +45,6 @@ struct benchmark_config;
 
 class object_generator;
 class data_object;
-
-typedef std::map<float, int> latency_map;
-typedef std::map<float, int>::iterator latency_map_itr;
-typedef std::map<float, int>::const_iterator latency_map_itr_const;
-
-class run_stats {
-protected:
-    struct one_second_stats {
-        unsigned int m_second;        // from start of test
-        unsigned long int m_bytes_get;
-        unsigned long int m_bytes_set;
-        unsigned long int m_ops_get;
-        unsigned long int m_ops_set;
-        unsigned long int m_ops_wait;
-
-        unsigned int m_get_hits;
-        unsigned int m_get_misses;
-
-        unsigned long long int m_total_get_latency;
-        unsigned long long int m_total_set_latency;
-        unsigned long long int m_total_wait_latency;
-
-        one_second_stats(unsigned int second);
-        void reset(unsigned int second);
-        void merge(const one_second_stats& other);
-    };
-
-    friend bool one_second_stats_predicate(const run_stats::one_second_stats& a, const run_stats::one_second_stats& b);    
-
-    struct timeval m_start_time;
-    struct timeval m_end_time;
-
-    struct totals {
-        double m_ops_sec_set;
-        double m_ops_sec_get;
-        double m_ops_sec_wait;
-        double m_ops_sec;
-
-        double m_hits_sec;
-        double m_misses_sec;
-
-        double m_bytes_sec_set;
-        double m_bytes_sec_get;
-        double m_bytes_sec;
-        
-        double m_latency_set;
-        double m_latency_get;
-        double m_latency_wait;
-        double m_latency;
-
-        unsigned long int m_bytes;
-        unsigned long int m_ops_set;
-        unsigned long int m_ops_get;
-        unsigned long int m_ops_wait;
-        unsigned long int m_ops;
-
-        totals();
-        void add(const totals& other);
-    } m_totals;
-
-    std::vector<one_second_stats> m_stats;
-    one_second_stats m_cur_stats;
-
-    latency_map m_get_latency_map;
-    latency_map m_set_latency_map;
-    latency_map m_wait_latency_map;
-    void roll_cur_stats(struct timeval* ts);
-
-public:
-    run_stats();
-    void set_start_time(struct timeval* start_time);
-    void set_end_time(struct timeval* end_time);
-
-    void update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_wait_op(struct timeval* ts, unsigned int latency);
-
-    void aggregate_average(const std::vector<run_stats>& all_stats);
-    void summarize(totals& result) const;
-    void merge(const run_stats& other, int iteration);
-    bool save_csv(const char *filename);
-    void debug_dump(void);
-    void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL);
-    
-    unsigned int get_duration(void);
-    unsigned long int get_duration_usec(void);
-    unsigned long int get_total_bytes(void);
-    unsigned long int get_total_ops(void);
-    unsigned long int get_total_latency(void);
- };
 
 class client : public connections_manager {
 protected:
@@ -194,7 +102,8 @@ public:
         assert(false && "handle_cluster_slots not supported");
     }
 
-    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
+                                 request *request, protocol_response *response);
     virtual bool finished(void);
     virtual void set_start_time();
     virtual void set_end_time();
@@ -223,7 +132,8 @@ protected:
 
     virtual bool finished(void);
     virtual void create_request(struct timeval timestamp, unsigned int conn_id);
-    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
+                                 request *request, protocol_response *response);
 public:
     verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     unsigned long long int get_verified_keys(void);
