@@ -104,7 +104,8 @@ verify_request::~verify_request(void)
 
 shard_connection::shard_connection(unsigned int id, connections_manager* conns_man, benchmark_config* config,
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
-        m_sockfd(-1), m_unix_sockaddr(NULL), m_event(NULL), m_pending_resp(0), m_connected(false),
+        m_sockfd(-1), m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
+        m_event(NULL), m_pending_resp(0), m_connected(false),
         m_authentication(auth_done), m_db_selection(select_done), m_cluster_slots(slots_done) {
     m_id = id;
     m_conns_manager = conns_man;

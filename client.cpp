@@ -196,21 +196,23 @@ int client::connect(void)
     assert(sc != NULL);
 
     // get address information
-    if (m_config->server_addr->get_connect_info(&addr) != 0) {
-        benchmark_error_log("connect: resolve error: %s\n", m_config->server_addr->get_last_error());
-        return -1;
+    if (m_config->unix_socket == NULL) {
+        if (m_config->server_addr->get_connect_info(&addr) != 0) {
+            benchmark_error_log("connect: resolve error: %s\n", m_config->server_addr->get_last_error());
+            return -1;
+        }
+
+        // Just in case we got domain name and not ip, we convert it
+        struct sockaddr_in *ipv4 = (struct sockaddr_in *)addr.ci_addr;
+        char address[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(ipv4->sin_addr), address, INET_ADDRSTRLEN);
+
+        char port_str[20];
+        snprintf(port_str, sizeof(port_str)-1, "%u", m_config->port);
+
+        // save address and port
+        sc->set_address_port(address, port_str);
     }
-
-    // Just in case we got domain name and not ip, we convert it
-    struct sockaddr_in *ipv4 = (struct sockaddr_in *)addr.ci_addr;
-    char address[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(ipv4->sin_addr), address, INET_ADDRSTRLEN);
-
-    char port_str[20];
-    snprintf(port_str, sizeof(port_str)-1, "%u", m_config->port);
-
-    // save address and port
-    sc->set_address_port(address, port_str);
 
     // call connect
     int ret = sc->connect(&addr);
