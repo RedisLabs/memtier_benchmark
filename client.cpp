@@ -196,7 +196,7 @@ int client::connect(void)
     assert(sc != NULL);
 
     // get address information
-    if (m_config->server_addr->get_connect_info(&addr) != 0) {
+    if (m_config->server_addr && m_config->server_addr->get_connect_info(&addr) != 0) {
         benchmark_error_log("connect: resolve error: %s\n", m_config->server_addr->get_last_error());
         return -1;
     }
