@@ -412,7 +412,7 @@ void cluster_client::handle_response(unsigned int conn_id, struct timeval timest
                                      request *request, protocol_response *response) {
     // handle "-MOVED"
     if (response->is_error() &&
-        strncasecmp(response->get_status(), MOVED_MSG_PREFIX, MOVED_MSG_PREFIX_LEN) == 0) {
+        strncmp(response->get_status(), MOVED_MSG_PREFIX, MOVED_MSG_PREFIX_LEN) == 0) {
         benchmark_debug_log("handle moved: %s %s\n", m_connections[conn_id]->get_address(), response->get_status());
 
         // update stats
