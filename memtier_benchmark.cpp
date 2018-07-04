@@ -274,6 +274,9 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     } else if (cfg->protocol && strcmp(cfg->protocol, "redis")) {
         fprintf(stderr, "error: cluster mode supported only in redis protocol.\n");
         return false;
+    } else if (cfg->unix_socket) {
+        fprintf(stderr, "error: cluster mode dose not support unix-socket option.\n");
+        return false;
     }
 
     return true;
