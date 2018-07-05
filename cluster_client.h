@@ -38,7 +38,8 @@ protected:
     virtual int connect(void);
     virtual void disconnect(void);
 
-    shard_connection* add_shard_connection(char* address, char* port);
+    shard_connection* create_shard_connection(abstract_protocol* abs_protocol);
+    bool connect_shard_connection(shard_connection* sc, char* address, char* port);
     bool get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index);
 
 public:
@@ -49,6 +50,8 @@ public:
     virtual void handle_cluster_slots(protocol_response *r);
     virtual void create_request(struct timeval timestamp, unsigned int conn_id);
     virtual bool hold_pipeline(unsigned int conn_id);
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
+                                 request *request, protocol_response *response);
 };
 
 

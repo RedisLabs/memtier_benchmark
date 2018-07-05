@@ -34,6 +34,8 @@ struct benchmark_config;
 class abstract_protocol;
 class object_generator;
 
+enum connection_state { conn_disconnected, conn_in_progress, conn_connected };
+
 enum authentication_state { auth_none, auth_sent, auth_done };
 enum select_db_state { select_none, select_sent, select_done };
 enum cluster_slots_state { slots_none, slots_sent, slots_done };
@@ -100,6 +102,10 @@ public:
         m_cluster_slots = slots_none;
     }
 
+    enum cluster_slots_state get_cluster_slots_state() {
+        return m_cluster_slots;
+    }
+
     unsigned int get_id() {
         return m_id;
     }
@@ -114,6 +120,10 @@ public:
 
     const char* get_port() {
         return m_port;
+    }
+
+    enum connection_state get_connection_state() {
+        return m_connection_state;
     }
 
 
@@ -152,7 +162,8 @@ private:
     std::queue<request *>* m_pipeline;
 
     int m_pending_resp;
-    bool m_connected;
+
+    enum connection_state m_connection_state;
 
     enum authentication_state m_authentication;
     enum select_db_state m_db_selection;

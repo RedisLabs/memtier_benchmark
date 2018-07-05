@@ -31,7 +31,8 @@ public:
     virtual void set_end_time(void) = 0;
 
     virtual void handle_cluster_slots(protocol_response *r) = 0;
-    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response) = 0;
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
+                                 request *request, protocol_response *response) = 0;
 
     virtual void create_request(struct timeval timestamp, unsigned int conn_id) = 0;
     virtual bool hold_pipeline(unsigned int conn_id) = 0;

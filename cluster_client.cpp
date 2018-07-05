@@ -50,6 +50,8 @@
 #include "shard_connection.h"
 
 #define KEY_INDEX_QUEUE_MAX_SIZE 1000000
+#define MOVED_MSG_PREFIX "-MOVED"
+#define MOVED_MSG_PREFIX_LEN 6
 
 #define MAX_CLUSTER_HSLOT 16383
 static const uint16_t crc16tab[256]= {
@@ -153,21 +155,30 @@ void cluster_client::disconnect(void)
     }
 }
 
-shard_connection* cluster_client::add_shard_connection(char* address, char* port) {
+shard_connection* cluster_client::create_shard_connection(abstract_protocol* abs_protocol) {
     shard_connection* sc = new shard_connection(m_connections.size(), this,
                                                 m_config, m_event_base,
-                                                MAIN_CONNECTION->get_protocol());
+                                                abs_protocol);
+    assert(sc != NULL);
+
     m_connections.push_back(sc);
 
     // create key index pool
     key_index_pool* key_idx_pool = new key_index_pool;
+    assert(key_idx_pool != NULL);
+
     m_key_index_pools.push_back(key_idx_pool);
     assert(m_connections.size() == m_key_index_pools.size());
 
-    // set which setup command required
-    sc->set_authentication();
-    sc->set_select_db();
-    sc->set_cluster_slots();
+    return sc;
+}
+
+bool cluster_client::connect_shard_connection(shard_connection* sc, char* address, char* port) {
+    // empty key index queue
+    if (m_key_index_pools[sc->get_id()]->size()) {
+        key_index_pool empty_queue;
+        std::swap(*m_key_index_pools[sc->get_id()], empty_queue);
+    }
 
     // save address and port
     sc->set_address_port(address, port);
@@ -176,7 +187,6 @@ shard_connection* cluster_client::add_shard_connection(char* address, char* port
     struct connect_info ci;
     struct addrinfo *addr_info;
     struct addrinfo hints;
-    int ret;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
@@ -186,7 +196,7 @@ shard_connection* cluster_client::add_shard_connection(char* address, char* port
     int res = getaddrinfo(address, port, &hints, &addr_info);
     if (res != 0) {
         benchmark_error_log("connect: resolve error: %s\n", gai_strerror(res));
-        return NULL;
+        return false;
     }
 
     ci.ci_family = addr_info->ai_family;
@@ -198,14 +208,19 @@ shard_connection* cluster_client::add_shard_connection(char* address, char* port
     ci.ci_addrlen = addr_info->ai_addrlen;
 
     // call connect
-    ret = sc->connect(&ci);
-    if (ret)
-        return NULL;
+    res = sc->connect(&ci);
 
-    return sc;
+    return res == 0;
 }
 
 void cluster_client::handle_cluster_slots(protocol_response *r) {
+    /*
+     * temporary array to test if some of the connections are left with no
+     * slots, and need to be closed.
+     */
+    unsigned long prev_connections_size = m_connections.size();
+    std::vector<bool> close_sc(prev_connections_size, true);
+
     // run over response and create connections
     for (unsigned int i=0; i<r->get_mbulk_value()->mbulk_array.size(); i++) {
         // create connection
@@ -234,14 +249,24 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
             if (strcmp(addr, m_connections[j]->get_address()) == 0 &&
                 strcmp(port, m_connections[j]->get_port()) == 0) {
                 sc = m_connections[j];
+
+                // mark not to close this connection
+                if (j < prev_connections_size)
+                    close_sc[j] = false;
+
+                // if connection disconnected, try to reconnect
+                if (sc->get_connection_state() == conn_disconnected) {
+                    connect_shard_connection(sc, addr, port);
+                }
+
                 break;
             }
         }
 
         // if connection doesn't exist, add it
         if (sc == NULL) {
-            sc = add_shard_connection(addr, port);
-            assert(sc != NULL);
+            sc = create_shard_connection(MAIN_CONNECTION->get_protocol());
+            connect_shard_connection(sc, addr, port);
         }
 
         // update range
@@ -252,9 +277,22 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
         free(addr);
         free(port);
     }
+
+    // check if some connections left with no slots, and need to be closed
+    for (unsigned int i=0; i < prev_connections_size; i++) {
+        if ((close_sc[i] == true) &&
+            (m_connections[i]->get_connection_state() != conn_disconnected)) {
+
+            m_connections[i]->disconnect();
+        }
+    }
 }
 
 bool cluster_client::hold_pipeline(unsigned int conn_id) {
+    if (m_connections[conn_id]->get_connection_state() == conn_disconnected) {
+        return true;
+    }
+
     // don't exceed requests
     if (m_config->requests) {
         if (m_key_index_pools[conn_id]->empty() &&
@@ -282,15 +320,29 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
         *key_index = m_obj_gen->get_key_index(iter);
         m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
 
-        // check if the key match for this connection
         unsigned int hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
+
+        // check if the key match for this connection
         if (m_slot_to_shard[hslot] == conn_id) {
             m_reqs_generated++;
             return true;
         }
 
+        // handle key for other connection
+        unsigned int other_conn_id = m_slot_to_shard[hslot];
+
+        // in case we generated key for connection that is disconnected, 'slot to shard' map may need to be updated
+        if (m_connections[other_conn_id]->get_connection_state() == conn_disconnected) {
+            m_connections[conn_id]->set_cluster_slots();
+            return false;
+        }
+
+        // in case connection is during cluster slots command, his slots mapping not relevant
+        if (m_connections[other_conn_id]->get_cluster_slots_state() != slots_done)
+            continue;
+
         // store key for other connection, if queue is not full
-        key_index_pool* key_idx_pool = m_key_index_pools[m_slot_to_shard[hslot]];
+        key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
         if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE) {
             key_idx_pool->push(*key_index);
             m_reqs_generated++;
@@ -344,8 +396,9 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
         unsigned long long key_index;
 
         // get key
-        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 2), &key_index))
+        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 2), &key_index)) {
             return;
+        }
 
         m_connections[conn_id]->send_get_command(&timestamp, m_key_buffer, m_key_len, m_config->data_offset);
         m_get_ratio_count++;
@@ -353,5 +406,43 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
         // overlap counters
         m_get_ratio_count = m_set_ratio_count = 0;
     }
+}
+
+void cluster_client::handle_response(unsigned int conn_id, struct timeval timestamp,
+                                     request *request, protocol_response *response) {
+    // handle "-MOVED"
+    if (response->is_error() &&
+        strncmp(response->get_status(), MOVED_MSG_PREFIX, MOVED_MSG_PREFIX_LEN) == 0) {
+        benchmark_debug_log("handle moved: %s %s\n", m_connections[conn_id]->get_address(), response->get_status());
+
+        // update stats
+        if (request->m_type == rt_get) {
+            m_stats.update_moved_get_op(&timestamp,
+                                        request->m_size + response->get_total_len(),
+                                        ts_diff(request->m_sent_time, timestamp));
+        } else if (request->m_type == rt_set) {
+            m_stats.update_moved_set_op(&timestamp,
+                                        request->m_size + response->get_total_len(),
+                                        ts_diff(request->m_sent_time, timestamp));
+        } else {
+            assert(0);
+        }
+
+        // connection already issued 'cluster slots' command, wait for slots mapping to be updated
+        if (m_connections[conn_id]->get_cluster_slots_state() != slots_done)
+            return;
+
+        // queue may stored uncorrected mapping indexes, empty them
+        key_index_pool empty_queue;
+        std::swap(*m_key_index_pools[conn_id], empty_queue);
+
+        // set connection to send 'CLUSTER SLOTS' command
+        m_connections[conn_id]->set_cluster_slots();
+
+        return;
+    }
+
+    // continue with base class
+    client::handle_response(conn_id, timestamp, request, response);
 }
 

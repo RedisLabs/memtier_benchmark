@@ -105,7 +105,7 @@ verify_request::~verify_request(void)
 shard_connection::shard_connection(unsigned int id, connections_manager* conns_man, benchmark_config* config,
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_sockfd(-1), m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
-        m_event(NULL), m_pending_resp(0), m_connected(false),
+        m_event(NULL), m_pending_resp(0), m_connection_state(conn_disconnected),
         m_authentication(auth_done), m_db_selection(select_done), m_cluster_slots(slots_done) {
     m_id = id;
     m_conns_manager = conns_man;
@@ -263,11 +263,14 @@ int shard_connection::connect(struct connect_info* addr) {
     setup_event();
 
     // call connect
+    m_connection_state = conn_in_progress;
+
     if (::connect(m_sockfd,
                   m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
                   m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == -1) {
         if (errno == EINPROGRESS || errno == EWOULDBLOCK)
             return 0;
+
         benchmark_error_log("connect failed, error = %s\n", strerror(errno));
         return -1;
     }
@@ -287,7 +290,7 @@ void shard_connection::disconnect() {
     int ret = event_del(m_event);
     assert(ret == 0);
 
-    m_connected = false;
+    m_connection_state = conn_disconnected;
 
     // by default no need to send any setup request
     m_authentication = auth_done;
@@ -296,7 +299,14 @@ void shard_connection::disconnect() {
 }
 
 void shard_connection::set_address_port(const char* address, const char* port) {
+    if (m_address != NULL) {
+        free(m_address);
+    }
     m_address = strdup(address);
+
+    if (m_port != NULL) {
+        free(m_port);
+    }
     m_port = strdup(port);
 }
 
@@ -391,11 +401,7 @@ void shard_connection::process_response(void)
                                 r->get_hits(),
                                 req->m_keys - r->get_hits());
 
-            if (r->is_error()) {
-                benchmark_error_log("error response: %s\n", r->get_status());
-            }
-
-            m_conns_manager->handle_response(now, req, r);
+            m_conns_manager->handle_response(m_id, now, req, r);
             m_conns_manager->inc_reqs_processed();
             responses_handled = true;
         }
@@ -456,21 +462,26 @@ void shard_connection::handle_event(short evtype)
     // connect() returning to us?  normally we expect EV_WRITE, but for UNIX domain
     // sockets we workaround since connect() returned immediately, but we don't want
     // to do any I/O from the client::connect() call...
-    if (!m_connected && (evtype == EV_WRITE || m_unix_sockaddr != NULL)) {
+    if ((get_connection_state() != conn_connected) && (evtype == EV_WRITE || m_unix_sockaddr != NULL)) {
         int error = -1;
         socklen_t errsz = sizeof(error);
 
         if (getsockopt(m_sockfd, SOL_SOCKET, SO_ERROR, (void *) &error, &errsz) == -1) {
             benchmark_error_log("connect: error getting connect response (getsockopt): %s\n", strerror(errno));
+            disconnect();
+
             return;
         }
 
         if (error != 0) {
             benchmark_error_log("connect: connection failed: %s\n", strerror(error));
+            disconnect();
+
             return;
         }
 
-        m_connected = true;
+        m_connection_state = conn_connected;
+
         if (!m_conns_manager->get_reqs_processed()) {
             process_first_request();
         } else {
@@ -479,7 +490,7 @@ void shard_connection::handle_event(short evtype)
         }
     }
 
-    assert(m_connected == true);
+    assert(get_connection_state() == conn_connected);
     if ((evtype & EV_WRITE) == EV_WRITE && evbuffer_get_length(m_write_buf) > 0) {
         if (evbuffer_write(m_write_buf, m_sockfd) < 0) {
             if (errno != EWOULDBLOCK) {
@@ -515,7 +526,7 @@ void shard_connection::handle_event(short evtype)
 
             // process_response may have disconnected, in which case
             // we just abort and wait for libevent to call us back sometime
-            if (!m_connected) {
+            if (get_connection_state() == conn_disconnected) {
                 return;
             }
 

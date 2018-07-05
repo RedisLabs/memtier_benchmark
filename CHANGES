@@ -1,3 +1,6 @@
+* Version 1.2.13
+    * Support "MOVED" in cluster mode
+
 * Version 1.2.12
     * Fix 64bit keyspace support
 

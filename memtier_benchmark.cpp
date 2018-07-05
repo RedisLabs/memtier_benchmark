@@ -1201,17 +1201,17 @@ int main(int argc, char *argv[])
             }
 
             // Best results:
-            best->print(outfile, !cfg.hide_histogram, "BEST RUN RESULTS", jsonhandler);
+            best->print(outfile, !cfg.hide_histogram, "BEST RUN RESULTS", jsonhandler, cfg.cluster_mode);
             // worst results:
-            worst->print(outfile, !cfg.hide_histogram, "WORST RUN RESULTS", jsonhandler);
+            worst->print(outfile, !cfg.hide_histogram, "WORST RUN RESULTS", jsonhandler, cfg.cluster_mode);
             // average results:
             run_stats average;
             average.aggregate_average(all_stats);
             char average_header[50];
             sprintf(average_header,"AGGREGATED AVERAGE RESULTS (%u runs)", cfg.run_count);
-            average.print(outfile, !cfg.hide_histogram, average_header, jsonhandler);
+            average.print(outfile, !cfg.hide_histogram, average_header, jsonhandler, cfg.cluster_mode);
         } else {
-            all_stats.begin()->print(outfile, !cfg.hide_histogram, "ALL STATS", jsonhandler);
+            all_stats.begin()->print(outfile, !cfg.hide_histogram, "ALL STATS", jsonhandler, cfg.cluster_mode);
         }
     }
 
