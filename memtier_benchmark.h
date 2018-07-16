@@ -31,6 +31,12 @@
 #define benchmark_error_log(...) \
     benchmark_log(LOGLEVEL_ERROR, __VA_ARGS__)
 
+enum key_pattern_index {
+    key_pattern_set       = 0,
+    key_pattern_delimiter = 1,
+    key_pattern_get       = 2
+};
+
 struct benchmark_config {
     const char *server;
     unsigned short port;

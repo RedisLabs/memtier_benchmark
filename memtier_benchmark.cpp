@@ -595,9 +595,15 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
-                    if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[1] != ':' ||
-                        (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S' && cfg->key_pattern[0] != 'G' && cfg->key_pattern[0] != 'P') ||
-                        (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S' && cfg->key_pattern[2] != 'G' && cfg->key_pattern[2] != 'P')) {
+                    if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[key_pattern_delimiter] != ':' ||
+                        (cfg->key_pattern[key_pattern_set] != 'R' &&
+                         cfg->key_pattern[key_pattern_set] != 'S' &&
+                         cfg->key_pattern[key_pattern_set] != 'G' &&
+                         cfg->key_pattern[key_pattern_set] != 'P') ||
+                        (cfg->key_pattern[key_pattern_get] != 'R' &&
+                         cfg->key_pattern[key_pattern_get] != 'S' &&
+                         cfg->key_pattern[key_pattern_get] != 'G' &&
+                         cfg->key_pattern[key_pattern_get] != 'P')) {
                             fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G].\n");
                             return -1;
                     }
@@ -1130,7 +1136,7 @@ int main(int argc, char *argv[])
         obj_gen->set_key_range(cfg.key_minimum, cfg.key_maximum);
     }
     if (cfg.key_stddev>0 || cfg.key_median>0) {
-        if (cfg.key_pattern[0]!='G' && cfg.key_pattern[2]!='G') {
+        if (cfg.key_pattern[key_pattern_set]!='G' && cfg.key_pattern[key_pattern_get]!='G') {
             fprintf(stderr, "error: key-stddev and key-median are only allowed together with key-pattern set to G.\n");
             usage();
         }   

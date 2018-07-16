@@ -76,9 +76,20 @@ On recent Ubuntu versions, simply install all prerequisites as follows:
 
 ### Cluster mode
 
+#### Connections:
+
+When using the cluster-mode option, each client open connections as the number of nodes, so when
+using large number of threads and clients, user need to verify that he's not limited
+by max number of file discriptors.
+
+#### Using sequential key pattern:
+
 In case where there is some asymmetry between the redis nodes, and user set
-the number of total requests with sequential key pattern options, it might be
-gaps in the generated keys.
+the --requests option, it might be gaps in the generated keys.
+
+Also, the ratio and the key generator is per client (and not connection),
+which mean that setting the ratio to 1:1 not guarantee 100% hits, since
+the keys spreads to different connections/shards.
 
 
 ### Building and installing
