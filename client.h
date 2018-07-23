@@ -276,11 +276,16 @@ public:
     // Utility function to get the object iterator type based on the config
     inline int obj_iter_type(benchmark_config *cfg, unsigned char index)
     {
-        if (cfg->key_pattern[index] == 'R')
+        if (cfg->key_pattern[index] == 'R') {
             return OBJECT_GENERATOR_KEY_RANDOM;
-        else if (cfg->key_pattern[index] == 'G')
+        } else if (cfg->key_pattern[index] == 'G') {
             return OBJECT_GENERATOR_KEY_GAUSSIAN;
-        return OBJECT_GENERATOR_KEY_SET_ITER;
+        } else {
+            if (index == key_pattern_set)
+                return OBJECT_GENERATOR_KEY_SET_ITER;
+            else
+                return OBJECT_GENERATOR_KEY_GET_ITER;
+        }
     }
 };
 
