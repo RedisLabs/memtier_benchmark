@@ -103,6 +103,7 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
         unsigned long long range = (config->key_maximum - config->key_minimum)/(config->clients*config->threads) + 1;
         unsigned long long min = config->key_minimum + range*config->next_client_idx;
         unsigned long long max = min+range;
+
         if(config->next_client_idx==(int)(config->clients*config->threads)-1)
             max = config->key_maximum; //the last clients takes the leftover
         m_obj_gen->set_key_range(min, max);
@@ -349,9 +350,8 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
                              request *request, protocol_response *response)
 {
     if (response->is_error()) {
-        benchmark_error_log("server %s:%s handle error response: %s\n",
-                            m_connections[conn_id]->get_address(),
-                            m_connections[conn_id]->get_port(),
+        benchmark_error_log("server %s handle error response: %s\n",
+                            m_connections[conn_id]->get_readable_id(),
                             response->get_status());
     }
 
@@ -977,42 +977,19 @@ void run_stats::save_csv_one_sec(FILE *f,
     }
 }
 
-void run_stats::save_csv_one_sec_cluster(FILE *f,
-                                         unsigned long int& total_get_ops,
-                                         unsigned long int& total_set_ops,
-                                         unsigned long int& total_wait_ops) {
-    fprintf(f, "Per-Second Benchmark Data\n");
-    fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,SET Moved, SET Ask,"
-               "GET Requests,GET Average Latency,GET Total Bytes,GET Misses,GET Hits,GET Moved, Get Ask,"
-               "WAIT Requests,WAIT Average Latency\n");
-
-    total_get_ops = 0;
-    total_set_ops = 0;
-    total_wait_ops = 0;
+void run_stats::save_csv_one_sec_cluster(FILE *f) {
+    fprintf(f, "\nPer-Second Benchmark Cluster Data\n");
+    fprintf(f, "Second,SET Moved,SET Ask,GET Moved, Get Ask\n");
 
     for (std::vector<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
 
-        fprintf(f, "%u,%lu,%u.%06u,%lu,%u,%u,%lu,%u.%06u,%lu,%u,%u,%u,%u,%lu,%u.%06u\n",
+        fprintf(f, "%u,%u,%u,%u,%u\n",
                 i->m_second,
-                i->m_ops_set,
-                USEC_FORMAT(AVERAGE(i->m_total_set_latency, i->m_ops_set)),
-                i->m_bytes_set,
                 i->m_moved_set,
                 i->m_ask_set,
-                i->m_ops_get,
-                USEC_FORMAT(AVERAGE(i->m_total_get_latency, i->m_ops_get)),
-                i->m_bytes_get,
-                i->m_get_misses,
-                i->m_get_hits,
                 i->m_moved_get,
-                i->m_ask_get,
-                i->m_ops_wait,
-                USEC_FORMAT(AVERAGE(i->m_total_wait_latency, i->m_ops_wait)));
-
-        total_get_ops += i->m_ops_get;
-        total_set_ops += i->m_ops_set;
-        total_wait_ops += i->m_ops_wait;
+                i->m_ask_get);
     }
 }
 
@@ -1029,12 +1006,9 @@ bool run_stats::save_csv(const char *filename, bool cluster_mode)
     unsigned long int total_wait_ops;
 
     // save per second data
-    if (cluster_mode) {
-        save_csv_one_sec_cluster(f, total_get_ops, total_set_ops, total_wait_ops);
-    } else {
-        save_csv_one_sec(f, total_get_ops, total_set_ops, total_wait_ops);
-    }
+    save_csv_one_sec(f, total_get_ops, total_set_ops, total_wait_ops);
 
+    // save latency data
     double total_count_float = 0;
     fprintf(f, "\n" "Full-Test GET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
@@ -1057,6 +1031,11 @@ bool run_stats::save_csv(const char *filename, bool cluster_mode)
     for ( latency_map_itr it = m_wait_latency_map.begin(); it != m_wait_latency_map.end() ; it++ ) {
         total_count_float += it->second;
         fprintf(f, "%8.3f,%.2f\n", it->first, total_count_float / total_wait_ops * 100);
+    }
+
+    // in case of cluster mode, add cluster data
+    if (cluster_mode) {
+        save_csv_one_sec_cluster(f);
     }
 
     fclose(f);

@@ -262,6 +262,9 @@ int shard_connection::connect(struct connect_info* addr) {
     // set up event
     setup_event();
 
+    // set readable id
+    set_readable_id();
+
     // call connect
     m_connection_state = conn_in_progress;
 
@@ -308,6 +311,20 @@ void shard_connection::set_address_port(const char* address, const char* port) {
         free(m_port);
     }
     m_port = strdup(port);
+}
+
+void shard_connection::set_readable_id() {
+    if (m_unix_sockaddr != NULL) {
+        m_readable_id.assign(m_config->unix_socket);
+    } else {
+        m_readable_id.assign(m_address);
+        m_readable_id.append(":");
+        m_readable_id.append(m_port);
+    }
+}
+
+const char* shard_connection::get_readable_id() {
+    return m_readable_id.c_str();
 }
 
 request* shard_connection::pop_req() {

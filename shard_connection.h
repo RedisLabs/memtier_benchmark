@@ -20,6 +20,7 @@
 #define MEMTIER_BENCHMARK_SHARD_CONNECTION_H
 
 #include <queue>
+#include <string>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -77,6 +78,8 @@ public:
     ~shard_connection();
 
     void set_address_port(const char* address, const char* port);
+    const char* get_readable_id();
+
     int connect(struct connect_info* addr);
     void disconnect();
 
@@ -130,6 +133,7 @@ public:
 private:
     void setup_event();
     int setup_socket(struct connect_info* addr);
+    void set_readable_id();
 
     bool is_conn_setup_done();
     void send_conn_setup_commands(struct timeval timestamp);
@@ -150,6 +154,8 @@ private:
     int m_sockfd;
     char* m_address;
     char* m_port;
+    std::string m_readable_id;
+
     struct sockaddr_un* m_unix_sockaddr;
 
     struct evbuffer* m_read_buf;

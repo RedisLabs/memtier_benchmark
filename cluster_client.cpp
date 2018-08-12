@@ -459,9 +459,8 @@ void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
 void cluster_client::handle_response(unsigned int conn_id, struct timeval timestamp,
                                      request *request, protocol_response *response) {
     if (response->is_error()) {
-        benchmark_debug_log("server %s:%s handle response: %s\n",
-                            m_connections[conn_id]->get_address(),
-                            m_connections[conn_id]->get_port(),
+        benchmark_debug_log("server %s handle response: %s\n",
+                            m_connections[conn_id]->get_readable_id(),
                             response->get_status());
         // handle "-MOVED"
         if (strncmp(response->get_status(), MOVED_MSG_PREFIX, MOVED_MSG_PREFIX_LEN) == 0) {

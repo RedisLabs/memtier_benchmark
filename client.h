@@ -201,10 +201,7 @@ public:
                           unsigned long int& total_get_ops,
                           unsigned long int& total_set_ops,
                           unsigned long int& total_wait_ops);
-    void save_csv_one_sec_cluster(FILE *f,
-                                  unsigned long int& total_get_ops,
-                                  unsigned long int& total_set_ops,
-                                  unsigned long int& total_wait_ops);
+    void save_csv_one_sec_cluster(FILE *f);
     bool save_csv(const char *filename, bool cluster_mode);
     void debug_dump(void);
     void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL, bool cluster_mode = false);
