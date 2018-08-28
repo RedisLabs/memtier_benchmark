@@ -100,12 +100,17 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
         m_obj_gen->set_random_seed(config->next_client_idx);
 
     if (config->key_pattern[key_pattern_set]=='P') {
-        unsigned long long range = (config->key_maximum - config->key_minimum)/(config->clients*config->threads) + 1;
-        unsigned long long min = config->key_minimum + range*config->next_client_idx;
-        unsigned long long max = min+range;
+        unsigned long long total_num_of_clients = config->clients*config->threads;
+        unsigned long long client_index = config->next_client_idx % total_num_of_clients;
 
-        if(config->next_client_idx==(int)(config->clients*config->threads)-1)
+        unsigned long long range = (config->key_maximum - config->key_minimum)/total_num_of_clients + 1;
+        unsigned long long min = config->key_minimum + (range * client_index);
+        unsigned long long max = min + range - 1;
+
+        if (client_index == (total_num_of_clients - 1)) {
             max = config->key_maximum; //the last clients takes the leftover
+        }
+
         m_obj_gen->set_key_range(min, max);
     }
     config->next_client_idx++;
