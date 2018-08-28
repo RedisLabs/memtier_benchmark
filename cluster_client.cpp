@@ -50,8 +50,11 @@
 #include "shard_connection.h"
 
 #define KEY_INDEX_QUEUE_MAX_SIZE 1000000
+
 #define MOVED_MSG_PREFIX "-MOVED"
 #define MOVED_MSG_PREFIX_LEN 6
+#define ASK_MSG_PREFIX "-ASK"
+#define ASK_MSG_PREFIX_LEN 4
 
 #define MAX_CLUSTER_HSLOT 16383
 static const uint16_t crc16tab[256]= {
@@ -408,38 +411,68 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
     }
 }
 
+// In case of -MOVED response, we sends CLUSTER SLOTS command to get the new topology
+void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp,
+                                  request *request, protocol_response *response) {
+    // update stats
+    if (request->m_type == rt_get) {
+        m_stats.update_moved_get_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp));
+    } else if (request->m_type == rt_set) {
+        m_stats.update_moved_set_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp));
+    } else {
+        assert(0);
+    }
+
+    // connection already issued 'cluster slots' command, wait for slots mapping to be updated
+    if (m_connections[conn_id]->get_cluster_slots_state() != slots_done)
+        return;
+
+    // queue may stored uncorrected mapping indexes, empty them
+    key_index_pool empty_queue;
+    std::swap(*m_key_index_pools[conn_id], empty_queue);
+
+    // set connection to send 'CLUSTER SLOTS' command
+    m_connections[conn_id]->set_cluster_slots();
+}
+
+// In case of -ASK response, we ignore the response and we will update to the new topology when we get -MOVED response
+void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
+                                request *request, protocol_response *response) {
+    // update stats
+    if (request->m_type == rt_get) {
+        m_stats.update_ask_get_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp));
+    } else if (request->m_type == rt_set) {
+        m_stats.update_ask_set_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp));
+    } else {
+        assert(0);
+    }
+}
+
 void cluster_client::handle_response(unsigned int conn_id, struct timeval timestamp,
                                      request *request, protocol_response *response) {
-    // handle "-MOVED"
-    if (response->is_error() &&
-        strncmp(response->get_status(), MOVED_MSG_PREFIX, MOVED_MSG_PREFIX_LEN) == 0) {
-        benchmark_debug_log("handle moved: %s %s\n", m_connections[conn_id]->get_address(), response->get_status());
-
-        // update stats
-        if (request->m_type == rt_get) {
-            m_stats.update_moved_get_op(&timestamp,
-                                        request->m_size + response->get_total_len(),
-                                        ts_diff(request->m_sent_time, timestamp));
-        } else if (request->m_type == rt_set) {
-            m_stats.update_moved_set_op(&timestamp,
-                                        request->m_size + response->get_total_len(),
-                                        ts_diff(request->m_sent_time, timestamp));
-        } else {
-            assert(0);
+    if (response->is_error()) {
+        benchmark_debug_log("server %s handle response: %s\n",
+                            m_connections[conn_id]->get_readable_id(),
+                            response->get_status());
+        // handle "-MOVED"
+        if (strncmp(response->get_status(), MOVED_MSG_PREFIX, MOVED_MSG_PREFIX_LEN) == 0) {
+            handle_moved(conn_id, timestamp, request, response);
+            return;
         }
 
-        // connection already issued 'cluster slots' command, wait for slots mapping to be updated
-        if (m_connections[conn_id]->get_cluster_slots_state() != slots_done)
+        // handle "-ASK"
+        if (strncmp(response->get_status(), ASK_MSG_PREFIX, ASK_MSG_PREFIX_LEN) == 0) {
+            handle_ask(conn_id, timestamp, request, response);
             return;
-
-        // queue may stored uncorrected mapping indexes, empty them
-        key_index_pool empty_queue;
-        std::swap(*m_key_index_pools[conn_id], empty_queue);
-
-        // set connection to send 'CLUSTER SLOTS' command
-        m_connections[conn_id]->set_cluster_slots();
-
-        return;
+        }
     }
 
     // continue with base class

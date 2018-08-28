@@ -114,8 +114,11 @@ protected:
         unsigned int m_get_hits;
         unsigned int m_get_misses;
 
-        unsigned int m_moved_get;   // 'moved' response in cluster mode
-        unsigned int m_moved_set;   // 'moved' response in cluster mode
+        unsigned int m_moved_get;   // '-MOVED' response in cluster mode
+        unsigned int m_moved_set;   // '-MOVED' response in cluster mode
+
+        unsigned int m_ask_get;   // '-ASK' response in cluster mode
+        unsigned int m_ask_set;   // '-ASK' response in cluster mode
 
         unsigned long long int m_total_get_latency;
         unsigned long long int m_total_set_latency;
@@ -143,6 +146,10 @@ protected:
         double m_moved_sec_set;
         double m_moved_sec_get;
         double m_moved_sec;
+
+        double m_ask_sec_set;
+        double m_ask_sec_get;
+        double m_ask_sec;
 
         double m_bytes_sec_set;
         double m_bytes_sec_get;
@@ -182,6 +189,9 @@ public:
     void update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
     void update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
 
+    void update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+
     void update_wait_op(struct timeval* ts, unsigned int latency);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
@@ -191,10 +201,7 @@ public:
                           unsigned long int& total_get_ops,
                           unsigned long int& total_set_ops,
                           unsigned long int& total_wait_ops);
-    void save_csv_one_sec_cluster(FILE *f,
-                                  unsigned long int& total_get_ops,
-                                  unsigned long int& total_set_ops,
-                                  unsigned long int& total_wait_ops);
+    void save_csv_one_sec_cluster(FILE *f);
     bool save_csv(const char *filename, bool cluster_mode);
     void debug_dump(void);
     void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL, bool cluster_mode = false);
