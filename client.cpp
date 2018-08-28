@@ -948,7 +948,7 @@ void run_stats::save_csv_one_sec(FILE *f,
                                  unsigned long int& total_wait_ops) {
     fprintf(f, "Per-Second Benchmark Data\n");
     fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,"
-               "GET Requests,GET Average Latency,GET Total Bytes,GET Misses, GET Hits,"
+               "GET Requests,GET Average Latency,GET Total Bytes,GET Misses,GET Hits,"
                "WAIT Requests,WAIT Average Latency\n");
 
     total_get_ops = 0;
@@ -979,7 +979,7 @@ void run_stats::save_csv_one_sec(FILE *f,
 
 void run_stats::save_csv_one_sec_cluster(FILE *f) {
     fprintf(f, "\nPer-Second Benchmark Cluster Data\n");
-    fprintf(f, "Second,SET Moved,SET Ask,GET Moved, Get Ask\n");
+    fprintf(f, "Second,SET Moved,SET Ask,GET Moved,GET Ask\n");
 
     for (std::vector<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
