@@ -50,31 +50,39 @@ void random_generator::set_seed(int seed)
     assert(ret == 0);
 #elif (defined HAVE_DRAND48)
     memset(&m_data_blob, 0, sizeof(m_data_blob));
-    memcpy(&m_data_blob, &seed, MIN(sizeof(seed), sizeof(m_data_blob)));
+    size_t seed_size = sizeof(seed); //get MIN size between seed and m_data_blob
+    if (seed_size > sizeof(m_data_blob))
+        seed_size = sizeof(m_data_blob);
+    memcpy(&m_data_blob, &seed, seed_size);
 #endif
 }
 
 unsigned long long random_generator::get_random()
 {
-    int rn;
     unsigned long long llrn;
 #ifdef HAVE_RANDOM_R
-    int ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
+    int32_t rn;
+    // max is RAND_MAX, which is usually 2^31-1 (although can be as low as 2^16-1, which we ignore now)
+    // this is fine, especially considering that random_r is a nonstandard glibc extension
+    // it returns a positive int32_t, so either way the MSB is off
+    int ret = random_r(&m_data_blob, &rn);
     assert(ret == 0);
-
     llrn = rn;
-    llrn = llrn << 32; // move to upper 32bits
+    llrn = llrn << 31;
 
-    ret = random_r(&m_data_blob, &rn);//max is RAND_MAX
+    ret = random_r(&m_data_blob, &rn);
     assert(ret == 0);
-    llrn |= rn; // set lower 32bits
+    llrn |= rn;
 #elif (defined HAVE_DRAND48)
-    rn = nrand48(m_data_blob); // max is 1<<31
+    long rn;
+    // jrand48's range is -2^31..+2^31 (i.e. all 32 bits)
+    rn = jrand48(m_data_blob);
     llrn = rn;
-    llrn = llrn << 32; // move to upper 32bits
+    llrn = llrn << 32;
 
-    rn = nrand48(m_data_blob); // max is 1<<31
-    llrn |= rn; // set lower 32bits
+    rn = jrand48(m_data_blob);
+    llrn |= rn & 0xffffffff; // reset the sign extension bits of negative numbers
+    llrn &= 0x8000000000000000; // avoid any trouble from sign mismatch and negative numbers
 #else
     #error no random function
 #endif
@@ -84,12 +92,9 @@ unsigned long long random_generator::get_random()
 unsigned long long random_generator::get_random_max() const
 {
 #ifdef HAVE_RANDOM_R
-    unsigned long long rand_max = RAND_MAX;
-    return (rand_max << 32) | RAND_MAX;
+    return 0x3fffffffffffffff;//62 bits
 #elif (defined HAVE_DRAND48)
-    return ((1<<31) << 32) | (1<<31);
-#else
-    #error no random function
+    return 0x7fffffffffffffff;//63 bits
 #endif
 }
 
@@ -391,7 +396,6 @@ const char* object_generator::get_key(int iter, unsigned int *len)
     return m_key_buffer;
 }
 
-
 data_object* object_generator::get_object(int iter)
 {
     // compute key
@@ -434,6 +438,50 @@ data_object* object_generator::get_object(int iter)
     m_object.set_expiry(expiry);    
     
     return &m_object;
+}
+
+const char* object_generator::get_key_prefix() {
+    return m_key_prefix;
+}
+
+const char* object_generator::get_value(unsigned long long key_index, unsigned int *len) {
+    // compute size
+    unsigned int new_size = 0;
+    if (m_data_size_type == data_size_fixed) {
+        new_size = m_data_size.size_fixed;
+    } else if (m_data_size_type == data_size_range) {
+        if (m_data_size_pattern && *m_data_size_pattern=='S') {
+            double a = (key_index-m_key_min)/static_cast<double>(m_key_max-m_key_min);
+            new_size = (m_data_size.size_range.size_max-m_data_size.size_range.size_min)*a + m_data_size.size_range.size_min;
+        } else {
+            new_size = random_range(m_data_size.size_range.size_min > 0 ? m_data_size.size_range.size_min : 1,
+                                    m_data_size.size_range.size_max);
+        }
+    } else if (m_data_size_type == data_size_weighted) {
+        new_size = m_data_size.size_list->get_next_size();
+    } else {
+        assert(0);
+    }
+
+    // modify object content in case of random data
+    if (m_random_data) {
+        m_value_buffer[m_value_buffer_mutation_pos++]++;
+        if (m_value_buffer_mutation_pos >= m_value_buffer_size)
+            m_value_buffer_mutation_pos = 0;
+    }
+
+    *len = new_size;
+    return m_value_buffer;
+}
+
+unsigned int object_generator::get_expiry() {
+    // compute expiry
+    unsigned int expiry = 0;
+    if (m_expiry_max > 0) {
+        expiry = random_range(m_expiry_min, m_expiry_max);
+    }
+
+    return expiry;
 }
 
 ///////////////////////////////////////////////////////////////////////////

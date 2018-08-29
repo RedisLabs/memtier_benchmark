@@ -84,7 +84,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "client_stats = %s\n"
         "run_count = %u\n"
         "debug = %u\n"
-        "requests = %u\n"
+        "requests = %llu\n"
         "clients = %u\n"
         "threads = %u\n"
         "test_time = %u\n"
@@ -172,7 +172,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("client_stats"      ,"\"%s\"",      	cfg->client_stats);
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
     jsonhandler->write_obj("debug"             ,"%u",          	cfg->debug);
-    jsonhandler->write_obj("requests"          ,"%u",          	cfg->requests);
+    jsonhandler->write_obj("requests"          ,"%llu",        	cfg->requests);
     jsonhandler->write_obj("clients"           ,"%u",          	cfg->clients);
     jsonhandler->write_obj("threads"           ,"%u",          	cfg->threads);
     jsonhandler->write_obj("test_time"         ,"%u",          	cfg->test_time);
@@ -237,11 +237,11 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->key_pattern = "R:R";
     if (!cfg->data_size_pattern)
         cfg->data_size_pattern = "R";
-    if (cfg->requests == (unsigned int)-1) {
+    if (cfg->requests == (unsigned long long)-1) {
         cfg->requests = cfg->key_maximum - cfg->key_minimum;
         if (strcmp(cfg->key_pattern, "P:P")==0)
             cfg->requests = cfg->requests / (cfg->clients * cfg->threads) + 1;
-        printf("setting requests to %d\n", cfg->requests);
+        printf("setting requests to %llu\n", cfg->requests);
     }
     if (!cfg->requests && !cfg->test_time)
         cfg->requests = 10000;
@@ -259,6 +259,27 @@ static int generate_random_seed()
     }
     
     return (int)time(NULL)^getpid()^R;
+}
+
+static bool verify_cluster_option(struct benchmark_config *cfg) {
+    if (cfg->reconnect_interval) {
+        fprintf(stderr, "error: cluster mode dose not support reconnect-interval option.\n");
+        return false;
+    } else if (cfg->multi_key_get) {
+        fprintf(stderr, "error: cluster mode dose not support multi-key-get option.\n");
+        return false;
+    } else if (cfg->wait_ratio.is_defined()) {
+        fprintf(stderr, "error: cluster mode dose not support wait-ratio option.\n");
+        return false;
+    } else if (cfg->protocol && strcmp(cfg->protocol, "redis")) {
+        fprintf(stderr, "error: cluster mode supported only in redis protocol.\n");
+        return false;
+    } else if (cfg->unix_socket) {
+        fprintf(stderr, "error: cluster mode dose not support unix-socket option.\n");
+        return false;
+    }
+
+    return true;
 }
 
 static int config_parse_args(int argc, char *argv[], struct benchmark_config *cfg)
@@ -294,7 +315,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_wait_ratio,
         o_num_slaves,
         o_wait_timeout, 
-        o_json_out_file
+        o_json_out_file,
+        o_cluster_mode
     };
     
     static struct option long_options[] = {
@@ -342,6 +364,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
+        { "cluster-mode",                0, 0, o_cluster_mode },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { NULL,                         0, 0, 0 }
@@ -423,7 +446,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     if (strcmp(optarg, "allkeys")==0)
                         cfg->requests = -1;
                     else {
-                        cfg->requests = (unsigned int) strtoul(optarg, &endptr, 10);
+                        cfg->requests = (unsigned long long) strtoull(optarg, &endptr, 10);
                         if (!cfg->requests || !endptr || *endptr != '\0') {
                             fprintf(stderr, "error: requests must be greater than zero.\n");
                             return -1;
@@ -572,10 +595,17 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
-                    if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[1] != ':' ||
-                        (cfg->key_pattern[0] != 'R' && cfg->key_pattern[0] != 'S' && cfg->key_pattern[0] != 'G' && cfg->key_pattern[0] != 'P') ||
-                        (cfg->key_pattern[2] != 'R' && cfg->key_pattern[2] != 'S' && cfg->key_pattern[2] != 'G' && cfg->key_pattern[2] != 'P')) {
-                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]:[S/R/G/P].\n");
+
+                    if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[key_pattern_delimiter] != ':' ||
+                        (cfg->key_pattern[key_pattern_set] != 'R' &&
+                         cfg->key_pattern[key_pattern_set] != 'S' &&
+                         cfg->key_pattern[key_pattern_set] != 'G' &&
+                         cfg->key_pattern[key_pattern_set] != 'P') ||
+                        (cfg->key_pattern[key_pattern_get] != 'R' &&
+                         cfg->key_pattern[key_pattern_get] != 'S' &&
+                         cfg->key_pattern[key_pattern_get] != 'G' &&
+                         cfg->key_pattern[key_pattern_get] != 'P')) {
+                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G/P].\n");
                             return -1;
                     }
                     break;
@@ -635,11 +665,17 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_json_out_file:
                     cfg->json_out_file = optarg;
                     break;
+                case o_cluster_mode:
+                    cfg->cluster_mode = true;
+                    break;
             default:
                     return -1;
                     break;
         }
     }
+
+    if (cfg->cluster_mode && !verify_cluster_option(cfg))
+        return -1;
 
     return 0;
 }
@@ -655,6 +691,8 @@ void usage() {
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
             "                                 supported protocols are memcache_text,\n"
             "                                 memcache_binary.\n"
+            "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
+            "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
             "  -D, --debug                    Print debug output\n"
             "      --client-stats=FILE        Produce per-client stats file\n"
@@ -662,6 +700,7 @@ void usage() {
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --cluster-mode             Run client in cluster mode\n"
             "      --help                     Display this help\n"
             "      --version                  Display version information\n"
             "\n"
@@ -675,8 +714,6 @@ void usage() {
             "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
             "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
-            "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
-            "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
             "      --randomize                random seed based on timestamp (default is constant value)\n"
@@ -1100,7 +1137,7 @@ int main(int argc, char *argv[])
         obj_gen->set_key_range(cfg.key_minimum, cfg.key_maximum);
     }
     if (cfg.key_stddev>0 || cfg.key_median>0) {
-        if (cfg.key_pattern[0]!='G' && cfg.key_pattern[2]!='G') {
+        if (cfg.key_pattern[key_pattern_set]!='G' && cfg.key_pattern[key_pattern_get]!='G') {
             fprintf(stderr, "error: key-stddev and key-median are only allowed together with key-pattern set to G.\n");
             usage();
         }   
@@ -1138,16 +1175,18 @@ int main(int argc, char *argv[])
         fprintf(outfile,
                "%-9u Threads\n"
                "%-9u Connections per thread\n"
-               "%-9u %s\n",
+               "%-9llu %s\n",
                cfg.threads, cfg.clients, 
-               cfg.requests > 0 ? cfg.requests : cfg.test_time,
+               (unsigned long long)(cfg.requests > 0 ? cfg.requests : cfg.test_time),
                cfg.requests > 0 ? "Requests per client"  : "Seconds");
+
         if (jsonhandler != NULL){
             jsonhandler->open_nesting("run information");
             jsonhandler->write_obj("Threads","%u",cfg.threads);
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
-            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%u",
-                                   cfg.requests > 0 ? cfg.requests : cfg.test_time);
+            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%llu",
+                                   cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
+
             jsonhandler->close_nesting();
         }
 
@@ -1171,17 +1210,17 @@ int main(int argc, char *argv[])
             }
 
             // Best results:
-            best->print(outfile, !cfg.hide_histogram, "BEST RUN RESULTS", jsonhandler);
+            best->print(outfile, !cfg.hide_histogram, "BEST RUN RESULTS", jsonhandler, cfg.cluster_mode);
             // worst results:
-            worst->print(outfile, !cfg.hide_histogram, "WORST RUN RESULTS", jsonhandler);
+            worst->print(outfile, !cfg.hide_histogram, "WORST RUN RESULTS", jsonhandler, cfg.cluster_mode);
             // average results:
             run_stats average;
             average.aggregate_average(all_stats);
             char average_header[50];
             sprintf(average_header,"AGGREGATED AVERAGE RESULTS (%u runs)", cfg.run_count);
-            average.print(outfile, !cfg.hide_histogram, average_header, jsonhandler);
+            average.print(outfile, !cfg.hide_histogram, average_header, jsonhandler, cfg.cluster_mode);
         } else {
-            all_stats.begin()->print(outfile, !cfg.hide_histogram, "ALL STATS", jsonhandler);
+            all_stats.begin()->print(outfile, !cfg.hide_histogram, "ALL STATS", jsonhandler, cfg.cluster_mode);
         }
     }
 

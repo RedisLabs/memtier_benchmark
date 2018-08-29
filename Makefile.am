@@ -25,6 +25,8 @@ memtier_benchmark_CPPFLAGS = $(LIBEVENT_CFLAGS)
 memtier_benchmark_SOURCES = \
 	memtier_benchmark.cpp memtier_benchmark.h \
 	client.cpp client.h \
+	cluster_client.cpp cluster_client.h \
+	shard_connection.cpp shard_connection.h connections_manager.h \
 	JSON_handler.cpp JSON_handler.h \
 	protocol.cpp protocol.h \
 	obj_gen.cpp obj_gen.h \

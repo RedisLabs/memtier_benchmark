@@ -33,6 +33,13 @@
 
 #include "protocol.h"
 #include "JSON_handler.h"
+#include "config_types.h"
+#include "shard_connection.h"
+#include "connections_manager.h"
+#include "obj_gen.h"
+#include "memtier_benchmark.h"
+
+#define MAIN_CONNECTION m_connections[0]
 
 class client;               // forward decl
 class client_group;         // forward decl
@@ -45,10 +52,59 @@ typedef std::map<float, int> latency_map;
 typedef std::map<float, int>::iterator latency_map_itr;
 typedef std::map<float, int>::const_iterator latency_map_itr_const;
 
+inline long long int ts_diff(struct timeval a, struct timeval b)
+{
+    unsigned long long aval = a.tv_sec * 1000000 + a.tv_usec;
+    unsigned long long bval = b.tv_sec * 1000000 + b.tv_usec;
+
+    return bval - aval;
+}
+
+enum tabel_el_type {
+    string_el,
+    double_el
+};
+
+struct table_el {
+    tabel_el_type type;
+    std::string format;
+    std::string str_value;
+    double  double_value;
+
+    table_el* init_str(std::string fmt, std::string val) {
+        type = string_el;
+        format = fmt;
+        str_value = val;
+        return this;
+    }
+
+    table_el* init_double(std::string fmt, double val) {
+        type = double_el;
+        format = fmt;
+        double_value = val;
+        return this;
+    }
+};
+
+struct table_column {
+    std::vector<table_el> elements;
+};
+
+class output_table {
+private:
+    std::vector<table_column> columns;
+
+public:
+    void print_header(FILE *out, const char * header);
+    void add_column(table_column& col);
+    void print(FILE *out, const char * header);
+};
+
 class run_stats {
 protected:
     struct one_second_stats {
         unsigned int m_second;        // from start of test
+
         unsigned long int m_bytes_get;
         unsigned long int m_bytes_set;
         unsigned long int m_ops_get;
@@ -57,6 +113,12 @@ protected:
 
         unsigned int m_get_hits;
         unsigned int m_get_misses;
+
+        unsigned int m_moved_get;   // '-MOVED' response in cluster mode
+        unsigned int m_moved_set;   // '-MOVED' response in cluster mode
+
+        unsigned int m_ask_get;   // '-ASK' response in cluster mode
+        unsigned int m_ask_set;   // '-ASK' response in cluster mode
 
         unsigned long long int m_total_get_latency;
         unsigned long long int m_total_set_latency;
@@ -67,7 +129,7 @@ protected:
         void merge(const one_second_stats& other);
     };
 
-    friend bool one_second_stats_predicate(const run_stats::one_second_stats& a, const run_stats::one_second_stats& b);    
+    friend bool one_second_stats_predicate(const run_stats::one_second_stats& a, const run_stats::one_second_stats& b);
 
     struct timeval m_start_time;
     struct timeval m_end_time;
@@ -81,10 +143,18 @@ protected:
         double m_hits_sec;
         double m_misses_sec;
 
+        double m_moved_sec_set;
+        double m_moved_sec_get;
+        double m_moved_sec;
+
+        double m_ask_sec_set;
+        double m_ask_sec_get;
+        double m_ask_sec;
+
         double m_bytes_sec_set;
         double m_bytes_sec_get;
         double m_bytes_sec;
-        
+
         double m_latency_set;
         double m_latency_get;
         double m_latency_wait;
@@ -115,117 +185,127 @@ public:
 
     void update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+
+    void update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+
+    void update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+
     void update_wait_op(struct timeval* ts, unsigned int latency);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
     void merge(const run_stats& other, int iteration);
-    bool save_csv(const char *filename);
+    void save_csv_one_sec(FILE *f,
+                          unsigned long int& total_get_ops,
+                          unsigned long int& total_set_ops,
+                          unsigned long int& total_wait_ops);
+    void save_csv_one_sec_cluster(FILE *f);
+    bool save_csv(const char *filename, bool cluster_mode);
     void debug_dump(void);
-    void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL);
-    
+    void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL, bool cluster_mode = false);
+
     unsigned int get_duration(void);
     unsigned long int get_duration_usec(void);
     unsigned long int get_total_bytes(void);
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
- };
+};
 
-class client {
+class client : public connections_manager {
 protected:
-    friend void client_event_handler(evutil_socket_t sfd, short evtype, void *opaque);
 
-    // connection related
-    int m_sockfd;
-    struct sockaddr_un* m_unix_sockaddr;
-    struct event* m_event;
+    std::vector<shard_connection*> m_connections;
+
     struct event_base* m_event_base;
-    struct evbuffer *m_read_buf;
-    struct evbuffer *m_write_buf;
     bool m_initialized;
-    bool m_connected;
-    enum authentication_state { auth_none, auth_sent, auth_done } m_authentication;
-    enum select_db_state { select_none, select_sent, select_done } m_db_selection;
+    bool m_end_set;
 
     // test related
     benchmark_config* m_config;
-    abstract_protocol* m_protocol;
     object_generator* m_obj_gen;
     run_stats m_stats;
 
-    // pipeline management
-    enum request_type { rt_unknown, rt_set, rt_get, rt_wait,rt_auth, rt_select_db };
-    struct request {
-        request_type m_type;
-        struct timeval m_sent_time;
-        unsigned int m_size;
-        unsigned int m_keys;
-
-        request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys);
-        virtual ~request(void) {}
-    };
-    std::queue<request *> m_pipeline;
-
-    unsigned int m_reqs_processed;      // requests processed (responses received)
+    unsigned long long m_reqs_processed;      // requests processed (responses received)
+    unsigned long long m_reqs_generated;      // requests generated (wait for responses)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
     unsigned int m_get_ratio_count;     // number of gets counter (overlaps on ratio)
 
-    unsigned long m_tot_set_ops;        // Total number of SET ops
-    unsigned long m_tot_wait_ops;       // Total number of WAIT ops
+    unsigned long long m_tot_set_ops;        // Total number of SET ops
+    unsigned long long m_tot_wait_ops;       // Total number of WAIT ops
 
     keylist *m_keylist;                 // used to construct multi commands
 
-    bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
-    int connect(void);
-    void disconnect(void);
-
-    void handle_event(short evtype);
-    int get_sockfd(void) { return m_sockfd; }
-
-    virtual bool finished();
-    virtual void create_request(struct timeval timestamp);
-    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
-
-    bool send_conn_setup_commands(struct timeval timestamp);
-    bool is_conn_setup_done(void);
-    void fill_pipeline(void);
-    void process_first_request(void);
-    void process_response(void);
 public:
     client(client_group* group);
     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     virtual ~client();
+    virtual bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+    virtual int prepare(void);
 
     bool initialized(void);
-    int prepare(void);
+
     run_stats* get_stats(void) { return &m_stats; }
+
+    // client manager api's
+    unsigned long long get_reqs_processed() {
+        return m_reqs_processed;
+    }
+
+    void inc_reqs_processed() {
+        m_reqs_processed++;
+    }
+
+    unsigned long long get_reqs_generated() {
+        return m_reqs_generated;
+    }
+
+    void inc_reqs_generated() {
+        m_reqs_generated++;
+    }
+
+    virtual void handle_cluster_slots(protocol_response *r) {
+        assert(false && "handle_cluster_slots not supported");
+    }
+
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
+                                 request *request, protocol_response *response);
+    virtual bool finished(void);
+    virtual void set_start_time();
+    virtual void set_end_time();
+    virtual void create_request(struct timeval timestamp, unsigned int conn_id);
+    virtual bool hold_pipeline(unsigned int conn_id);
+    virtual int connect(void);
+    virtual void disconnect(void);
+    //
+
+    // Utility function to get the object iterator type based on the config
+    inline int obj_iter_type(benchmark_config *cfg, unsigned char index)
+    {
+        if (cfg->key_pattern[index] == 'R') {
+            return OBJECT_GENERATOR_KEY_RANDOM;
+        } else if (cfg->key_pattern[index] == 'G') {
+            return OBJECT_GENERATOR_KEY_GAUSSIAN;
+        } else {
+            if (index == key_pattern_set)
+                return OBJECT_GENERATOR_KEY_SET_ITER;
+            else
+                return OBJECT_GENERATOR_KEY_GET_ITER;
+        }
+    }
 };
 
 class verify_client : public client {
 protected:
-    struct verify_request : public request {
-        char *m_key;
-        unsigned int m_key_len;
-        char *m_value;
-        unsigned int m_value_len;
-
-        verify_request(request_type type, 
-            unsigned int size, 
-            struct timeval* sent_time,
-            unsigned int keys,
-            const char *key,
-            unsigned int key_len,
-            const char *value,
-            unsigned int value_len);
-        virtual ~verify_request(void);
-    };
     bool m_finished;
     unsigned long long int m_verified_keys;
     unsigned long long int m_errors;
 
     virtual bool finished(void);
-    virtual void create_request(struct timeval timestamp);
-    virtual void handle_response(struct timeval timestamp, request *request, protocol_response *response);
+    virtual void create_request(struct timeval timestamp, unsigned int conn_id);
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
+                                 request *request, protocol_response *response);
 public:
     verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     unsigned long long int get_verified_keys(void);

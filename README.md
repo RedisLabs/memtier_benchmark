@@ -9,6 +9,7 @@ memtier_benchmark is a command line utility developed by Redis Labs (formerly Ga
  * Read:Write ratio
  * Random and sequential key name pattern policies
  * Random or ranged key expiration
+ * Redis cluster
  * ...and much more
 
 Read more at:
@@ -71,6 +72,24 @@ On recent Ubuntu versions, simply install all prerequisites as follows:
 ```
 # apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev
 ```
+
+
+### Cluster mode
+
+#### Connections
+
+When using the cluster-mode option, each client opens one connection for each node.
+So, when using a large number of threads and clients, the user must verify that he is not
+limited by the maximum number of file descriptors.
+
+#### Using sequential key pattern
+
+When there is an asymmetry between the Redis nodes and user set
+the --requests option, there may be gaps in the generated keys.
+
+Also, the ratio and the key generator is per client (and not connection).
+In this case, setting the ratio to 1:1 does not guarantee 100% hits because
+the keys spread to different connections/nodes.
 
 
 ### Building and installing

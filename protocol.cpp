@@ -56,7 +56,7 @@ void abstract_protocol::set_keep_value(bool flag)
 /////////////////////////////////////////////////////////////////////////
 
 protocol_response::protocol_response()
-    : m_status(NULL), m_value(NULL), m_value_len(0), m_hits(0), m_error(false)
+    : m_status(NULL), m_value(NULL), m_mbulk_value(NULL), m_value_len(0), m_hits(0), m_error(false)
 {
 }
 
@@ -133,25 +133,61 @@ void protocol_response::clear(void)
         free((void *)m_value);
         m_value = NULL;
     }
+    if (m_mbulk_value != NULL) {
+        m_mbulk_value->free_mbulk();
+        free((void *)m_mbulk_value);
+        m_mbulk_value = NULL;
+    }
     m_value_len = 0;
     m_total_len = 0;
     m_hits = 0;
     m_error = 0;
 }
 
+void protocol_response::set_mbulk_value(mbulk_element* element) {
+    m_mbulk_value = element;
+}
+
+void protocol_response::add_mbulk_array(mbulk_level_array* array, mbulk_element* element, int count) {
+    add_mbulk_value(array, element);
+
+    // create new nested level
+    mbulk_level* new_level = new mbulk_level(count, element);
+    array->push_back(new_level);
+}
+
+void protocol_response::add_mbulk_value(mbulk_level_array* array, mbulk_element* element) {
+    mbulk_level* cur_level = array->back();
+
+    // insert new object into current nested mbulk
+    cur_level->mbulk->mbulk_array.push_back(element);
+
+    // update current mbulk
+    cur_level->mbulk_count--;
+
+    if (cur_level->mbulk_count == 0)
+        array->pop_back();
+}
+
+const mbulk_element* protocol_response::get_mbulk_value() {
+    return m_mbulk_value;
+}
+
 /////////////////////////////////////////////////////////////////////////
 
 class redis_protocol : public abstract_protocol {
 protected:
-    enum response_state { rs_initial, rs_read_bulk };
+    enum response_state { rs_initial, rs_read_bulk, rs_read_mbulk };
     response_state m_response_state;
     unsigned int m_bulk_len;
     size_t m_response_len;
+    mbulk_level_array current_mbulk_level;
 public:
     redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
@@ -187,6 +223,21 @@ int redis_protocol::authenticate(const char *credentials)
         "$%u\r\n"
         "%s\r\n",
         (unsigned int)strlen(credentials), credentials);
+    return size;
+}
+
+int redis_protocol::write_command_cluster_slots()
+{
+    int size = 0;
+
+    size = evbuffer_add(m_write_buf,
+                        "*2\r\n"
+                        "$7\r\n"
+                        "CLUSTER\r\n"
+                        "$5\r\n"
+                        "SLOTS\r\n",
+                        28);
+
     return size;
 }
 
@@ -336,19 +387,30 @@ int redis_protocol::parse_response(void)
                 if (line == NULL)
                     return 0;   // maybe we didn't get it yet?
                 m_response_len += 2;    // count CRLF
-        
-                // todo: support multi-bulk reply
-                if (line[0] == '*') {
-                    benchmark_debug_log("multi-bulk replies not currently supported.\n");
-                    free(line);
-                    return -1;
-                }
 
                 // clear last response
                 m_last_response.clear();
 
-                // bulk?
-                if (line[0] == '$') {
+                if (line[0] == '*') {
+                    int count = strtol(line + 1, NULL, 10);
+                    if (count == -1) {
+                        m_last_response.set_status(line);
+                        return 1;
+                    }
+
+                    // start new mbulk response
+                    current_mbulk_level.clear();
+
+                    mbulk_element* mbulk = new mbulk_element();
+                    m_last_response.set_mbulk_value(mbulk);
+
+                    // update mbulk level
+                    mbulk_level* new_level = new mbulk_level(count, mbulk);
+                    current_mbulk_level.push_back(new_level);
+
+                    m_response_state = rs_read_mbulk;
+                    m_last_response.set_status(line);
+                } else if (line[0] == '$') {
                     int len = strtol(line + 1, NULL, 10);
                     if (len == -1) {
                         m_last_response.set_status(line);
@@ -371,6 +433,63 @@ int redis_protocol::parse_response(void)
                     return -1;
                 }
 
+                break;
+            case rs_read_mbulk:
+                line = evbuffer_readln(m_read_buf, &m_response_len, EVBUFFER_EOL_CRLF_STRICT);
+                if (line == NULL)
+                    return 0;
+
+                if (line[0] == '*') {
+                    int count = strtol(line + 1, NULL, 10);
+
+                    // add new mbulk array
+                    mbulk_element *mbulk = new mbulk_element();
+                    m_last_response.add_mbulk_array(&current_mbulk_level, mbulk, count);
+
+                    m_response_state = rs_read_mbulk;
+                    m_last_response.set_status(line);
+
+                } else if (line[0] == ':') {
+                    char *bulk_value = strdup(line + 1);
+                    assert(bulk_value != NULL);
+
+                    // add new mbulk value
+                    mbulk_element* mbulk = new mbulk_element(bulk_value, strlen(bulk_value));
+                    m_last_response.add_mbulk_value(&current_mbulk_level, mbulk);
+
+                    // check if we got all mbulk
+                    if (current_mbulk_level.size() == 0) {
+                        m_response_state = rs_initial;
+                        return 1;
+                    }
+
+                } else if (line[0] == '$') {
+                    int len = strtol(line + 1, NULL, 10);
+                    m_bulk_len = (unsigned int) len;
+
+                    if (evbuffer_get_length(m_read_buf) >= m_bulk_len + 2) {
+                        char *bulk_value = (char *) malloc(m_bulk_len);
+                        assert(bulk_value != NULL);
+
+                        int ret = evbuffer_remove(m_read_buf, bulk_value, m_bulk_len);
+                        assert(ret != -1);
+
+                        // drain CRLF
+                        ret = evbuffer_drain(m_read_buf, 2);
+                        assert(ret != -1);
+
+                        // create new mbulk array
+                        mbulk_element* obj = new mbulk_element(bulk_value, m_bulk_len);
+                        m_last_response.add_mbulk_value(&current_mbulk_level, obj);
+
+                        if (current_mbulk_level.size() == 0) {
+                            m_response_state = rs_initial;
+                            return 1;
+                        }
+                    } else {
+                        return 0;
+                    }
+                }
                 break;
             case rs_read_bulk:
                 if (evbuffer_get_length(m_read_buf) >= m_bulk_len + 2) {
@@ -421,6 +540,7 @@ public:
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
@@ -434,6 +554,11 @@ int memcache_text_protocol::select_db(int db)
 }
 
 int memcache_text_protocol::authenticate(const char *credentials)
+{
+    assert(0);
+}
+
+int memcache_text_protocol::write_command_cluster_slots()
 {
     assert(0);
 }
@@ -613,6 +738,7 @@ public:
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
     virtual int write_command_multi_get(const keylist *keylist);
@@ -660,6 +786,11 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     evbuffer_add(m_write_buf, passwd, passwd_len);
 
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
+}
+
+int memcache_binary_protocol::write_command_cluster_slots()
+{
+    assert(0);
 }
 
 int memcache_binary_protocol::write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset)

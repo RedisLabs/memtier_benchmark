@@ -31,6 +31,12 @@
 #define benchmark_error_log(...) \
     benchmark_log(LOGLEVEL_ERROR, __VA_ARGS__)
 
+enum key_pattern_index {
+    key_pattern_set       = 0,
+    key_pattern_delimiter = 1,
+    key_pattern_get       = 2
+};
+
 struct benchmark_config {
     const char *server;
     unsigned short port;
@@ -46,7 +52,7 @@ struct benchmark_config {
     int distinct_client_seed;
     int randomize;
     int next_client_idx;
-    unsigned int requests;
+    unsigned long long requests;
     unsigned int clients;
     unsigned int threads;
     unsigned int test_time;
@@ -81,6 +87,7 @@ struct benchmark_config {
     config_range wait_timeout;
     // JSON additions
     const char *json_out_file;
+    bool cluster_mode;
 };
 
 
