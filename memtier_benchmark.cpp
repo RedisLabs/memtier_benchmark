@@ -595,6 +595,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
+
                     if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[key_pattern_delimiter] != ':' ||
                         (cfg->key_pattern[key_pattern_set] != 'R' &&
                          cfg->key_pattern[key_pattern_set] != 'S' &&
@@ -604,7 +605,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                          cfg->key_pattern[key_pattern_get] != 'S' &&
                          cfg->key_pattern[key_pattern_get] != 'G' &&
                          cfg->key_pattern[key_pattern_get] != 'P')) {
-                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G].\n");
+                            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G]:[S/R/G/P].\n");
                             return -1;
                     }
                     break;
@@ -1177,13 +1178,15 @@ int main(int argc, char *argv[])
                "%-9llu %s\n",
                cfg.threads, cfg.clients, 
                (unsigned long long)(cfg.requests > 0 ? cfg.requests : cfg.test_time),
-               cfg.requests > 0 ? "Requests per thread"  : "Seconds");
+               cfg.requests > 0 ? "Requests per client"  : "Seconds");
+
         if (jsonhandler != NULL){
             jsonhandler->open_nesting("run information");
             jsonhandler->write_obj("Threads","%u",cfg.threads);
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
-            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per thread"  : "Seconds","%llu",
+            jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%llu",
                                    cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
+
             jsonhandler->close_nesting();
         }
 
