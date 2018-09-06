@@ -1,3 +1,7 @@
+* Version 1.2.14
+    * Keep keys to be in key-range when using run-count with parallel key-patten
+    * Fix keys overlap when using parallel key-patten
+
 * Version 1.2.13
     * Support "MOVED" in cluster mode
 
