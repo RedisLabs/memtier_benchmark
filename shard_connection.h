@@ -41,7 +41,7 @@ enum authentication_state { auth_none, auth_sent, auth_done };
 enum select_db_state { select_none, select_sent, select_done };
 enum cluster_slots_state { slots_none, slots_sent, slots_done };
 
-enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_auth, rt_select_db, rt_cluster_slots };
+enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots };
 struct request {
     request_type m_type;
     struct timeval m_sent_time;
@@ -92,6 +92,9 @@ public:
     void send_mget_command(struct timeval* sent_time, const keylist* key_list);
     void send_verify_get_command(struct timeval* sent_time, const char *key, int key_len,
                                  const char *value, int value_len, int expiry, unsigned int offset);
+    int send_arbitrary_command(command_arg *arg);
+    int send_arbitrary_command(command_arg *arg, const char *val, int val_len);
+    void send_arbitrary_command_end(struct timeval* sent_time, int cmd_size);
 
     void set_authentication() {
         m_authentication = auth_none;

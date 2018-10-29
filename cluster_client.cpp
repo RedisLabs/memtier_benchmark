@@ -225,23 +225,23 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
     std::vector<bool> close_sc(prev_connections_size, true);
 
     // run over response and create connections
-    for (unsigned int i=0; i<r->get_mbulk_value()->mbulk_array.size(); i++) {
+    for (unsigned int i=0; i<r->get_mbulk_value()->mbulks_elements.size(); i++) {
         // create connection
-        mbulk_element* shard = r->get_mbulk_value()->mbulk_array[i];
+        mbulk_size_el* shard = r->get_mbulk_value()->mbulks_elements[i]->as_mbulk_size();
 
-        int min_slot = strtol(shard->mbulk_array[0]->value, NULL, 10);
-        int max_slot = strtol(shard->mbulk_array[1]->value, NULL, 10);
+        int min_slot = strtol(shard->mbulks_elements[0]->as_bulk()->value + 1, NULL, 10);
+        int max_slot = strtol(shard->mbulks_elements[1]->as_bulk()->value + 1, NULL, 10);
 
         // hostname/ip
-        mbulk_element* mbulk_addr_el = shard->mbulk_array[2]->mbulk_array[0];
+        bulk_el* mbulk_addr_el = shard->mbulks_elements[2]->as_mbulk_size()->mbulks_elements[0]->as_bulk();
         char* addr = (char*) malloc(mbulk_addr_el->value_len + 1);
         memcpy(addr, mbulk_addr_el->value, mbulk_addr_el->value_len);
         addr[mbulk_addr_el->value_len] = '\0';
 
         // port
-        mbulk_element* mbulk_port_el = shard->mbulk_array[2]->mbulk_array[1];
-        char* port = (char*) malloc(mbulk_port_el->value_len + 1);
-        memcpy(port, mbulk_port_el->value, mbulk_port_el->value_len);
+        bulk_el* mbulk_port_el = shard->mbulks_elements[2]->as_mbulk_size()->mbulks_elements[1]->as_bulk();
+        char* port = (char*) malloc(mbulk_port_el->value_len);
+        memcpy(port, mbulk_port_el->value + 1, mbulk_port_el->value_len);
         port[mbulk_port_el->value_len] = '\0';
 
         // check if connection already exist

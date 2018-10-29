@@ -68,6 +68,7 @@ struct table_el {
 };
 
 struct table_column {
+    unsigned int column_size;
     std::vector<table_el> elements;
 };
 
@@ -97,6 +98,7 @@ protected:
     latency_map m_get_latency_map;
     latency_map m_set_latency_map;
     latency_map m_wait_latency_map;
+    latency_map m_ar_latency_map;
     void roll_cur_stats(struct timeval* ts);
 
 public:
@@ -114,6 +116,7 @@ public:
     void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
 
     void update_wait_op(struct timeval* ts, unsigned int latency);
+    void update_aribitrary_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
@@ -123,9 +126,14 @@ public:
                           unsigned long int& total_set_ops,
                           unsigned long int& total_wait_ops);
     void save_csv_one_sec_cluster(FILE *f);
-    bool save_csv(const char *filename, bool cluster_mode);
+    void save_ar_one_sec(FILE *f,
+                         std::string ar_cmd_name,
+                         unsigned long int& total_ar_ops);
+    bool save_csv(const char *filename, bool cluster_mode, std::string ar_cmd_name);
     void debug_dump(void);
-    void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL, bool cluster_mode = false);
+    void print(FILE *file, bool histogram,
+               const char* header = NULL, json_handler* jsonhandler = NULL,
+               bool cluster_mode = false, std::string ar_cmd_name = "");
 
     unsigned int get_duration(void);
     unsigned long int get_duration_usec(void);

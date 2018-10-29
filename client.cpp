@@ -238,6 +238,39 @@ bool client::hold_pipeline(unsigned int conn_id) {
 // This function could use some urgent TLC -- but we need to do it without altering the behavior
 void client::create_request(struct timeval timestamp, unsigned int conn_id)
 {
+    // are we using arbitrary command?
+    if (m_config->command) {
+        int cmd_size = 0;
+        for (unsigned int i = 0; i < m_config->command->command_args.size(); i++) {
+            command_arg* arg = &m_config->command->command_args[i];
+
+            if (arg->type == const_type) {
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
+            } else if (arg->type == key_type) {
+                int iter = obj_iter_type(m_config, 0);
+                unsigned int key_len;
+                const char *key = m_obj_gen->get_key(iter, &key_len);
+
+                assert(key != NULL);
+                assert(key_len > 0);
+
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, key, key_len);
+            } else if (arg->type == data_type) {
+                unsigned int value_len;
+                const char *value = m_obj_gen->get_value(0, &value_len);
+
+                assert(value != NULL);
+                assert(value_len > 0);
+
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
+            }
+        }
+
+        m_connections[conn_id]->send_arbitrary_command_end(&timestamp, cmd_size);
+        m_reqs_generated++;
+        return;
+    }
+
     // If the Set:Wait ratio is not 0, start off with WAITs
     if (m_config->wait_ratio.b &&
         (m_tot_wait_ops == 0 ||
@@ -335,19 +368,24 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
     switch (request->m_type) {
         case rt_get:
             m_stats.update_get_op(&timestamp,
-                request->m_size + response->get_total_len(),
-                ts_diff(request->m_sent_time, timestamp),
-                response->get_hits(),
-                request->m_keys - response->get_hits());
+                                  request->m_size + response->get_total_len(),
+                                  ts_diff(request->m_sent_time, timestamp),
+                                  response->get_hits(),
+                                  request->m_keys - response->get_hits());
             break;
         case rt_set:
             m_stats.update_set_op(&timestamp,
-                request->m_size + response->get_total_len(),
-                ts_diff(request->m_sent_time, timestamp));
+                                  request->m_size + response->get_total_len(),
+                                  ts_diff(request->m_sent_time, timestamp));
             break;
         case rt_wait:
             m_stats.update_wait_op(&timestamp,
-                ts_diff(request->m_sent_time, timestamp));
+                                   ts_diff(request->m_sent_time, timestamp));
+            break;
+        case rt_arbitrary:
+            m_stats.update_aribitrary_op(&timestamp,
+                                  request->m_size + response->get_total_len(),
+                                  ts_diff(request->m_sent_time, timestamp));
             break;
         default:
             assert(0);
@@ -591,7 +629,8 @@ void client_group::write_client_stats(const char *prefix)
         char filename[PATH_MAX];
 
         snprintf(filename, sizeof(filename)-1, "%s-%u.csv", prefix, client_id++);
-        if (!(*i)->get_stats()->save_csv(filename, m_config->cluster_mode)) {
+        if (!(*i)->get_stats()->save_csv(filename, m_config->cluster_mode,
+                                         m_config->command ? m_config->command->command_name : "")) {
             fprintf(stderr, "error: %s: failed to write client stats.\n", filename);
         }
     }        

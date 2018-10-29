@@ -56,7 +56,7 @@ void abstract_protocol::set_keep_value(bool flag)
 /////////////////////////////////////////////////////////////////////////
 
 protocol_response::protocol_response()
-    : m_status(NULL), m_value(NULL), m_mbulk_value(NULL), m_value_len(0), m_hits(0), m_error(false)
+    : m_status(NULL), m_mbulk_value(NULL), m_value(NULL), m_value_len(0), m_hits(0), m_error(false)
 {
 }
 
@@ -134,8 +134,7 @@ void protocol_response::clear(void)
         m_value = NULL;
     }
     if (m_mbulk_value != NULL) {
-        m_mbulk_value->free_mbulk();
-        free((void *)m_mbulk_value);
+        delete m_mbulk_value;
         m_mbulk_value = NULL;
     }
     m_value_len = 0;
@@ -144,32 +143,11 @@ void protocol_response::clear(void)
     m_error = 0;
 }
 
-void protocol_response::set_mbulk_value(mbulk_element* element) {
+void protocol_response::set_mbulk_value(mbulk_size_el* element) {
     m_mbulk_value = element;
 }
 
-void protocol_response::add_mbulk_array(mbulk_level_array* array, mbulk_element* element, int count) {
-    add_mbulk_value(array, element);
-
-    // create new nested level
-    mbulk_level* new_level = new mbulk_level(count, element);
-    array->push_back(new_level);
-}
-
-void protocol_response::add_mbulk_value(mbulk_level_array* array, mbulk_element* element) {
-    mbulk_level* cur_level = array->back();
-
-    // insert new object into current nested mbulk
-    cur_level->mbulk->mbulk_array.push_back(element);
-
-    // update current mbulk
-    cur_level->mbulk_count--;
-
-    if (cur_level->mbulk_count == 0)
-        array->pop_back();
-}
-
-const mbulk_element* protocol_response::get_mbulk_value() {
+mbulk_size_el* protocol_response::get_mbulk_value() {
     return m_mbulk_value;
 }
 
@@ -177,11 +155,14 @@ const mbulk_element* protocol_response::get_mbulk_value() {
 
 class redis_protocol : public abstract_protocol {
 protected:
-    enum response_state { rs_initial, rs_read_bulk, rs_read_mbulk };
+    enum response_state { rs_initial, rs_read_bulk, rs_read_line, rs_end_bulk };
     response_state m_response_state;
     unsigned int m_bulk_len;
     size_t m_response_len;
-    mbulk_level_array current_mbulk_level;
+
+    unsigned int m_total_bulks_count;
+    mbulk_size_el* m_current_mbulk;
+
 public:
     redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
@@ -193,6 +174,11 @@ public:
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(void);
+
+    // handle arbitrary command
+    virtual bool format_arbitrary_command(arbitrary_command &cmd);
+    int write_arbitrary_command(command_arg *arg);
+    int write_arbitrary_command(const char *val, int val_len);
 };
 
 int redis_protocol::select_db(int db)
@@ -248,7 +234,7 @@ int redis_protocol::write_command_set(const char *key, int key_len, const char *
     assert(value != NULL);
     assert(value_len > 0);
     int size = 0;
-    
+
     if (!expiry && !offset) {
         size = evbuffer_add_printf(m_write_buf,
             "*3\r\n"
@@ -379,144 +365,177 @@ int redis_protocol::write_command_wait(unsigned int num_slaves, unsigned int tim
 int redis_protocol::parse_response(void)
 {
     char *line;
+    size_t res_len;
 
     while (true) {
         switch (m_response_state) {
-            case rs_initial:                
-                line = evbuffer_readln(m_read_buf, &m_response_len, EVBUFFER_EOL_CRLF_STRICT);
-                if (line == NULL)
-                    return 0;   // maybe we didn't get it yet?
-                m_response_len += 2;    // count CRLF
-
+            case rs_initial:
                 // clear last response
                 m_last_response.clear();
+                m_response_len = 0;
+                m_response_state = rs_read_line;
+
+                break;
+            case rs_read_line:
+                line = evbuffer_readln(m_read_buf, &res_len, EVBUFFER_EOL_CRLF_STRICT);
+
+                // maybe we didn't get it yet?
+                if (line == NULL) {
+                    return 0;
+                }
+
+                // count CRLF
+                m_response_len += res_len + 2;
 
                 if (line[0] == '*') {
                     int count = strtol(line + 1, NULL, 10);
-                    if (count == -1) {
-                        m_last_response.set_status(line);
-                        return 1;
+
+                    // in case of nested mbulk, the mbulk is one of the total bulks
+                    if (m_total_bulks_count > 0) {
+                        m_total_bulks_count--;
                     }
 
-                    // start new mbulk response
-                    current_mbulk_level.clear();
+                    // from bulks counter perspective every count < 0 is equal to 0, because it's not followed by bulks.
+                    if (count < 0) {
+                        count = 0;
+                    }
 
-                    mbulk_element* mbulk = new mbulk_element();
-                    m_last_response.set_mbulk_value(mbulk);
+                    if (m_keep_value) {
+                        mbulk_size_el* new_mbulk_size = new mbulk_size_el();
+                        new_mbulk_size->bulks_count = count;
+                        new_mbulk_size->upper_level = m_current_mbulk;
 
-                    // update mbulk level
-                    mbulk_level* new_level = new mbulk_level(count, mbulk);
-                    current_mbulk_level.push_back(new_level);
+                        // update first mbulk as the response mbulk, or insert it to current mbulk
+                        if (m_last_response.get_mbulk_value() == NULL) {
+                            m_last_response.set_mbulk_value(new_mbulk_size);
+                        } else {
+                            m_current_mbulk->add_new_element(new_mbulk_size);
+                        }
 
-                    m_response_state = rs_read_mbulk;
+                        // update current mbulk
+                        m_current_mbulk = new_mbulk_size->get_next_mbulk();
+                    }
+
                     m_last_response.set_status(line);
+                    m_total_bulks_count += count;
+
+                    if (m_total_bulks_count == 0) {
+                        m_last_response.set_total_len(m_response_len);
+                        m_response_state = rs_initial;
+                        return 1;
+                    }
                 } else if (line[0] == '$') {
-                    int len = strtol(line + 1, NULL, 10);
-                    if (len == -1) {
-                        m_last_response.set_status(line);
-                        return 1;
+                    // if it's single bulk (not part of mbulk), we count it here
+                    if (m_total_bulks_count == 0) {
+                        m_total_bulks_count++;
                     }
 
-                    m_bulk_len = (unsigned int) len;
-                    m_response_state = rs_read_bulk;
+                    int len = strtol(line + 1, NULL, 10);
                     m_last_response.set_status(line);
-                    continue;
+
+                    if (len <= 0) {
+                        m_bulk_len = 0;
+                        m_response_state = rs_end_bulk;
+                    } else {
+                        m_bulk_len = (unsigned int) len;
+                        m_response_state = rs_read_bulk;
+                    }
                 } else if (line[0] == '+' || line[0] == '-' || line[0] == ':') {
-                    m_last_response.set_status(line);
-                    m_last_response.set_total_len(m_response_len);
+                    // if it's single bulk (not part of mbulk), we count it here
+                    if (m_total_bulks_count == 0) {
+                        m_total_bulks_count++;
+                    }
+
+                    // if we are not inside mbulk, the status will be kept in m_status anyway
+                    if (m_keep_value && m_current_mbulk) {
+                        char *bulk_value = strdup(line);
+                        assert(bulk_value != NULL);
+
+                        bulk_el* new_bulk = new bulk_el();
+                        new_bulk->value = bulk_value;
+                        new_bulk->value_len = strlen(bulk_value);
+
+                        // insert it to current mbulk
+                        m_current_mbulk->add_new_element(new_bulk);
+                        m_current_mbulk = m_current_mbulk->get_next_mbulk();
+                    }
+
                     if (line[0] == '-')
                         m_last_response.set_error(true);
-                    return 1;
+
+                    m_last_response.set_status(line);
+                    m_total_bulks_count--;
+
+                    if (m_total_bulks_count == 0) {
+                        m_last_response.set_total_len(m_response_len);
+                        m_response_state = rs_initial;
+                        return 1;
+                    }
                 } else {
                     benchmark_debug_log("unsupported response: '%s'.\n", line);
                     free(line);
                     return -1;
                 }
-
-                break;
-            case rs_read_mbulk:
-                line = evbuffer_readln(m_read_buf, &m_response_len, EVBUFFER_EOL_CRLF_STRICT);
-                if (line == NULL)
-                    return 0;
-
-                if (line[0] == '*') {
-                    int count = strtol(line + 1, NULL, 10);
-
-                    // add new mbulk array
-                    mbulk_element *mbulk = new mbulk_element();
-                    m_last_response.add_mbulk_array(&current_mbulk_level, mbulk, count);
-
-                    m_response_state = rs_read_mbulk;
-                    m_last_response.set_status(line);
-
-                } else if (line[0] == ':') {
-                    char *bulk_value = strdup(line + 1);
-                    assert(bulk_value != NULL);
-
-                    // add new mbulk value
-                    mbulk_element* mbulk = new mbulk_element(bulk_value, strlen(bulk_value));
-                    m_last_response.add_mbulk_value(&current_mbulk_level, mbulk);
-
-                    // check if we got all mbulk
-                    if (current_mbulk_level.size() == 0) {
-                        m_response_state = rs_initial;
-                        return 1;
-                    }
-
-                } else if (line[0] == '$') {
-                    int len = strtol(line + 1, NULL, 10);
-                    m_bulk_len = (unsigned int) len;
-
-                    if (evbuffer_get_length(m_read_buf) >= m_bulk_len + 2) {
-                        char *bulk_value = (char *) malloc(m_bulk_len);
-                        assert(bulk_value != NULL);
-
-                        int ret = evbuffer_remove(m_read_buf, bulk_value, m_bulk_len);
-                        assert(ret != -1);
-
-                        // drain CRLF
-                        ret = evbuffer_drain(m_read_buf, 2);
-                        assert(ret != -1);
-
-                        // create new mbulk array
-                        mbulk_element* obj = new mbulk_element(bulk_value, m_bulk_len);
-                        m_last_response.add_mbulk_value(&current_mbulk_level, obj);
-
-                        if (current_mbulk_level.size() == 0) {
-                            m_response_state = rs_initial;
-                            return 1;
-                        }
-                    } else {
-                        return 0;
-                    }
-                }
                 break;
             case rs_read_bulk:
                 if (evbuffer_get_length(m_read_buf) >= m_bulk_len + 2) {
-                    if (m_keep_value && m_bulk_len > 0) {
-                        char *bulk_value = (char *) malloc(m_bulk_len);
+                    m_response_len += m_bulk_len + 2;
+                    m_last_response.incr_hits();
+
+                    m_response_state = rs_end_bulk;
+                } else {
+                    return 0;
+                }
+                break;
+            case rs_end_bulk:
+                if (m_keep_value) {
+                    /*
+                     * keep bulk value - in case we need to save bulk value it depends
+                     * if it's inside a mbulk or not.
+                     * in case of receiving just bulk as a response, we save it directly to the m_last_response,
+                     * otherwise we insert it to the current mbulk element
+                     */
+                    char *bulk_value = NULL;
+                    if (m_bulk_len > 0) {
+                        bulk_value = (char *) malloc(m_bulk_len);
                         assert(bulk_value != NULL);
-                            
+
                         int ret = evbuffer_remove(m_read_buf, bulk_value, m_bulk_len);
                         assert(ret != -1);
 
                         // drain CRLF
                         ret = evbuffer_drain(m_read_buf, 2);
                         assert(ret != -1);
+                    }
 
-                        m_last_response.set_value(bulk_value, m_bulk_len);
+                    // in case we are inside mbulk
+                    if (m_current_mbulk) {
+                        bulk_el* new_bulk = new bulk_el();
+                        new_bulk->value = bulk_value;
+                        new_bulk->value_len = m_bulk_len;
+
+                        // insert it to current mbulk
+                        m_current_mbulk->add_new_element(new_bulk);
+                        m_current_mbulk = m_current_mbulk->get_next_mbulk();
                     } else {
+                        m_last_response.set_value(bulk_value, m_bulk_len);
+                    }
+                } else {
+                    // just drain the buffer, include the CRLF
+                    if (m_bulk_len > 0) {
                         int ret = evbuffer_drain(m_read_buf, m_bulk_len + 2);
                         assert(ret != -1);
                     }
+                }
 
+                m_total_bulks_count--;
+
+                if (m_total_bulks_count == 0) {
+                    m_last_response.set_total_len(m_response_len);
                     m_response_state = rs_initial;
-                    m_last_response.set_total_len(m_response_len + m_bulk_len + 2);
-                    if (m_bulk_len > 0)
-                        m_last_response.incr_hits();
                     return 1;
                 } else {
-                    return 0;
+                    m_response_state = rs_read_line;
                 }
                 break;
             default:
@@ -525,6 +544,72 @@ int redis_protocol::parse_response(void)
     }
 
     return -1;
+}
+
+int redis_protocol::write_arbitrary_command(command_arg *arg) {
+    evbuffer_add(m_write_buf, arg->data.c_str(), arg->data.length());
+
+    return arg->data.length();
+}
+
+int redis_protocol::write_arbitrary_command(const char *rand_val, int rand_val_len) {
+    int size = 0;
+
+    size = evbuffer_add_printf(m_write_buf, "$%d\r\n", rand_val_len);
+    size += evbuffer_add(m_write_buf, rand_val, rand_val_len);
+    evbuffer_add(m_write_buf, "\r\n", 2);
+    size += 2;
+
+    return size;
+}
+
+bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
+    for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
+        command_arg* current_arg = &cmd.command_args[i];
+        current_arg->type = const_type;
+
+        // check arg type
+        if (current_arg->data.find(KEY_PLACEHOLDER) != std::string::npos) {
+            if (current_arg->data.length() != strlen(KEY_PLACEHOLDER)) {
+                benchmark_error_log("error: key placeholder can't combined with other data\n");
+                return false;
+            }
+
+            current_arg->type = key_type;
+        } else if (current_arg->data.find(DATA_PLACEHOLDER) != std::string::npos) {
+            if (current_arg->data.length() != strlen(DATA_PLACEHOLDER)) {
+                benchmark_error_log("error: data placeholder can't combined with other data\n");
+                return false;
+            }
+
+            current_arg->type = data_type;
+        }
+
+        // we expect that first arg is the COMMAND name
+        assert(i != 0 || (i == 0 && current_arg->type == const_type && "first arg is not command name?"));
+
+        // save command name
+        if (i==0) {
+            cmd.command_name = current_arg->data;
+        }
+
+        if (current_arg->type == const_type) {
+            char buffer[20];
+            int buffer_len;
+
+            // if it's first arg we add also the mbulk size
+            if (i == 0) {
+                buffer_len = snprintf(buffer, 20, "*%zd\r\n$%zd\r\n", cmd.command_args.size(), current_arg->data.length());
+            } else {
+                buffer_len = snprintf(buffer, 20, "$%zd\r\n", current_arg->data.length());
+            }
+
+            current_arg->data.insert(0, buffer, buffer_len);
+            current_arg->data += "\r\n";
+        }
+    }
+
+    return true;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -546,6 +631,12 @@ public:
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(void);
+
+    // handle arbitrary command
+    virtual bool format_arbitrary_command(arbitrary_command& cmd);
+    virtual int write_arbitrary_command(command_arg *arg);
+    virtual int write_arbitrary_command(const char *val, int val_len);
+
 };
 
 int memcache_text_protocol::select_db(int db)
@@ -723,6 +814,18 @@ int memcache_text_protocol::parse_response(void)
     return -1;
 }
 
+bool memcache_text_protocol::format_arbitrary_command(arbitrary_command& cmd) {
+    assert(0);
+}
+
+int memcache_text_protocol::write_arbitrary_command(command_arg *arg) {
+    assert(0);
+}
+
+int memcache_text_protocol::write_arbitrary_command(const char *val, int val_len) {
+    assert(0);
+}
+
 /////////////////////////////////////////////////////////////////////////
 
 class memcache_binary_protocol : public abstract_protocol {
@@ -744,6 +847,11 @@ public:
     virtual int write_command_multi_get(const keylist *keylist);
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout);
     virtual int parse_response(void);
+
+    // handle arbitrary command
+    virtual bool format_arbitrary_command(arbitrary_command& cmd);
+    virtual int write_arbitrary_command(command_arg *arg);
+    virtual int write_arbitrary_command(const char *val, int val_len);
 };
 
 int memcache_binary_protocol::select_db(int db)
@@ -974,6 +1082,18 @@ int memcache_binary_protocol::parse_response(void)
     }
 
     return -1;
+}
+
+bool memcache_binary_protocol::format_arbitrary_command(arbitrary_command& cmd) {
+    assert(0);
+}
+
+int memcache_binary_protocol::write_arbitrary_command(command_arg *arg) {
+    assert(0);
+}
+
+int memcache_binary_protocol::write_arbitrary_command(const char *val, int val_len) {
+    assert(0);
 }
 
 /////////////////////////////////////////////////////////////////////////

@@ -21,43 +21,97 @@
 
 #include <event2/buffer.h>
 #include <vector>
+#include "memtier_benchmark.h"
 
-struct mbulk_element {
-    mbulk_element() : value(NULL), value_len(0) {;}
-    mbulk_element(char* val, unsigned int len) : value(val), value_len(len) {;}
+enum mbulk_element_type {
+    mbulk_element_mbulk_size,
+    mbulk_element_bulk
+};
 
-    void free_mbulk() {
-        if (value != NULL) {
-            free((void *) value);
-        } else {
-            for (unsigned int i=0; i<mbulk_array.size(); i++) {
-                mbulk_array[i]->free_mbulk();
-                free((void *)mbulk_array[i]);
-            }
-            mbulk_array.clear();
+// forward deceleration
+class mbulk_size_el;
+class bulk_el;
+
+class mbulk_element {
+public:
+    mbulk_element(mbulk_element_type t) : type(t) {;}
+    virtual ~mbulk_element() {;}
+
+    virtual mbulk_size_el* as_mbulk_size() = 0;
+    virtual bulk_el* as_bulk() = 0;
+
+protected:
+    mbulk_element_type type;
+};
+
+class mbulk_size_el : public mbulk_element {
+public:
+    mbulk_size_el() : mbulk_element(mbulk_element_mbulk_size), upper_level(NULL), bulks_count(0) {;}
+    virtual ~mbulk_size_el() {
+        for (unsigned int i=0; i<mbulks_elements.size(); i++) {
+            mbulk_element* el = mbulks_elements[i];
+            delete el;
         }
+        mbulks_elements.clear();
+    }
+
+    virtual mbulk_size_el* as_mbulk_size() {
+        return this;
+    }
+
+    virtual bulk_el* as_bulk() {
+        assert(0);
+    }
+
+    void add_new_element(mbulk_element* new_el) {
+        mbulks_elements.push_back(new_el);
+        bulks_count--;
+    }
+
+    // return the next mbulk size element, that new element should be pushed to
+    mbulk_size_el* get_next_mbulk() {
+        mbulk_size_el *next = this;
+        while (next != NULL) {
+            if (next->bulks_count == 0) {
+                next = next->upper_level;
+            } else {
+                break;
+            }
+        }
+
+        return next;
+    }
+
+    mbulk_size_el *upper_level;
+    int bulks_count;
+    std::vector<mbulk_element*> mbulks_elements;
+};
+
+class bulk_el : public mbulk_element {
+public:
+    bulk_el() : mbulk_element(mbulk_element_bulk), value(NULL), value_len(0) {;}
+    virtual ~bulk_el() {
+        free(value);
+        value_len = 0;
+    }
+
+    virtual bulk_el* as_bulk() {
+        return this;
+    }
+
+    virtual mbulk_size_el* as_mbulk_size() {
+        assert(0);
     }
 
     char* value;
     unsigned int value_len;
-
-    std::vector<mbulk_element*> mbulk_array;
 };
-
-struct mbulk_level {
-    mbulk_level (int count, mbulk_element* mbulk_el) : mbulk_count(count), mbulk(mbulk_el) {;}
-
-    unsigned int mbulk_count;
-    mbulk_element* mbulk;
-};
-
-typedef std::vector<mbulk_level*> mbulk_level_array;
 
 class protocol_response {
 protected:
     const char *m_status;
+    mbulk_size_el *m_mbulk_value;
     const char *m_value;
-    mbulk_element *m_mbulk_value;
     unsigned int m_value_len;
     unsigned int m_total_len;
     unsigned int m_hits;
@@ -84,10 +138,8 @@ public:
 
     void clear();
 
-    void set_mbulk_value(mbulk_element* element);
-    void add_mbulk_array(mbulk_level_array* mbulk_level, mbulk_element* element, int count);
-    void add_mbulk_value(mbulk_level_array* mbulk_level, mbulk_element* element);
-    const mbulk_element* get_mbulk_value();
+    void set_mbulk_value(mbulk_size_el* element);
+    mbulk_size_el* get_mbulk_value();
 };
 
 class keylist {
@@ -138,6 +190,11 @@ public:
     virtual int write_command_multi_get(const keylist *keylist) = 0;
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout) = 0;
     virtual int parse_response() = 0;
+
+    // handle arbitrary command
+    virtual bool format_arbitrary_command(arbitrary_command &cmd) = 0;
+    virtual int write_arbitrary_command(command_arg *arg) = 0;
+    virtual int write_arbitrary_command(const char *val, int val_len) = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }
 };
