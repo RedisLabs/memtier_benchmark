@@ -670,99 +670,147 @@ void output_table::print(FILE *out, const char * header) {
         fprintf(out, "%s\n", line.c_str());
     }
 }
+
 ///////////////////////////////////////////////////////////////////////////
 
-run_stats::one_second_stats::one_second_stats(unsigned int second)
-{
+void run_stats::one_sec_cmd_stats::reset() {
+    m_bytes = 0;
+    m_ops = 0;
+    m_hits = 0;
+    m_misses = 0;
+    m_moved = 0;
+    m_ask = 0;
+    m_total_latency = 0;
+}
+
+void run_stats::one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
+    m_bytes += other.m_bytes;
+    m_ops += other.m_ops;
+    m_hits += other.m_hits;
+    m_misses += other.m_misses;
+    m_moved += other.m_moved;
+    m_ask += other.m_ask;
+    m_total_latency += other.m_total_latency;
+}
+
+void run_stats::one_sec_cmd_stats::update_op(unsigned int bytes, unsigned int latency) {
+    m_bytes += bytes;
+    m_ops++;
+    m_total_latency += latency;
+}
+
+void run_stats::one_sec_cmd_stats::update_op(unsigned int bytes, unsigned int latency,
+                                  unsigned int hits, unsigned int misses) {
+    update_op(bytes, latency);
+    m_hits += hits;
+    m_misses += misses;
+}
+
+void run_stats::one_sec_cmd_stats::update_moved_op(unsigned int bytes, unsigned int latency) {
+    update_op(bytes, latency);
+    m_moved++;
+}
+
+void run_stats::one_sec_cmd_stats::update_ask_op(unsigned int bytes, unsigned int latency) {
+    update_op(bytes, latency);
+    m_ask++;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+run_stats::one_second_stats::one_second_stats(unsigned int second) {
     reset(second);
 }
 
-void run_stats::one_second_stats::reset(unsigned int second)
-{
+void run_stats::one_second_stats::reset(unsigned int second) {
     m_second = second;
-    m_bytes_get = m_bytes_set = 0;
-    m_ops_get = m_ops_set = m_ops_wait = 0;
-    m_get_hits = m_get_misses = 0;
-    m_moved_get = m_moved_set = 0;
-    m_ask_get = m_ask_set = 0;
-    m_total_get_latency = 0;
-    m_total_set_latency = 0;
-    m_total_wait_latency = 0;
+    m_get_cmd.reset();
+    m_set_cmd.reset();
+    m_wait_cmd.reset();
 }
 
-void run_stats::one_second_stats::merge(const one_second_stats& other)
-{
-    m_bytes_get += other.m_bytes_get;
-    m_bytes_set += other.m_bytes_set;
-    m_ops_get += other.m_ops_get;
-    m_ops_set += other.m_ops_set;
-    m_ops_wait += other.m_ops_wait;
-    m_get_hits += other.m_get_hits;
-    m_get_misses += other.m_get_misses;
-    m_moved_get += other.m_moved_get;
-    m_moved_set += other.m_moved_set;
-    m_ask_get += other.m_ask_get;
-    m_ask_set += other.m_ask_set;
-    m_total_get_latency += other.m_total_get_latency;
-    m_total_set_latency += other.m_total_set_latency;
-    m_total_wait_latency += other.m_total_wait_latency;
+void run_stats::one_second_stats::merge(const run_stats::one_second_stats& other) {
+    m_get_cmd.merge(other.m_get_cmd);
+    m_set_cmd.merge(other.m_set_cmd);
+    m_wait_cmd.merge(other.m_wait_cmd);
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+run_stats::totals_cmd::totals_cmd() :
+        m_ops_sec(0),
+        m_bytes_sec(0),
+        m_moved_sec(0),
+        m_ask_sec(0),
+        m_latency(0),
+        m_ops(0) {
+}
+
+void run_stats::totals_cmd::add(const run_stats::totals_cmd& other) {
+    m_ops_sec += other.m_ops_sec;
+    m_moved_sec += other.m_moved_sec;
+    m_ask_sec += other.m_ask_sec;
+    m_bytes_sec += other.m_bytes_sec;
+    m_latency += other.m_latency;
+    m_ops += other.m_ops;
+}
+
+void run_stats::totals_cmd::aggregate_average(size_t stats_size) {
+    m_ops_sec /= stats_size;
+    m_moved_sec /= stats_size;
+    m_ask_sec /= stats_size;
+    m_bytes_sec /= stats_size;
+    m_latency /= stats_size;
+}
+
+void run_stats::totals_cmd::summarize(const run_stats::one_sec_cmd_stats& other, unsigned long test_duration_usec) {
+    m_ops = other.m_ops;
+
+    m_ops_sec = (double) other.m_ops / test_duration_usec * 1000000;
+    if (other.m_ops > 0) {
+        m_latency = (double) (other.m_total_latency / other.m_ops) / 1000;
+    } else {
+        m_latency = 0;
+    }
+
+    m_bytes_sec = (other.m_bytes / 1024.0) / test_duration_usec * 1000000;
+    m_moved_sec = (double) other.m_moved / test_duration_usec * 1000000;
+    m_ask_sec = (double) other.m_ask / test_duration_usec * 1000000;
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 run_stats::totals::totals() :
-        m_ops_sec_set(0),
-        m_ops_sec_get(0),
-        m_ops_sec_wait(0),
+        m_set_cmd(),
+        m_get_cmd(),
+        m_wait_cmd(),
         m_ops_sec(0),
+        m_bytes_sec(0),
         m_hits_sec(0),
         m_misses_sec(0),
-        m_moved_sec_set(0),
-        m_moved_sec_get(0),
         m_moved_sec(0),
-        m_ask_sec_set(0),
-        m_ask_sec_get(0),
         m_ask_sec(0),
-        m_bytes_sec_set(0),
-        m_bytes_sec_get(0),
-        m_bytes_sec(0),
-        m_latency_set(0),
-        m_latency_get(0),
-        m_latency_wait(0),
         m_latency(0),
         m_bytes(0),
-        m_ops_set(0),
-        m_ops_get(0),
-        m_ops_wait(0),
-        m_ops(0)
-{
+        m_ops(0) {
 }
 
-void run_stats::totals::add(const run_stats::totals& other)
-{
-    m_ops_sec_set += other.m_ops_sec_set;
-    m_ops_sec_get += other.m_ops_sec_get;
-    m_ops_sec_wait += other.m_ops_sec_wait;
+void run_stats::totals::add(const run_stats::totals& other) {
+    m_set_cmd.add(other.m_set_cmd);
+    m_get_cmd.add(other.m_get_cmd);
+    m_wait_cmd.add(other.m_wait_cmd);
     m_ops_sec += other.m_ops_sec;
     m_hits_sec += other.m_hits_sec;
     m_misses_sec += other.m_misses_sec;
-    m_moved_sec_set += other.m_moved_sec_set;
-    m_moved_sec_get += other.m_moved_sec_get;
     m_moved_sec += other.m_moved_sec;
-    m_ask_sec_get += other.m_ask_sec_get;
-    m_ask_sec_set += other.m_ask_sec_set;
     m_ask_sec += other.m_ask_sec;
-    m_bytes_sec_set += other.m_bytes_sec_set;
-    m_bytes_sec_get += other.m_bytes_sec_get;
     m_bytes_sec += other.m_bytes_sec;
-    m_latency_set += other.m_latency_set;
-    m_latency_get += other.m_latency_get;
-    m_latency_wait += other.m_latency_wait;
     m_latency += other.m_latency;
     m_bytes += other.m_bytes;
-    m_ops_set += other.m_ops_set;
-    m_ops_get += other.m_ops_get;
-    m_ops_wait += other.m_ops_wait;
     m_ops += other.m_ops;
 }
+
+///////////////////////////////////////////////////////////////////////////
 
 run_stats::run_stats() :
         m_cur_stats(0)
@@ -805,12 +853,7 @@ void run_stats::roll_cur_stats(struct timeval* ts)
 void run_stats::update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_bytes_get += bytes;
-    m_cur_stats.m_ops_get++;
-    m_cur_stats.m_get_hits += hits;
-    m_cur_stats.m_get_misses += misses;
-
-    m_cur_stats.m_total_get_latency += latency;
+    m_cur_stats.m_get_cmd.update_op(bytes, latency, hits, misses);
 
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
@@ -822,10 +865,7 @@ void run_stats::update_get_op(struct timeval* ts, unsigned int bytes, unsigned i
 void run_stats::update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_bytes_set += bytes;
-    m_cur_stats.m_ops_set++;
-
-    m_cur_stats.m_total_set_latency += latency;
+    m_cur_stats.m_set_cmd.update_op(bytes, latency);
 
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
@@ -837,11 +877,7 @@ void run_stats::update_set_op(struct timeval* ts, unsigned int bytes, unsigned i
 void run_stats::update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_bytes_get += bytes;
-    m_cur_stats.m_ops_get++;
-    m_cur_stats.m_moved_get++;
-
-    m_cur_stats.m_total_get_latency += latency;
+    m_cur_stats.m_get_cmd.update_moved_op(bytes, latency);
 
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
@@ -853,11 +889,7 @@ void run_stats::update_moved_get_op(struct timeval* ts, unsigned int bytes, unsi
 void run_stats::update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_bytes_set += bytes;
-    m_cur_stats.m_ops_set++;
-    m_cur_stats.m_moved_set++;
-
-    m_cur_stats.m_total_set_latency += latency;
+    m_cur_stats.m_set_cmd.update_moved_op(bytes, latency);
 
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
@@ -869,11 +901,7 @@ void run_stats::update_moved_set_op(struct timeval* ts, unsigned int bytes, unsi
 void run_stats::update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_bytes_get += bytes;
-    m_cur_stats.m_ops_get++;
-    m_cur_stats.m_ask_get++;
-
-    m_cur_stats.m_total_get_latency += latency;
+    m_cur_stats.m_get_cmd.update_ask_op(bytes, latency);
 
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
@@ -885,11 +913,7 @@ void run_stats::update_ask_get_op(struct timeval* ts, unsigned int bytes, unsign
 void run_stats::update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_bytes_set += bytes;
-    m_cur_stats.m_ops_set++;
-    m_cur_stats.m_ask_set++;
-
-    m_cur_stats.m_total_set_latency += latency;
+    m_cur_stats.m_set_cmd.update_ask_op(bytes, latency);
 
     m_totals.m_bytes += bytes;
     m_totals.m_ops++;
@@ -901,9 +925,7 @@ void run_stats::update_ask_set_op(struct timeval* ts, unsigned int bytes, unsign
 void run_stats::update_wait_op(struct timeval *ts, unsigned int latency)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_ops_wait++;
-
-    m_cur_stats.m_total_wait_latency += latency;
+    m_cur_stats.m_wait_cmd.update_op(0, latency);
 
     m_totals.m_ops++;
     m_totals.m_latency += latency;
@@ -965,20 +987,20 @@ void run_stats::save_csv_one_sec(FILE *f,
 
         fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%u.%06u,%lu,%u,%u,%lu,%u.%06u\n",
                 i->m_second,
-                i->m_ops_set,
-                USEC_FORMAT(AVERAGE(i->m_total_set_latency, i->m_ops_set)),
-                i->m_bytes_set,
-                i->m_ops_get,
-                USEC_FORMAT(AVERAGE(i->m_total_get_latency, i->m_ops_get)),
-                i->m_bytes_get,
-                i->m_get_misses,
-                i->m_get_hits,
-                i->m_ops_wait,
-                USEC_FORMAT(AVERAGE(i->m_total_wait_latency, i->m_ops_wait)));
+                i->m_set_cmd.m_ops,
+                USEC_FORMAT(AVERAGE(i->m_set_cmd.m_total_latency, i->m_set_cmd.m_ops)),
+                i->m_set_cmd.m_bytes,
+                i->m_get_cmd.m_ops,
+                USEC_FORMAT(AVERAGE(i->m_get_cmd.m_total_latency, i->m_get_cmd.m_ops)),
+                i->m_get_cmd.m_bytes,
+                i->m_get_cmd.m_misses,
+                i->m_get_cmd.m_hits,
+                i->m_wait_cmd.m_ops,
+                USEC_FORMAT(AVERAGE(i->m_wait_cmd.m_total_latency, i->m_wait_cmd.m_ops)));
 
-        total_get_ops += i->m_ops_get;
-        total_set_ops += i->m_ops_set;
-        total_wait_ops += i->m_ops_wait;
+        total_set_ops += i->m_set_cmd.m_ops;
+        total_get_ops += i->m_get_cmd.m_ops;
+        total_wait_ops += i->m_wait_cmd.m_ops;
     }
 }
 
@@ -991,10 +1013,10 @@ void run_stats::save_csv_one_sec_cluster(FILE *f) {
 
         fprintf(f, "%u,%u,%u,%u,%u\n",
                 i->m_second,
-                i->m_moved_set,
-                i->m_ask_set,
-                i->m_moved_get,
-                i->m_ask_get);
+                i->m_set_cmd.m_moved,
+                i->m_set_cmd.m_ask,
+                i->m_get_cmd.m_moved,
+                i->m_get_cmd.m_ask);
     }
 }
 
@@ -1059,16 +1081,16 @@ void run_stats::debug_dump(void)
         benchmark_debug_log("  %u: get latency=%u.%ums, set latency=%u.%ums, wait latency=%u.%ums"
                             "m_ops_set/get/wait=%u/%u/%u, m_bytes_set/get=%u/%u, m_get_hit/miss=%u/%u\n",
                             i->m_second,
-                            USEC_FORMAT(AVERAGE(i->m_total_get_latency, i->m_ops_get)),
-                            USEC_FORMAT(AVERAGE(i->m_total_set_latency, i->m_ops_set)),
-                            USEC_FORMAT(AVERAGE(i->m_total_wait_latency, i->m_ops_wait)),
-                            i->m_ops_set,
-                            i->m_ops_get,
-                            i->m_ops_wait,
-                            i->m_bytes_set,
-                            i->m_bytes_get,
-                            i->m_get_hits,
-                            i->m_get_misses);
+                            USEC_FORMAT(AVERAGE(i->m_get_cmd.m_total_latency, i->m_get_cmd.m_ops)),
+                            USEC_FORMAT(AVERAGE(i->m_set_cmd.m_total_latency, i->m_set_cmd.m_ops)),
+                            USEC_FORMAT(AVERAGE(i->m_wait_cmd.m_total_latency, i->m_wait_cmd.m_ops)),
+                            i->m_set_cmd.m_ops,
+                            i->m_get_cmd.m_ops,
+                            i->m_wait_cmd.m_ops,
+                            i->m_set_cmd.m_bytes,
+                            i->m_get_cmd.m_bytes,
+                            i->m_get_cmd.m_hits,
+                            i->m_get_cmd.m_misses);
     }
 
 
@@ -1111,24 +1133,16 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
             m_wait_latency_map[it->first] += it->second;
         }
     }
-    m_totals.m_ops_sec_set /= all_stats.size();
-    m_totals.m_ops_sec_get /= all_stats.size();
-    m_totals.m_ops_sec_wait /= all_stats.size();
+
+    m_totals.m_set_cmd.aggregate_average(all_stats.size());
+    m_totals.m_get_cmd.aggregate_average(all_stats.size());
+    m_totals.m_wait_cmd.aggregate_average(all_stats.size());
     m_totals.m_ops_sec /= all_stats.size();
     m_totals.m_hits_sec /= all_stats.size();
     m_totals.m_misses_sec /= all_stats.size();
-    m_totals.m_moved_sec_set /= all_stats.size();
-    m_totals.m_moved_sec_get /= all_stats.size();
     m_totals.m_moved_sec /= all_stats.size();
-    m_totals.m_ask_sec_set /= all_stats.size();
-    m_totals.m_ask_sec_get /= all_stats.size();
     m_totals.m_ask_sec /= all_stats.size();
-    m_totals.m_bytes_sec_set /= all_stats.size();
-    m_totals.m_bytes_sec_get /= all_stats.size();
     m_totals.m_bytes_sec /= all_stats.size();
-    m_totals.m_latency_set /= all_stats.size();
-    m_totals.m_latency_get /= all_stats.size();
-    m_totals.m_latency_wait /= all_stats.size();
     m_totals.m_latency /= all_stats.size();
 
 }
@@ -1193,51 +1207,31 @@ void run_stats::summarize(totals& result) const
 
     unsigned long int test_duration_usec = ts_diff(m_start_time, m_end_time);
 
-    result.m_ops_set = totals.m_ops_set;
-    result.m_ops_get = totals.m_ops_get;
-    result.m_ops_wait = totals.m_ops_wait;
+    // total ops, bytes
+    result.m_ops = totals.m_set_cmd.m_ops + totals.m_get_cmd.m_ops + totals.m_wait_cmd.m_ops;
+    result.m_bytes = totals.m_set_cmd.m_bytes + totals.m_get_cmd.m_bytes;
 
-    result.m_ops = totals.m_ops_get + totals.m_ops_set + totals.m_ops_wait;
-    result.m_bytes = totals.m_bytes_get + totals.m_bytes_set;
+    // cmd/sec
+    result.m_set_cmd.summarize(totals.m_set_cmd, test_duration_usec);
+    result.m_get_cmd.summarize(totals.m_get_cmd, test_duration_usec);
+    result.m_wait_cmd.summarize(totals.m_wait_cmd, test_duration_usec);
 
-    result.m_ops_sec_set = (double) totals.m_ops_set / test_duration_usec * 1000000;
-    if (totals.m_ops_set > 0) {
-        result.m_latency_set = (double) (totals.m_total_set_latency / totals.m_ops_set) / 1000;
-    } else {
-        result.m_latency_set = 0;
-    }
-    result.m_bytes_sec_set = (totals.m_bytes_set / 1024.0) / test_duration_usec * 1000000;
-    result.m_moved_sec_set = (double) totals.m_moved_set / test_duration_usec * 1000000;
-    result.m_ask_sec_set = (double) totals.m_ask_set / test_duration_usec * 1000000;
+    // hits,misses / sec
+    result.m_hits_sec = (double) totals.m_get_cmd.m_hits / test_duration_usec * 1000000;
+    result.m_misses_sec = (double) totals.m_get_cmd.m_misses / test_duration_usec * 1000000;
 
-    result.m_ops_sec_get = (double) totals.m_ops_get / test_duration_usec * 1000000;
-    if (totals.m_ops_get > 0) {
-        result.m_latency_get = (double) (totals.m_total_get_latency / totals.m_ops_get) / 1000;
-    } else {
-        result.m_latency_get = 0;
-    }
-    result.m_bytes_sec_get = (totals.m_bytes_get / 1024.0) / test_duration_usec * 1000000;
-    result.m_hits_sec = (double) totals.m_get_hits / test_duration_usec * 1000000;
-    result.m_misses_sec = (double) totals.m_get_misses / test_duration_usec * 1000000;
-    result.m_moved_sec_get = (double) totals.m_moved_get / test_duration_usec * 1000000;
-    result.m_ask_sec_get = (double) totals.m_ask_get / test_duration_usec * 1000000;
-
-    result.m_ops_sec_wait =  (double) totals.m_ops_wait / test_duration_usec * 1000000;
-    if (totals.m_ops_wait > 0) {
-        result.m_latency_wait = (double) (totals.m_total_wait_latency / totals.m_ops_wait) / 1000;
-    } else {
-        result.m_latency_wait = 0;
-    }
-
+    // total/sec
     result.m_ops_sec = (double) result.m_ops / test_duration_usec * 1000000;
     if (result.m_ops > 0) {
-        result.m_latency = (double) ((totals.m_total_get_latency + totals.m_total_set_latency + totals.m_total_wait_latency) / result.m_ops) / 1000;
+        result.m_latency = (double) ((totals.m_set_cmd.m_total_latency + totals.m_get_cmd.m_total_latency + totals.m_wait_cmd.m_total_latency) /
+                                     result.m_ops) /
+                           1000;
     } else {
         result.m_latency = 0;
     }
     result.m_bytes_sec = (result.m_bytes / 1024.0) / test_duration_usec * 1000000;
-    result.m_moved_sec = (double) (totals.m_moved_get + totals.m_moved_set) / test_duration_usec * 1000000;
-    result.m_ask_sec = (double) (totals.m_ask_get + totals.m_ask_set) / test_duration_usec * 1000000;
+    result.m_moved_sec = (double) (totals.m_set_cmd.m_moved + totals.m_get_cmd.m_moved) / test_duration_usec * 1000000;
+    result.m_ask_sec = (double) (totals.m_set_cmd.m_ask + totals.m_get_cmd.m_ask) / test_duration_usec * 1000000;
 }
 
 void result_print_to_json(json_handler * jsonhandler, const char * type, double ops,
@@ -1299,9 +1293,9 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
     // Ops/sec column
     column.elements.push_back(*el.init_str("%12s ", "Ops/sec"));
     column.elements.push_back(*el.init_str("%s", "------------"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ops_sec_set));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ops_sec_get));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ops_sec_wait));
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ops_sec));
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_ops_sec));
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_wait_cmd.m_ops_sec));
     column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ops_sec));
 
     table.add_column(column);
@@ -1334,8 +1328,8 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         // Moved/sec column
         column.elements.push_back(*el.init_str("%12s ", "MOVED/sec"));
         column.elements.push_back(*el.init_str("%s", "------------"));
-        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec_set));
-        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec_get));
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_moved_sec));
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_moved_sec));
         column.elements.push_back(*el.init_str("%12s ", "---"));
         column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec));
 
@@ -1345,8 +1339,8 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         // ASK/sec column
         column.elements.push_back(*el.init_str("%12s ", "ASK/sec"));
         column.elements.push_back(*el.init_str("%s", "------------"));
-        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec_set));
-        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec_get));
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ask_sec));
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_ask_sec));
         column.elements.push_back(*el.init_str("%12s ", "---"));
         column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec));
 
@@ -1357,9 +1351,9 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
     // Latency column
     column.elements.push_back(*el.init_str("%12s ", "Latency"));
     column.elements.push_back(*el.init_str("%s", "------------"));
-    column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_latency_set));
-    column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_latency_get));
-    column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_latency_wait));
+    column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_set_cmd.m_latency));
+    column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_get_cmd.m_latency));
+    column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_wait_cmd.m_latency));
     column.elements.push_back(*el.init_double("%12.05f ", m_totals.m_latency));
 
     table.add_column(column);
@@ -1368,8 +1362,8 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
     // KB/sec column
     column.elements.push_back(*el.init_str("%12s ", "KB/sec"));
     column.elements.push_back(*el.init_str("%s", "------------"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_bytes_sec_set));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_bytes_sec_get));
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_bytes_sec));
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_bytes_sec));
     column.elements.push_back(*el.init_str("%12s ", "---"));
     column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_bytes_sec));
 
@@ -1390,26 +1384,26 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
             jsonhandler->open_nesting("UNKNOWN STATS");
         }
 
-        result_print_to_json(jsonhandler, "Sets",m_totals.m_ops_sec_set,
+        result_print_to_json(jsonhandler, "Sets",m_totals.m_set_cmd.m_ops_sec,
                              0.0,
                              0.0,
-                             cluster_mode ? m_totals.m_moved_sec_set : -1,
-                             cluster_mode ? m_totals.m_ask_sec_set : -1,
-                             m_totals.m_latency_set,
-                             m_totals.m_bytes_sec_set);
-        result_print_to_json(jsonhandler,"Gets",m_totals.m_ops_sec_get,
+                             cluster_mode ? m_totals.m_set_cmd.m_moved_sec : -1,
+                             cluster_mode ? m_totals.m_set_cmd.m_ask_sec : -1,
+                             m_totals.m_set_cmd.m_latency,
+                             m_totals.m_set_cmd.m_bytes_sec);
+        result_print_to_json(jsonhandler,"Gets",m_totals.m_get_cmd.m_ops_sec,
                              m_totals.m_hits_sec,
                              m_totals.m_misses_sec,
-                             cluster_mode ? m_totals.m_moved_sec_get : -1,
-                             cluster_mode ? m_totals.m_ask_sec_get : -1,
-                             m_totals.m_latency_get,
-                             m_totals.m_bytes_sec_get);
-        result_print_to_json(jsonhandler,"Waits",m_totals.m_ops_sec_wait,
+                             cluster_mode ? m_totals.m_get_cmd.m_moved_sec : -1,
+                             cluster_mode ? m_totals.m_get_cmd.m_ask_sec : -1,
+                             m_totals.m_get_cmd.m_latency,
+                             m_totals.m_get_cmd.m_bytes_sec);
+        result_print_to_json(jsonhandler,"Waits",m_totals.m_wait_cmd.m_ops_sec,
                              0.0,
                              0.0,
                              cluster_mode ? 0.0 : -1,
                              cluster_mode ? 0.0 : -1,
-                             m_totals.m_latency_wait,
+                             m_totals.m_wait_cmd.m_latency,
                              0.0);
         result_print_to_json(jsonhandler,"Totals",m_totals.m_ops_sec,
                              m_totals.m_hits_sec,
@@ -1435,7 +1429,7 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         if (jsonhandler != NULL){ jsonhandler->open_nesting("SET",NESTED_ARRAY);}
         for( latency_map_itr_const it = m_set_latency_map.begin() ; it != m_set_latency_map.end() ; it++) {
             total_count += it->second;
-            histogram_print(out, jsonhandler, "SET",it->first,(double) total_count / m_totals.m_ops_set * 100);
+            histogram_print(out, jsonhandler, "SET",it->first,(double) total_count / m_totals.m_set_cmd.m_ops * 100);
         }
         if (jsonhandler != NULL){ jsonhandler->close_nesting();}
         fprintf(out, "---\n");
@@ -1445,7 +1439,7 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         if (jsonhandler != NULL){ jsonhandler->open_nesting("GET",NESTED_ARRAY);}
         for( latency_map_itr_const it = m_get_latency_map.begin() ; it != m_get_latency_map.end() ; it++) {
             total_count += it->second;
-            histogram_print(out, jsonhandler, "GET",it->first,(double) total_count / m_totals.m_ops_get * 100);
+            histogram_print(out, jsonhandler, "GET",it->first,(double) total_count / m_totals.m_get_cmd.m_ops * 100);
         }
         if (jsonhandler != NULL){ jsonhandler->close_nesting();}
         fprintf(out, "---\n");
@@ -1455,10 +1449,11 @@ void run_stats::print(FILE *out, bool histogram, const char * header/*=NULL*/,  
         if (jsonhandler != NULL){ jsonhandler->open_nesting("WAIT",NESTED_ARRAY);}
         for( latency_map_itr_const it = m_wait_latency_map.begin() ; it != m_wait_latency_map.end() ; it++) {
             total_count += it->second;
-            histogram_print(out, jsonhandler, "WAIT",it->first,(double) total_count / m_totals.m_ops_wait * 100);
+            histogram_print(out, jsonhandler, "WAIT",it->first,(double) total_count / m_totals.m_wait_cmd.m_ops * 100);
         }
         if (jsonhandler != NULL){ jsonhandler->close_nesting();}
     }
+
     // This close_nesting closes either:
     //      jsonhandler->open_nesting(header); or
     //      jsonhandler->open_nesting("UNKNOWN STATS");
