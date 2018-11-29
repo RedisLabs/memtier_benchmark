@@ -39,6 +39,7 @@
 #include "JSON_handler.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+#include "run_stats.h"
 
 
 static int log_level = 0;

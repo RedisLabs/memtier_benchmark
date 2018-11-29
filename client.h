@@ -26,189 +26,26 @@
 #include <sys/un.h>
 #include <vector>
 #include <queue>
-#include <map>
 #include <iterator>
 #include <event2/event.h>
 #include <event2/buffer.h>
 
 #include "protocol.h"
-#include "JSON_handler.h"
 #include "config_types.h"
 #include "shard_connection.h"
 #include "connections_manager.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+#include "run_stats.h"
 
 #define MAIN_CONNECTION m_connections[0]
 
-class client;               // forward decl
-class client_group;         // forward decl
+// forward declarations
+class client;
+class client_group;
 struct benchmark_config;
-
 class object_generator;
 class data_object;
-
-typedef std::map<float, int> latency_map;
-typedef std::map<float, int>::iterator latency_map_itr;
-typedef std::map<float, int>::const_iterator latency_map_itr_const;
-
-inline long long int ts_diff(struct timeval a, struct timeval b)
-{
-    unsigned long long aval = a.tv_sec * 1000000 + a.tv_usec;
-    unsigned long long bval = b.tv_sec * 1000000 + b.tv_usec;
-
-    return bval - aval;
-}
-
-enum tabel_el_type {
-    string_el,
-    double_el
-};
-
-struct table_el {
-    tabel_el_type type;
-    std::string format;
-    std::string str_value;
-    double  double_value;
-
-    table_el* init_str(std::string fmt, std::string val) {
-        type = string_el;
-        format = fmt;
-        str_value = val;
-        return this;
-    }
-
-    table_el* init_double(std::string fmt, double val) {
-        type = double_el;
-        format = fmt;
-        double_value = val;
-        return this;
-    }
-};
-
-struct table_column {
-    std::vector<table_el> elements;
-};
-
-class output_table {
-private:
-    std::vector<table_column> columns;
-
-public:
-    void print_header(FILE *out, const char * header);
-    void add_column(table_column& col);
-    void print(FILE *out, const char * header);
-};
-
-class run_stats {
-protected:
-    class one_sec_cmd_stats {
-    public:
-        unsigned long int m_bytes;
-        unsigned long int m_ops;
-        unsigned int m_hits;
-        unsigned int m_misses;
-        unsigned int m_moved;
-        unsigned int m_ask;
-        unsigned long long int m_total_latency;
-        void reset();
-        void merge(const run_stats::one_sec_cmd_stats& other);
-        void update_op(unsigned int bytes, unsigned int latency);
-        void update_op(unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-        void update_moved_op(unsigned int bytes, unsigned int latency);
-        void update_ask_op(unsigned int bytes, unsigned int latency);
-    };
-
-    class one_second_stats {
-    public:
-        unsigned int m_second;        // from start of test
-        one_sec_cmd_stats m_set_cmd;
-        one_sec_cmd_stats m_get_cmd;
-        one_sec_cmd_stats m_wait_cmd;
-        one_second_stats(unsigned int second);
-        void reset(unsigned int second);
-        void merge(const one_second_stats& other);
-    };
-
-    friend bool one_second_stats_predicate(const run_stats::one_second_stats& a, const run_stats::one_second_stats& b);
-
-    struct timeval m_start_time;
-    struct timeval m_end_time;
-
-    class totals_cmd {
-    public:
-        double m_ops_sec;
-        double m_bytes_sec;
-        double m_moved_sec;
-        double m_ask_sec;
-        double m_latency;
-        unsigned long int m_ops;
-        totals_cmd();
-        void add(const totals_cmd& other);
-        void aggregate_average(size_t stats_size);
-        void summarize(const one_sec_cmd_stats& other, unsigned long test_duration_usec);
-    };
-
-    class totals {
-    public:
-        totals_cmd m_set_cmd;
-        totals_cmd m_get_cmd;
-        totals_cmd m_wait_cmd;
-        double m_ops_sec;
-        double m_bytes_sec;
-        double m_hits_sec;
-        double m_misses_sec;
-        double m_moved_sec;
-        double m_ask_sec;
-        double m_latency;
-        unsigned long int m_bytes;
-        unsigned long int m_ops;
-        totals();
-        void add(const totals& other);
-    } m_totals;
-
-    std::vector<one_second_stats> m_stats;
-    one_second_stats m_cur_stats;
-
-    latency_map m_get_latency_map;
-    latency_map m_set_latency_map;
-    latency_map m_wait_latency_map;
-    void roll_cur_stats(struct timeval* ts);
-
-public:
-    run_stats();
-    void set_start_time(struct timeval* start_time);
-    void set_end_time(struct timeval* end_time);
-
-    void update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-
-    void update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-
-    void update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-
-    void update_wait_op(struct timeval* ts, unsigned int latency);
-
-    void aggregate_average(const std::vector<run_stats>& all_stats);
-    void summarize(totals& result) const;
-    void merge(const run_stats& other, int iteration);
-    void save_csv_one_sec(FILE *f,
-                          unsigned long int& total_get_ops,
-                          unsigned long int& total_set_ops,
-                          unsigned long int& total_wait_ops);
-    void save_csv_one_sec_cluster(FILE *f);
-    bool save_csv(const char *filename, bool cluster_mode);
-    void debug_dump(void);
-    void print(FILE *file, bool histogram, const char* header = NULL, json_handler* jsonhandler = NULL, bool cluster_mode = false);
-
-    unsigned int get_duration(void);
-    unsigned long int get_duration_usec(void);
-    unsigned long int get_total_bytes(void);
-    unsigned long int get_total_ops(void);
-    unsigned long int get_total_latency(void);
-};
 
 class client : public connections_manager {
 protected:
