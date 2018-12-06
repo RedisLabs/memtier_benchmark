@@ -27,6 +27,8 @@ memtier_benchmark_SOURCES = \
 	client.cpp client.h \
 	cluster_client.cpp cluster_client.h \
 	shard_connection.cpp shard_connection.h connections_manager.h \
+	run_stats_types.cpp run_stats_types.h \
+	run_stats.cpp run_stats.h \
 	JSON_handler.cpp JSON_handler.h \
 	protocol.cpp protocol.h \
 	obj_gen.cpp obj_gen.h \
