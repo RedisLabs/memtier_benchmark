@@ -43,6 +43,8 @@ public:
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
+    one_sec_cmd_stats m_ar_cmd;
+
     one_second_stats(unsigned int second);
     void reset(unsigned int second);
     void merge(const one_second_stats& other);
@@ -67,6 +69,7 @@ public:
     totals_cmd m_set_cmd;
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
+    totals_cmd m_ar_cmd;
     double m_ops_sec;
     double m_bytes_sec;
     double m_hits_sec;

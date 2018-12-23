@@ -263,3 +263,158 @@ const char* server_addr::get_last_error(void) const
 {
     return gai_strerror(m_last_error);
 }
+
+static int hex_digit_to_int(char c) {
+    if (c >= 'a' && c <= 'f') {
+        return (c - 'a') + 10;
+    } else if (c >= 'A' && c <= 'F') {
+        return (c - 'A') + 10;
+    } else if (c >= '0' && c <= '9') {
+        return (c - '0');
+    } else {
+        return -1;
+    }
+}
+
+bool arbitrary_command::split_command_to_args(const char* command) {
+    const char *p = command;
+    size_t command_len = strlen(command);
+
+    char buffer[command_len];
+    unsigned int buffer_len = 0;
+
+    while (1) {
+        /* skip blanks */
+        while (*p && isspace(*p)) {
+            p++;
+        }
+
+        if (*p) {
+            /* get a token */
+            bool in_quotes = 0; /* set to 1 if we are in "quotes" */
+            bool in_single_quotes = 0; /* set to 1 if we are in 'single quotes' */
+            bool done = 0;
+            buffer_len = 0;
+            //current = p;
+
+            while (!done) {
+                if (in_quotes) {
+                    if (*p == '\\' && *(p + 1) == 'x' &&
+                        isxdigit(*(p + 2)) &&
+                        isxdigit(*(p + 3))) {
+
+                        unsigned char byte;
+                        byte = (hex_digit_to_int(*(p + 2)) * 16) +
+                               hex_digit_to_int(*(p + 3));
+
+                        buffer[buffer_len] = byte;
+                        buffer_len++;
+                        p += 3;
+                    } else if (*p == '\\' && *(p + 1)) {
+                        char c;
+                        p++;
+
+                        switch (*p) {
+                            case 'n':
+                                c = '\n';
+                                break;
+
+                            case 'r':
+                                c = '\r';
+                                break;
+
+                            case 't':
+                                c = '\t';
+                                break;
+
+                            case 'b':
+                                c = '\b';
+                                break;
+
+                            case 'a':
+                                c = '\a';
+                                break;
+
+                            default:
+                                c = *p;
+                                break;
+                        }
+
+                        buffer[buffer_len] = c;
+                        buffer_len++;
+                    } else if (*p == '"') {
+                        /* closing quote must be followed by a space or
+                         * nothing at all. */
+                        if (*(p + 1) && !isspace(*(p + 1))) {
+                            goto err;
+                        }
+
+                        done = 1;
+                    } else if (!*p) {
+                        /* unterminated quotes */
+                        goto err;
+                    } else {
+                        buffer[buffer_len] = *p;
+                        buffer_len++;
+                    }
+                } else if (in_single_quotes) {
+                    if (*p == '\\' && *(p + 1) == '\'') {
+                        p++;
+                        buffer[buffer_len] = '\'';
+                        buffer_len++;
+                    } else if (*p == '\'') {
+                        /* closing quote must be followed by a space or
+                         * nothing at all. */
+                        if (*(p + 1) && !isspace(*(p + 1))) {
+                            goto err;
+                        }
+
+                        done = 1;
+                    } else if (!*p) {
+                        /* unterminated quotes */
+                        goto err;
+                    } else {
+                        buffer[buffer_len] = *p;
+                        buffer_len++;
+                    }
+                } else {
+                    switch (*p) {
+                        case ' ':
+                        case '\n':
+                        case '\r':
+                        case '\t':
+                        case '\0':
+                            done = 1;
+                            break;
+
+                        case '"':
+                            in_quotes = 1;
+                            break;
+
+                        case '\'':
+                            in_single_quotes = 1;
+                            break;
+
+                        default:
+                            buffer[buffer_len] = *p;
+                            buffer_len++;
+                            break;
+                    }
+                }
+
+                if (*p) {
+                    p++;
+                }
+            }
+
+            // add new arg
+            command_arg arg(buffer, buffer_len);
+            command_args.push_back(arg);
+        } else {
+            return true;
+        }
+    }
+
+    err:
+    return false;
+}

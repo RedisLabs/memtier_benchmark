@@ -365,6 +365,9 @@ void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
 
     if (m_cluster_slots == slots_none) {
         benchmark_debug_log("sending cluster slots command.\n");
+
+        // in case we send CLUSTER SLOTS command, we need to keep the response to parse it
+        m_protocol->set_keep_value(true);
         m_protocol->write_command_cluster_slots();
         push_req(new request(rt_cluster_slots, 0, &timestamp, 0));
         m_cluster_slots = slots_sent;
@@ -402,18 +405,20 @@ void shard_connection::process_response(void)
                 m_db_selection = select_done;
             }
         } else if (req->m_type == rt_cluster_slots) {
-            if (r->get_mbulk_value() == NULL || r->get_mbulk_value()->mbulk_array.size() == 0) {
+            if (r->get_mbulk_value() == NULL || r->get_mbulk_value()->mbulks_elements.size() == 0) {
                 benchmark_error_log("cluster slot failed.\n");
                 error = true;
             } else {
                 // parse response
                 m_conns_manager->handle_cluster_slots(r);
+                m_protocol->set_keep_value(false);
 
                 m_cluster_slots = slots_done;
                 benchmark_debug_log("cluster slot command successful\n");
             }
         } else {
-            benchmark_debug_log("handled response (first line): %s, %d hits, %d misses\n",
+            benchmark_debug_log("server %s: handled response (first line): %s, %d hits, %d misses\n",
+                                get_readable_id(),
                                 r->get_status(),
                                 r->get_hits(),
                                 req->m_keys - r->get_hits());
@@ -587,8 +592,8 @@ void shard_connection::send_set_command(struct timeval* sent_time, const char *k
                                         const char *value, int value_len, int expiry, unsigned int offset) {
     int cmd_size = 0;
 
-    benchmark_debug_log("SET key=[%.*s] value_len=%u expiry=%u\n",
-                        key_len, key, value_len, expiry);
+    benchmark_debug_log("server %s: SET key=[%.*s] value_len=%u expiry=%u\n",
+                        get_readable_id(), key_len, key, value_len, expiry);
 
     cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
                                              expiry, offset);
@@ -600,7 +605,7 @@ void shard_connection::send_get_command(struct timeval* sent_time,
                                         const char *key, int key_len, unsigned int offset) {
     int cmd_size = 0;
 
-    benchmark_debug_log("GET key=[%.*s]\n", key_len, key);
+    benchmark_debug_log("server %s: GET key=[%.*s]\n", get_readable_id(), key_len, key);
     cmd_size = m_protocol->write_command_get(key, key_len, offset);
 
     push_req(new request(rt_get, cmd_size, sent_time, 1));
@@ -632,4 +637,37 @@ void shard_connection::send_verify_get_command(struct timeval* sent_time, const 
     cmd_size = m_protocol->write_command_get(key, key_len, offset);
 
     push_req(new verify_request(rt_get, cmd_size, sent_time, 1, key, key_len, value, value_len));
+}
+
+/*
+ * arbitrary command:
+ *
+ * we send the arbitrary command in several iterations, where on each iteration
+ * different type of argument can be sent (const/randomized).
+ *
+ * since we do it on several iterations, we call to arbitrary_command_end() to mark that
+ * all the command sent
+ */
+
+int shard_connection::send_arbitrary_command(command_arg *arg) {
+    int cmd_size = 0;
+
+    benchmark_debug_log("ARBITRARY COMMAND =[%.*s]\n", arg->data.length(), arg->data.c_str());
+    cmd_size = m_protocol->write_arbitrary_command(arg);
+
+    return cmd_size;
+}
+
+int shard_connection::send_arbitrary_command(command_arg *arg, const char *val, int val_len) {
+    int cmd_size = 0;
+
+    benchmark_debug_log("ARBITRARY COMMAND %s_len=%u\n", arg->type == key_type ? "key" : "data", val_len);
+    cmd_size = m_protocol->write_arbitrary_command(val, val_len);
+
+    return cmd_size;
+}
+
+void shard_connection::send_arbitrary_command_end(struct timeval* sent_time, int cmd_size) {
+    benchmark_debug_log("ARBITRARY COMMAND END\n");
+    push_req(new request(rt_arbitrary, cmd_size, sent_time, 1));
 }

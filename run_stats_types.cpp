@@ -75,12 +75,14 @@ void one_second_stats::reset(unsigned int second) {
     m_get_cmd.reset();
     m_set_cmd.reset();
     m_wait_cmd.reset();
+    m_ar_cmd.reset();
 }
 
 void one_second_stats::merge(const one_second_stats& other) {
     m_get_cmd.merge(other.m_get_cmd);
     m_set_cmd.merge(other.m_set_cmd);
     m_wait_cmd.merge(other.m_wait_cmd);
+    m_ar_cmd.merge(other.m_ar_cmd);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -132,6 +134,7 @@ totals::totals() :
         m_set_cmd(),
         m_get_cmd(),
         m_wait_cmd(),
+        m_ar_cmd(),
         m_ops_sec(0),
         m_bytes_sec(0),
         m_hits_sec(0),
@@ -147,6 +150,8 @@ void totals::add(const totals& other) {
     m_set_cmd.add(other.m_set_cmd);
     m_get_cmd.add(other.m_get_cmd);
     m_wait_cmd.add(other.m_wait_cmd);
+    m_ar_cmd.add(other.m_ar_cmd);
+
     m_ops_sec += other.m_ops_sec;
     m_hits_sec += other.m_hits_sec;
     m_misses_sec += other.m_misses_sec;

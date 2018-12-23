@@ -93,4 +93,26 @@ protected:
     int m_last_error;
 };
 
+#define KEY_PLACEHOLDER "__key__"
+#define DATA_PLACEHOLDER "__data__"
+
+enum command_arg_type {
+    const_type      = 0,
+    key_type        = 1,
+    data_type       = 2,
+    undefined_type  = 3
+};
+
+struct command_arg {
+    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len) {;}
+    command_arg_type type;
+    std::string data;
+};
+
+struct arbitrary_command {
+    std::vector<command_arg> command_args;
+    std::string command_name;
+    bool split_command_to_args(const char* command);
+};
+
 #endif /* _CONFIG_TYPES_H */
