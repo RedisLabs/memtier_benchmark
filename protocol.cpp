@@ -137,6 +137,7 @@ void protocol_response::clear(void)
         delete m_mbulk_value;
         m_mbulk_value = NULL;
     }
+
     m_value_len = 0;
     m_total_len = 0;
     m_hits = 0;
@@ -373,6 +374,7 @@ int redis_protocol::parse_response(void)
                 // clear last response
                 m_last_response.clear();
                 m_response_len = 0;
+                m_total_bulks_count = 0;
                 m_response_state = rs_read_line;
 
                 break;

@@ -265,74 +265,23 @@ const char* server_addr::get_last_error(void) const
 }
 
 static int hex_digit_to_int(char c) {
-    switch (c) {
-        case '0':
-            return 0;
-
-        case '1':
-            return 1;
-
-        case '2':
-            return 2;
-
-        case '3':
-            return 3;
-
-        case '4':
-            return 4;
-
-        case '5':
-            return 5;
-
-        case '6':
-            return 6;
-
-        case '7':
-            return 7;
-
-        case '8':
-            return 8;
-
-        case '9':
-            return 9;
-
-        case 'a':
-        case 'A':
-            return 10;
-
-        case 'b':
-        case 'B':
-            return 11;
-
-        case 'c':
-        case 'C':
-            return 12;
-
-        case 'd':
-        case 'D':
-            return 13;
-
-        case 'e':
-        case 'E':
-            return 14;
-
-        case 'f':
-        case 'F':
-            return 15;
-
-        default:
-            return 0;
+    if (c >= 'a' && c <= 'f') {
+        return (c - 'a') + 10;
+    } else if (c >= 'A' && c <= 'F') {
+        return (c - 'A') + 10;
+    } else if (c >= '0' && c <= '9') {
+        return (c - '0');
+    } else {
+        return -1;
     }
 }
 
-#define MAX_ARGS 4096
 bool arbitrary_command::split_command_to_args(const char* command) {
     const char *p = command;
     size_t command_len = strlen(command);
 
     char buffer[command_len];
     unsigned int buffer_len = 0;
-    unsigned int args_count = 0;
 
     while (1) {
         /* skip blanks */
@@ -461,12 +410,6 @@ bool arbitrary_command::split_command_to_args(const char* command) {
             // add new arg
             command_arg arg(buffer, buffer_len);
             command_args.push_back(arg);
-
-            // check max arguments
-            args_count++;
-            if (args_count > MAX_ARGS) {
-                return false;
-            }
         } else {
             return true;
         }
