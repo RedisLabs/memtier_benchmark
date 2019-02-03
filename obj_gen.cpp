@@ -139,7 +139,7 @@ unsigned long long gaussian_noise::gaussian_distribution_range(double stddev, do
     return val;
 }
 
-object_generator::object_generator() :
+object_generator::object_generator(size_t n_key_iterators/*= OBJECT_GENERATOR_KEY_ITERATORS*/) :
     m_data_size_type(data_size_unknown),
     m_data_size_pattern(NULL),
     m_random_data(false),
@@ -155,8 +155,7 @@ object_generator::object_generator() :
     m_value_buffer_size(0),
     m_value_buffer_mutation_pos(0)
 {
-    for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
-        m_next_key[i] = 0;
+    m_next_key.resize(n_key_iterators, 0);
 
     m_data_size.size_list = NULL;
 }
@@ -183,8 +182,8 @@ object_generator::object_generator(const object_generator& copy) :
         m_data_size.size_list = new config_weight_list(*m_data_size.size_list);
     }
     alloc_value_buffer(copy.m_value_buffer);
-    for (int i = 0; i < OBJECT_GENERATOR_KEY_ITERATORS; i++)
-        m_next_key[i] = 0;
+
+    m_next_key.resize(copy.m_next_key.size(), 0);
 }
 
 object_generator::~object_generator()
@@ -364,7 +363,7 @@ unsigned long long object_generator::normal_distribution(unsigned long long r_mi
 
 unsigned long long object_generator::get_key_index(int iter)
 {
-    assert(iter < OBJECT_GENERATOR_KEY_ITERATORS && iter >= OBJECT_GENERATOR_KEY_GAUSSIAN);
+    assert(iter < static_cast<int>(m_next_key.size()) && iter >= OBJECT_GENERATOR_KEY_GAUSSIAN);
 
     unsigned long long k;
     if (iter==OBJECT_GENERATOR_KEY_RANDOM) {

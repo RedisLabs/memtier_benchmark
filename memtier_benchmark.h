@@ -88,7 +88,7 @@ struct benchmark_config {
     // JSON additions
     const char *json_out_file;
     bool cluster_mode;
-    struct arbitrary_command* command;
+    struct arbitrary_command_list* arbitrary_commands;
 };
 
 

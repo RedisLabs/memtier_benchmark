@@ -110,9 +110,77 @@ struct command_arg {
 };
 
 struct arbitrary_command {
+    arbitrary_command(const char* cmd);
+
+    bool set_key_pattern(const char* pattern_str);
+    bool set_ratio(const char* pattern_str);
+    bool split_command_to_args();
+
     std::vector<command_arg> command_args;
+    std::string command;
     std::string command_name;
-    bool split_command_to_args(const char* command);
+    char key_pattern;
+    unsigned int ratio;
+};
+
+class arbitrary_command_list {
+private:
+    std::vector<arbitrary_command> commands_list;
+
+public:
+    arbitrary_command_list() {;}
+
+    arbitrary_command& at(size_t idx) { return commands_list.at(idx); }
+    const arbitrary_command& at(std::size_t idx) const { return commands_list.at(idx); }
+
+    // array subscript operator
+    arbitrary_command& operator[](std::size_t idx) { return commands_list[idx]; }
+    const arbitrary_command& operator[](std::size_t idx) const { return commands_list[idx]; }
+
+    void add_command(const arbitrary_command& command) {
+        commands_list.push_back(command);
+    }
+
+    arbitrary_command& get_last_command() {
+        return commands_list.back();
+    }
+
+    size_t size() const {
+        return commands_list.size();
+    }
+
+    bool is_defined() const {
+        return !commands_list.empty();
+    }
+
+    const arbitrary_command* get_next_executed_command(unsigned int& ratio_count, unsigned int& executed_command_index) const {
+        while(true) {
+            const arbitrary_command* executed_command = &commands_list[executed_command_index];
+
+            if (ratio_count < executed_command->ratio) {
+                ratio_count++;
+                return executed_command;
+            } else {
+                ratio_count = 0;
+                executed_command_index++;
+                if (executed_command_index == size()) {
+                    executed_command_index = 0;
+                }
+            }
+        }
+    }
+
+    unsigned int get_max_command_name_length() const {
+        unsigned int max_length = 0;
+
+        for (size_t i=0; i<size(); i++) {
+            if (commands_list[i].command_name.length() > max_length) {
+                max_length = commands_list[i].command_name.length();
+            }
+        }
+
+        return max_length;
+    }
 };
 
 #endif /* _CONFIG_TYPES_H */

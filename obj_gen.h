@@ -100,7 +100,7 @@ protected:
     double m_key_median;
     data_object m_object;
 
-    unsigned long long m_next_key[OBJECT_GENERATOR_KEY_ITERATORS];
+    std::vector<unsigned long long> m_next_key;
 
     unsigned long long m_key_index;
     char m_key_buffer[250];
@@ -114,7 +114,7 @@ protected:
     void alloc_value_buffer(const char* copy_from);
     void random_init(void);
 public:    
-    object_generator();
+    object_generator(size_t n_key_iterators = OBJECT_GENERATOR_KEY_ITERATORS);
     object_generator(const object_generator& copy);
     virtual ~object_generator();
     virtual object_generator* clone(void);

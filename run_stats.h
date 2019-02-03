@@ -25,6 +25,7 @@
 #include <vector>
 #include <string>
 
+#include "memtier_benchmark.h"
 #include "run_stats_types.h"
 #include "JSON_handler.h"
 
@@ -68,6 +69,9 @@ struct table_el {
 };
 
 struct table_column {
+    table_column() {}
+    table_column(unsigned int col_size) : column_size(col_size) {}
+
     unsigned int column_size;
     std::vector<table_el> elements;
 };
@@ -87,6 +91,8 @@ protected:
 
     friend bool one_second_stats_predicate(const one_second_stats& a, const one_second_stats& b);
 
+    benchmark_config *m_config;
+
     struct timeval m_start_time;
     struct timeval m_end_time;
 
@@ -98,11 +104,13 @@ protected:
     latency_map m_get_latency_map;
     latency_map m_set_latency_map;
     latency_map m_wait_latency_map;
-    latency_map m_ar_latency_map;
+    std::vector<latency_map> m_ar_commands_latency_maps;
+
     void roll_cur_stats(struct timeval* ts);
 
 public:
-    run_stats();
+    run_stats(benchmark_config *config);
+    void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void set_start_time(struct timeval* start_time);
     void set_end_time(struct timeval* end_time);
 
@@ -116,7 +124,8 @@ public:
     void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
 
     void update_wait_op(struct timeval* ts, unsigned int latency);
-    void update_aribitrary_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_arbitrary_op(struct timeval *ts, unsigned int bytes,
+                             unsigned int latency, size_t arbitrary_index);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
@@ -126,14 +135,29 @@ public:
                           unsigned long int& total_set_ops,
                           unsigned long int& total_wait_ops);
     void save_csv_one_sec_cluster(FILE *f);
-    void save_ar_one_sec(FILE *f,
-                         std::string ar_cmd_name,
-                         unsigned long int& total_ar_ops);
-    bool save_csv(const char *filename, bool cluster_mode, std::string ar_cmd_name);
+    void save_csv_set_get_commands(FILE *f, bool cluster_mode);
+    void save_csv_arbitrary_commands_one_sec(FILE *f,
+                                             arbitrary_command_list& command_list,
+                                             std::vector<unsigned long int>& total_arbitrary_commands_ops);
+    void save_csv_arbitrary_commands(FILE *f, arbitrary_command_list& command_list);
+
+    bool save_csv(const char *filename, benchmark_config *config);
     void debug_dump(void);
-    void print(FILE *file, bool histogram,
-               const char* header = NULL, json_handler* jsonhandler = NULL,
-               bool cluster_mode = false, std::string ar_cmd_name = "");
+
+    // function to handle the results output
+    bool print_arbitrary_commands_results();
+    void print_type_column(output_table &table, arbitrary_command_list& command_list);
+    void print_ops_sec_column(output_table &table);
+    void print_hits_sec_column(output_table &table);
+    void print_missess_sec_column(output_table &table);
+    void print_moved_sec_column(output_table &table);
+    void print_ask_sec_column(output_table &table);
+    void print_latency_column(output_table &table);
+    void print_kb_sec_column(output_table &table);
+    void print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode);
+    void print_histogram(FILE *out, json_handler* jsonhandler, arbitrary_command_list& command_list);
+    void print(FILE *file, benchmark_config *config,
+               const char* header = NULL, json_handler* jsonhandler = NULL);
 
     unsigned int get_duration(void);
     unsigned long int get_duration_usec(void);

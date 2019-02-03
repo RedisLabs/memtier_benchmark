@@ -65,6 +65,8 @@ protected:
     unsigned long long m_reqs_generated;      // requests generated (wait for responses)
     unsigned int m_set_ratio_count;     // number of sets counter (overlaps on ratio)
     unsigned int m_get_ratio_count;     // number of gets counter (overlaps on ratio)
+    unsigned int m_arbitrary_command_ratio_count; // number of arbitrary commands counter (overlaps on ratio)
+    unsigned int m_executed_command_index; // current arbitrary command executed
 
     unsigned long long m_tot_set_ops;        // Total number of SET ops
     unsigned long long m_tot_wait_ops;       // Total number of WAIT ops
@@ -108,6 +110,7 @@ public:
     virtual bool finished(void);
     virtual void set_start_time();
     virtual void set_end_time();
+    virtual void create_arbitrary_request(const arbitrary_command* cmd, struct timeval& timestamp, unsigned int conn_id);
     virtual void create_request(struct timeval timestamp, unsigned int conn_id);
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual int connect(void);
@@ -126,6 +129,16 @@ public:
                 return OBJECT_GENERATOR_KEY_SET_ITER;
             else
                 return OBJECT_GENERATOR_KEY_GET_ITER;
+        }
+    }
+
+    inline int get_arbitrary_obj_iter_type(const arbitrary_command* cmd, unsigned int index) {
+        if (cmd->key_pattern == 'R') {
+            return OBJECT_GENERATOR_KEY_RANDOM;
+        } else if (cmd->key_pattern == 'G') {
+            return OBJECT_GENERATOR_KEY_GAUSSIAN;
+        } else {
+            return index;
         }
     }
 };

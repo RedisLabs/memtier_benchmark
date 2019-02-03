@@ -69,6 +69,12 @@ request::request(request_type type, unsigned int size, struct timeval* sent_time
     }
 }
 
+arbitrary_request::arbitrary_request(size_t request_index, request_type type,
+                                     unsigned int size, struct timeval* sent_time) :
+        request(type, size, sent_time, 1),
+        index(request_index) {
+}
+
 verify_request::verify_request(request_type type,
                                unsigned int size,
                                struct timeval* sent_time,
@@ -649,25 +655,28 @@ void shard_connection::send_verify_get_command(struct timeval* sent_time, const 
  * all the command sent
  */
 
-int shard_connection::send_arbitrary_command(command_arg *arg) {
+int shard_connection::send_arbitrary_command(const command_arg *arg) {
     int cmd_size = 0;
 
-    benchmark_debug_log("ARBITRARY COMMAND =[%.*s]\n", arg->data.length(), arg->data.c_str());
     cmd_size = m_protocol->write_arbitrary_command(arg);
 
     return cmd_size;
 }
 
-int shard_connection::send_arbitrary_command(command_arg *arg, const char *val, int val_len) {
+int shard_connection::send_arbitrary_command(const command_arg *arg, const char *val, int val_len) {
     int cmd_size = 0;
 
-    benchmark_debug_log("ARBITRARY COMMAND %s_len=%u\n", arg->type == key_type ? "key" : "data", val_len);
+    if (arg->type == key_type) {
+        benchmark_debug_log("key: value[%.*s]\n",  val_len, val);
+    } else {
+        benchmark_debug_log("data: value_len=%u\n",  val_len);
+    }
+
     cmd_size = m_protocol->write_arbitrary_command(val, val_len);
 
     return cmd_size;
 }
 
-void shard_connection::send_arbitrary_command_end(struct timeval* sent_time, int cmd_size) {
-    benchmark_debug_log("ARBITRARY COMMAND END\n");
-    push_req(new request(rt_arbitrary, cmd_size, sent_time, 1));
+void shard_connection::send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size) {
+    push_req(new arbitrary_request(command_index, rt_arbitrary, cmd_size, sent_time));
 }
