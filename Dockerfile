@@ -8,6 +8,13 @@ RUN autoreconf -ivf && ./configure && make && make install
 FROM ubuntu:16.04
 LABEL Description="memtier_benchmark"
 COPY --from=builder /usr/local/bin/memtier_benchmark /usr/local/bin/memtier_benchmark
-RUN apt-get update
-RUN apt-get install -yy libevent-dev
+RUN \
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive \
+    apt-get install -yy \
+      libevent-dev \
+  && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/
+
 ENTRYPOINT ["memtier_benchmark"]
