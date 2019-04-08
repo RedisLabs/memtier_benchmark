@@ -57,6 +57,12 @@ PKG_CHECK_MODULES(LIBEVENT,
     AC_SUBST(LIBEVENT_CFLAGS) AC_SUBST(LIBEVENT_LIBS)
 )
 
+# bash completion
+PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
+    [BASH_COMPLETION_DIR="`pkg-config --variable=completionsdir bash-completion`"],
+    [BASH_COMPLETION_DIR="$datadir/bash-completion/completionsss"])
+AC_SUBST([BASH_COMPLETION_DIR])
+
 AC_CONFIG_FILES([
    	Makefile
 ])
