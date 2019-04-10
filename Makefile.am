@@ -20,6 +20,8 @@ AUTOMAKE_OPTIONS = foreign 1.9
 EXTRA_DIST = README.md COPYING
 
 bin_PROGRAMS = memtier_benchmark
+completionsdir=$(BASH_COMPLETION_DIR)
+completions_DATA=bash-completion/memtier_benchmark
 
 memtier_benchmark_CPPFLAGS = $(LIBEVENT_CFLAGS)
 memtier_benchmark_SOURCES = \

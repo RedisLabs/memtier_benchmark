@@ -12,7 +12,7 @@ m4
 Makefile.in
 missing
 *.o
-memtier_benchmark
+/memtier_benchmark
 .deps
 Makefile
 config.log
