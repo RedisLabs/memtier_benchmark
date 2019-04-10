@@ -41,7 +41,6 @@
 #include "memtier_benchmark.h"
 #include "run_stats.h"
 
-
 static int log_level = 0;
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
 {
@@ -1044,12 +1043,22 @@ int main(int argc, char *argv[])
     struct rlimit rlim;
     if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
         benchmark_error_log("error: getrlimit failed: %s\n", strerror(errno));
+        // JSON closing
+        if (jsonhandler != NULL){
+            jsonhandler->write_error("error: getrlimit failed: %s", strerror(errno));
+            delete jsonhandler;
+        }
         exit(1);
     }
 
     if (cfg.unix_socket != NULL &&
         (cfg.server != NULL || cfg.port > 0)) {
         benchmark_error_log("error: UNIX domain socket and TCP cannot be used together.\n");
+        // JSON closing
+        if (jsonhandler != NULL){
+            jsonhandler->write_error("error: UNIX domain socket and TCP cannot be used together");
+            delete jsonhandler;
+        }
         exit(1);
     }
 
@@ -1059,6 +1068,11 @@ int main(int argc, char *argv[])
         } catch (std::runtime_error& e) {
             benchmark_error_log("%s:%u: error: %s\n",
                     cfg.server, cfg.port, e.what());
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("%s:%u: error: %s",cfg.server, cfg.port, e.what());
+                delete jsonhandler;
+            }
             exit(1);
         }
     }
@@ -1067,12 +1081,22 @@ int main(int argc, char *argv[])
     if (fds_needed > rlim.rlim_cur) {
         if (fds_needed > rlim.rlim_max && getuid() != 0) {
             benchmark_error_log("error: running the tool with this number of connections requires 'root' privilegs.\n");
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: running the tool with this number of connections requires 'root' privilegs");
+                delete jsonhandler;
+            }
             exit(1);
         }
         rlim.rlim_cur = rlim.rlim_max = fds_needed;
 
         if (setrlimit(RLIMIT_NOFILE, &rlim) != 0) {
             benchmark_error_log("error: setrlimit failed: %s\n", strerror(errno));
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: setrlimit failed: %s", strerror(errno));
+                delete jsonhandler;
+            }
             exit(1);
         }
     }
@@ -1083,10 +1107,20 @@ int main(int argc, char *argv[])
     if (!cfg.data_import) {
         if (cfg.data_verify) {
             fprintf(stderr, "error: use data-verify only with data-import\n");
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: use data-verify only with data-import");
+                delete jsonhandler;
+            }
             exit(1);
         }
         if (cfg.no_expiry) {
             fprintf(stderr, "error: use no-expiry only with data-import\n");
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: use no-expiry only with data-import");
+                delete jsonhandler;
+            }
             exit(1);
         }
         
@@ -1098,17 +1132,32 @@ int main(int argc, char *argv[])
             cfg.data_size_list.is_defined() ||
             cfg.data_size_range.is_defined()) {
             fprintf(stderr, "error: data size cannot be specified when importing.\n");
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: data size cannot be specified when importing");
+                delete jsonhandler;
+            }
             exit(1);
         }
 
         if (cfg.random_data) {
             fprintf(stderr, "error: random-data cannot be specified when importing.\n");
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: random-data cannot be specified when importing");
+                delete jsonhandler;
+            }
             exit(1);
         }
 
         if (!cfg.generate_keys &&
             (cfg.key_maximum || cfg.key_minimum || cfg.key_prefix)) {
                 fprintf(stderr, "error: use key-minimum, key-maximum and key-prefix only with generate-keys.\n");
+                // JSON closing
+                if (jsonhandler != NULL){
+                    jsonhandler->write_error("error: use key-minimum, key-maximum and key-prefix only with generate-keys");
+                    delete jsonhandler;
+                }
                 exit(1);
         }
 
@@ -1120,6 +1169,11 @@ int main(int argc, char *argv[])
             
             if (!keylist->read_keys()) {
                 fprintf(stderr, "\nerror: failed to read keys.\n");
+                // JSON closing
+                if (jsonhandler != NULL){
+                    jsonhandler->write_error("error: failed to read keys");
+                    delete jsonhandler;
+                }
                 exit(1);
             } else {
                 fprintf(stderr, " %u keys read.\n", keylist->size());
@@ -1131,6 +1185,11 @@ int main(int argc, char *argv[])
 
         if (dynamic_cast<import_object_generator*>(obj_gen)->open_file() != true) {
             fprintf(stderr, "error: %s: failed to open.\n", cfg.data_import);
+            // JSON closing
+            if (jsonhandler != NULL){
+                jsonhandler->write_error("error: %s: failed to open", cfg.data_import);
+                delete jsonhandler;
+            }
             exit(1);
         }
     }
@@ -1319,10 +1378,8 @@ int main(int argc, char *argv[])
         fclose(outfile);
     }
 
-    if (jsonhandler != NULL) {
-        // closing the JSON
-        delete jsonhandler;
-    }
+    // closing the JSON
+    if (jsonhandler != NULL) {delete jsonhandler;}
 
     delete obj_gen;
     if (keylist != NULL)
