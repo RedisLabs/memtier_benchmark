@@ -287,10 +287,10 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
 
 static bool verify_arbitrary_command_option(struct benchmark_config *cfg) {
     if (cfg->key_pattern) {
-        fprintf(stderr, "error: when using arbitrary command, key pattern doesn't configured via key-pattern option.\n");
+        fprintf(stderr, "error: when using arbitrary command, key pattern is configured with --command-key-pattern option.\n");
         return false;
     } else if (cfg->ratio.is_defined()) {
-        fprintf(stderr, "error: when using arbitrary command, ratio doesn't configured via ratio option.\n");
+        fprintf(stderr, "error: when using arbitrary command, ratio is configured with --command-ratio option.\n");
         return false;
     }
 
@@ -779,7 +779,20 @@ void usage() {
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
             "      --randomize                random seed based on timestamp (default is constant value)\n"
-            "      --command=COMMAND          use arbitrary command instead of set:get commands\n"
+            "\n"
+            "Arbitrary command:\n"
+            "      --command=COMMAND          Specify a command to send in quotes.\n"
+            "                                 Each command that you specify is run with its ratio and key-pattern options.\n"
+            "                                 For example: --command=\"set __key__ 5\" --command-ratio=2 --command-key-pattern=G\n"
+            "                                 To use a generated key or object, enter:\n"
+            "                                   __key__: Use key generated from Key Options.\n"
+            "                                   __data__: Use data generated from Object Options.\n"
+            "      --command-ratio            The number of times the command is sent in sequence.(default: 1)\n"
+            "      --command-key-pattern      Key pattern for the command (default: R):\n"
+            "                                 G for Gaussian distribution.\n"
+            "                                 R for uniform Random.\n"
+            "                                 S for Sequential.\n"
+            "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"
@@ -805,8 +818,7 @@ void usage() {
             "      --key-prefix=PREFIX        Prefix for keys (default: \"memtier-\")\n"
             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
-            "      --key-pattern=PATTERN      Set:Get pattern (default: R:R), in case of using --command option,\n"
-            "                                 only one pattern is required.\n"
+            "      --key-pattern=PATTERN      Set:Get pattern (default: R:R)\n"
             "                                 G for Gaussian distribution.\n"
             "                                 R for uniform Random.\n"
             "                                 S for Sequential.\n"
