@@ -178,7 +178,7 @@ public:
 
     // handle arbitrary command
     virtual bool format_arbitrary_command(arbitrary_command &cmd);
-    int write_arbitrary_command(command_arg *arg);
+    int write_arbitrary_command(const command_arg *arg);
     int write_arbitrary_command(const char *val, int val_len);
 };
 
@@ -548,7 +548,7 @@ int redis_protocol::parse_response(void)
     return -1;
 }
 
-int redis_protocol::write_arbitrary_command(command_arg *arg) {
+int redis_protocol::write_arbitrary_command(const command_arg *arg) {
     evbuffer_add(m_write_buf, arg->data.c_str(), arg->data.length());
 
     return arg->data.length();
@@ -558,7 +558,8 @@ int redis_protocol::write_arbitrary_command(const char *rand_val, int rand_val_l
     int size = 0;
 
     size = evbuffer_add_printf(m_write_buf, "$%d\r\n", rand_val_len);
-    size += evbuffer_add(m_write_buf, rand_val, rand_val_len);
+    evbuffer_add(m_write_buf, rand_val, rand_val_len);
+    size += rand_val_len;
     evbuffer_add(m_write_buf, "\r\n", 2);
     size += 2;
 
@@ -589,11 +590,6 @@ bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
 
         // we expect that first arg is the COMMAND name
         assert(i != 0 || (i == 0 && current_arg->type == const_type && "first arg is not command name?"));
-
-        // save command name
-        if (i==0) {
-            cmd.command_name = current_arg->data;
-        }
 
         if (current_arg->type == const_type) {
             char buffer[20];
@@ -636,7 +632,7 @@ public:
 
     // handle arbitrary command
     virtual bool format_arbitrary_command(arbitrary_command& cmd);
-    virtual int write_arbitrary_command(command_arg *arg);
+    virtual int write_arbitrary_command(const command_arg *arg);
     virtual int write_arbitrary_command(const char *val, int val_len);
 
 };
@@ -820,7 +816,7 @@ bool memcache_text_protocol::format_arbitrary_command(arbitrary_command& cmd) {
     assert(0);
 }
 
-int memcache_text_protocol::write_arbitrary_command(command_arg *arg) {
+int memcache_text_protocol::write_arbitrary_command(const command_arg *arg) {
     assert(0);
 }
 
@@ -852,7 +848,7 @@ public:
 
     // handle arbitrary command
     virtual bool format_arbitrary_command(arbitrary_command& cmd);
-    virtual int write_arbitrary_command(command_arg *arg);
+    virtual int write_arbitrary_command(const command_arg *arg);
     virtual int write_arbitrary_command(const char *val, int val_len);
 };
 
@@ -1090,7 +1086,7 @@ bool memcache_binary_protocol::format_arbitrary_command(arbitrary_command& cmd) 
     assert(0);
 }
 
-int memcache_binary_protocol::write_arbitrary_command(command_arg *arg) {
+int memcache_binary_protocol::write_arbitrary_command(const command_arg *arg) {
     assert(0);
 }
 

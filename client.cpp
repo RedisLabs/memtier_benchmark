@@ -71,7 +71,9 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     else if (config->distinct_client_seed)
         m_obj_gen->set_random_seed(config->next_client_idx);
 
-    if (config->key_pattern[key_pattern_set]=='P') {
+    // Parallel key-pattern determined according to the first command
+    if ((config->arbitrary_commands->is_defined() && config->arbitrary_commands->at(0).key_pattern == 'P') ||
+        (config->key_pattern[key_pattern_set]=='P')) {
         unsigned long long total_num_of_clients = config->clients*config->threads;
         unsigned long long client_index = config->next_client_idx % total_num_of_clients;
 
@@ -95,8 +97,9 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
 
 client::client(client_group* group) :
         m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL),
-        m_obj_gen(NULL), m_reqs_processed(0), m_reqs_generated(0),
+        m_obj_gen(NULL), m_stats(group->get_config()), m_reqs_processed(0), m_reqs_generated(0),
         m_set_ratio_count(0), m_get_ratio_count(0),
+        m_arbitrary_command_ratio_count(0), m_executed_command_index(0),
         m_tot_set_ops(0), m_tot_wait_ops(0)
 {
     m_event_base = group->get_event_base();
@@ -112,8 +115,9 @@ client::client(client_group* group) :
 client::client(struct event_base *event_base, benchmark_config *config,
                abstract_protocol *protocol, object_generator *obj_gen) :
         m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL),
-        m_obj_gen(NULL), m_reqs_processed(0), m_reqs_generated(0),
+        m_obj_gen(NULL), m_stats(config), m_reqs_processed(0), m_reqs_generated(0),
         m_set_ratio_count(0), m_get_ratio_count(0),
+        m_arbitrary_command_ratio_count(0), m_executed_command_index(0),
         m_tot_set_ops(0), m_tot_wait_ops(0), m_keylist(NULL)
 {
     m_event_base = event_base;
@@ -235,39 +239,49 @@ bool client::hold_pipeline(unsigned int conn_id) {
     return false;
 }
 
+void client::create_arbitrary_request(const arbitrary_command* cmd, struct timeval& timestamp, unsigned int conn_id) {
+    int cmd_size = 0;
+
+    benchmark_debug_log("%s [%s]:\n", cmd->command_name.c_str(), cmd->command.c_str());
+
+    for (unsigned int i = 0; i < cmd->command_args.size(); i++) {
+        const command_arg* arg = &cmd->command_args[i];
+
+        if (arg->type == const_type) {
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
+        } else if (arg->type == key_type) {
+            int iter = get_arbitrary_obj_iter_type(cmd, m_executed_command_index);
+            unsigned int key_len;
+            const char *key = m_obj_gen->get_key(iter, &key_len);
+
+            assert(key != NULL);
+            assert(key_len > 0);
+
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, key, key_len);
+        } else if (arg->type == data_type) {
+            unsigned int value_len;
+            const char *value = m_obj_gen->get_value(0, &value_len);
+
+            assert(value != NULL);
+            assert(value_len > 0);
+
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
+        }
+    }
+
+    m_connections[conn_id]->send_arbitrary_command_end(m_executed_command_index, &timestamp, cmd_size);
+    m_reqs_generated++;
+}
+
 // This function could use some urgent TLC -- but we need to do it without altering the behavior
 void client::create_request(struct timeval timestamp, unsigned int conn_id)
 {
     // are we using arbitrary command?
-    if (m_config->command) {
-        int cmd_size = 0;
-        for (unsigned int i = 0; i < m_config->command->command_args.size(); i++) {
-            command_arg* arg = &m_config->command->command_args[i];
+    if (m_config->arbitrary_commands->is_defined()) {
+        const arbitrary_command* executed_command = m_config->arbitrary_commands->get_next_executed_command(m_arbitrary_command_ratio_count,
+                                                                                                      m_executed_command_index);
+        create_arbitrary_request(executed_command, timestamp, conn_id);
 
-            if (arg->type == const_type) {
-                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
-            } else if (arg->type == key_type) {
-                int iter = obj_iter_type(m_config, 0);
-                unsigned int key_len;
-                const char *key = m_obj_gen->get_key(iter, &key_len);
-
-                assert(key != NULL);
-                assert(key_len > 0);
-
-                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, key, key_len);
-            } else if (arg->type == data_type) {
-                unsigned int value_len;
-                const char *value = m_obj_gen->get_value(0, &value_len);
-
-                assert(value != NULL);
-                assert(value_len > 0);
-
-                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
-            }
-        }
-
-        m_connections[conn_id]->send_arbitrary_command_end(&timestamp, cmd_size);
-        m_reqs_generated++;
         return;
     }
 
@@ -382,11 +396,14 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
             m_stats.update_wait_op(&timestamp,
                                    ts_diff(request->m_sent_time, timestamp));
             break;
-        case rt_arbitrary:
-            m_stats.update_aribitrary_op(&timestamp,
-                                  request->m_size + response->get_total_len(),
-                                  ts_diff(request->m_sent_time, timestamp));
+        case rt_arbitrary: {
+            arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+            m_stats.update_arbitrary_op(&timestamp,
+                                        request->m_size + response->get_total_len(),
+                                        ts_diff(request->m_sent_time, timestamp),
+                                        ar->index);
             break;
+        }
         default:
             assert(0);
             break;
@@ -629,8 +646,7 @@ void client_group::write_client_stats(const char *prefix)
         char filename[PATH_MAX];
 
         snprintf(filename, sizeof(filename)-1, "%s-%u.csv", prefix, client_id++);
-        if (!(*i)->get_stats()->save_csv(filename, m_config->cluster_mode,
-                                         m_config->command ? m_config->command->command_name : "")) {
+        if (!(*i)->get_stats()->save_csv(filename, m_config)) {
             fprintf(stderr, "error: %s: failed to write client stats.\n", filename);
         }
     }        

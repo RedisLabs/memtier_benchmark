@@ -22,21 +22,30 @@ _memtier_completions()
                    "--requests" "--threads" "--test-time" "--ratio" "--pipeline" "--data-size" "--data-offset"\
                    "--data-size-range" "--data-size-list" "--expiry-range" "--data-import" "--key-prefix"\
                    "--key-minimum" "--key-maximum" "--reconnect-interval" "--multi-key-get" "--authenticate"\
-                   "--select-db" "--wait-ratio" "--num-slaves" "--wait-timeout" "--json-out-file" "--command"\
-                   "-s" "-p" "-S" "-o" "-x" "-c" "-n" "-t" "-d" "-a")
+                   "--select-db" "--wait-ratio" "--num-slaves" "--wait-timeout" "--json-out-file"\
+                   "--command" "--command-ratio" "-s" "-p" "-S" "-o" "-x" "-c" "-n" "-t" "-d" "-a")
 
   options_no_args=("--debug" "--show-config" "--hide-histogram" "--distinct-client-seed" "--randomize"\
                    "--random-data" "--data-verify" "--verify-only" "--generate-keys" "--key-stddev"\
                    "--key-median" "--no-expiry" "--cluster-mode" "--help" "--version"\
                    "-D" "-R" "-h" "-v")
 
-  options_comp=("--protocol" "-P" "--key-pattern" "--data-size-pattern")
+  options_comp=("--protocol" "-P" "--key-pattern" "--data-size-pattern" "--command-key-pattern")
 
   all_options="${options_no_comp[@]} ${options_no_args[@]} ${options_comp[@]}"
 
-  local cur
   local prev
-  _get_comp_words_by_ref -n ${COMP_WORDBREAKS} cur prev
+  local cur
+  local cur_line=${COMP_LINE:0:${COMP_POINT}}
+  local args_array=(${cur_line})
+
+  if [[ "${cur_line}" =~ .*[[:space:]]$ ]]; then
+    cur=""
+    prev="${args_array[-1]}"
+  else
+    cur="${args_array[-1]}"
+    prev="${args_array[-2]}"
+  fi
 
   # check if it's option without completion
   local option=$(_memtier_look_for_element "${prev}" "" "${options_no_comp[@]}")
@@ -65,6 +74,12 @@ _memtier_completions()
     "--data-size-pattern")
       all_options="R S"
     ;;
+    "--command-key-pattern=")
+      cur=${cur#"--data-size-pattern="}
+    ;&
+    "--command-key-pattern")
+      all_options="G R S P"
+    ;;
     "--key-pattern=")
       cur=${cur#"--key-pattern="}
     ;&
@@ -73,7 +88,7 @@ _memtier_completions()
         COMPREPLY=( $( compgen -W "G R S P" ) )
       else
         if [[ "${cur}" =~ (G|R|S|P):(G|R|S)$ ]]; then
-          COMPREPLY="${COMP_WORDS[COMP_CWORD]} "
+          COMPREPLY="${cur: -1} "
         elif [[ "${cur}" =~ (G|R|S|P):$ ]]; then
           COMPREPLY=( $( compgen -W "G R S" ) )
         elif [[ "${cur}" =~ (G|R|S|P)$ ]]; then

@@ -193,7 +193,7 @@ public:
 
     // handle arbitrary command
     virtual bool format_arbitrary_command(arbitrary_command &cmd) = 0;
-    virtual int write_arbitrary_command(command_arg *arg) = 0;
+    virtual int write_arbitrary_command(const command_arg *arg) = 0;
     virtual int write_arbitrary_command(const char *val, int val_len) = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }

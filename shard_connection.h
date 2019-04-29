@@ -52,6 +52,14 @@ struct request {
     virtual ~request(void) {}
 };
 
+struct arbitrary_request : public request {
+    size_t index;
+
+    arbitrary_request(size_t request_index, request_type type,
+                      unsigned int size, struct timeval* sent_time);
+    virtual ~arbitrary_request(void) {}
+};
+
 struct verify_request : public request {
     char *m_key;
     unsigned int m_key_len;
@@ -92,9 +100,9 @@ public:
     void send_mget_command(struct timeval* sent_time, const keylist* key_list);
     void send_verify_get_command(struct timeval* sent_time, const char *key, int key_len,
                                  const char *value, int value_len, int expiry, unsigned int offset);
-    int send_arbitrary_command(command_arg *arg);
-    int send_arbitrary_command(command_arg *arg, const char *val, int val_len);
-    void send_arbitrary_command_end(struct timeval* sent_time, int cmd_size);
+    int send_arbitrary_command(const command_arg *arg);
+    int send_arbitrary_command(const command_arg *arg, const char *val, int val_len);
+    void send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size);
 
     void set_authentication() {
         m_authentication = auth_none;
