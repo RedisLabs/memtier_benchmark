@@ -1,3 +1,5 @@
+[![Docker Pulls](https://img.shields.io/docker/pulls/redislabs/memtier_benchmark.svg?style=popout)](https://hub.docker.com/r/redislabs/memtier_benchmark)  [![GitHub](https://img.shields.io/github/license/redislabs/memtier_benchmark.svg?style=popout)](https://opensource.org/licenses/GPL-2.0)
+
 memtier_benchmark
 =================
 
