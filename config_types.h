@@ -123,7 +123,7 @@ struct arbitrary_command {
     unsigned int ratio;
 };
 
-class arbitrary_command_list {
+struct arbitrary_command_list {
 private:
     std::vector<arbitrary_command> commands_list;
 
