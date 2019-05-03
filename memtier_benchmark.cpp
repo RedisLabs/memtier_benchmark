@@ -249,7 +249,7 @@ static void config_init_defaults(struct benchmark_config *cfg)
 
 static int generate_random_seed()
 {
-    int R;
+    int R = 0;
     FILE* f = fopen("/dev/random", "r");
     if (f)
     {
