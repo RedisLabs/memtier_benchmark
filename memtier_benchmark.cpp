@@ -294,6 +294,20 @@ static bool verify_arbitrary_command_option(struct benchmark_config *cfg) {
         return false;
     }
 
+    // verify that when using Parallel key pattern, it's configured to all commands
+    size_t parallel_count = 0;
+    for (size_t i = 0; i<cfg->arbitrary_commands->size(); i++) {
+        arbitrary_command& cmd =  cfg->arbitrary_commands->at(i);
+        if (cmd.key_pattern == 'P') {
+            parallel_count++;
+        }
+    }
+
+    if (parallel_count > 0 && parallel_count != cfg->arbitrary_commands->size()) {
+        fprintf(stderr, "error: parallel key-pattern must be configured to all commands.\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -624,8 +638,17 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                          cfg->key_pattern[key_pattern_set] != 'P') ||
                         (cfg->key_pattern[key_pattern_get] != 'R' &&
                          cfg->key_pattern[key_pattern_get] != 'S' &&
-                         cfg->key_pattern[key_pattern_get] != 'G')) {
-                        fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]:[S/R/G].\n");
+                         cfg->key_pattern[key_pattern_get] != 'G' &&
+                         cfg->key_pattern[key_pattern_get] != 'P')) {
+                        fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]:[S/R/G/P].\n");
+                        return -1;
+                    }
+
+                    if ((cfg->key_pattern[key_pattern_set] == 'P' ||
+                         cfg->key_pattern[key_pattern_get] == 'P') &&
+                        (cfg->key_pattern[key_pattern_set] != cfg->key_pattern[key_pattern_get])) {
+
+                        fprintf(stderr, "error: parallel key-pattern must be configured for both SET and GET commands.\n");
                         return -1;
                     }
                     break;
