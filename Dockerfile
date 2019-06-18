@@ -15,7 +15,7 @@ COPY --from=builder /usr/local/bin/memtier_benchmark /usr/local/bin/memtier_benc
 RUN \
   apt-get update && \
   DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
       libevent-dev \
   && \
   apt-get clean && \
