@@ -2,7 +2,7 @@ FROM ubuntu:16.04 as builder
 RUN apt-get update
 RUN \
   DEBIAN_FRONTEND=noninteractive \
-  apt-get install -yy \
+  apt-get install -y \
     build-essential autoconf automake libpcre3-dev libevent-dev \
     pkg-config zlib1g-dev git libboost-all-dev cmake flex
 RUN git clone https://github.com/RedisLabs/memtier_benchmark.git
@@ -15,7 +15,7 @@ COPY --from=builder /usr/local/bin/memtier_benchmark /usr/local/bin/memtier_benc
 RUN \
   apt-get update && \
   DEBIAN_FRONTEND=noninteractive \
-    apt-get install -yy \
+    apt-get install -y \
       libevent-dev \
   && \
   apt-get clean && \
