@@ -16,7 +16,7 @@ dnl You should have received a copy of the GNU General Public License
 dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 AC_PREREQ(2.59)
-AC_INIT(memtier_benchmark,1.2.15,yossigo@gmail.com)
+AC_INIT(memtier_benchmark,1.2.17,yossigo@gmail.com)
 AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
@@ -45,9 +45,11 @@ AC_FUNC_MALLOC
 AC_FUNC_MEMCMP
 AC_CHECK_FUNCS([gettimeofday memchr memset socket strerror random_r drand48])
 
+# clock_gettime requires -lrt on old glibc only.
+AC_SEARCH_LIBS([clock_gettime], [rt], , AC_MSG_ERROR([rt is required libevent.]))
+
 AC_CHECK_LIB([pcre], [pcre_compile], , AC_MSG_ERROR([pcre is required; try installing libpcre3-dev.]))
 AC_CHECK_LIB([z], [deflateInit_], , AC_MSG_ERROR([zlib is required; try installing zlib1g-dev.]))
-AC_CHECK_LIB([rt], [clock_gettime], , AC_MSG_ERROR([rt is required for libevent.]))
 AC_CHECK_LIB([pthread], [pthread_create], , AC_MSG_ERROR([pthread is required.]))
 AC_CHECK_LIB([socket], [gai_strerror])
 
@@ -56,6 +58,12 @@ PKG_CHECK_MODULES(LIBEVENT,
     [libevent >= 2.0.10],
     AC_SUBST(LIBEVENT_CFLAGS) AC_SUBST(LIBEVENT_LIBS)
 )
+
+# bash completion
+PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
+    [BASH_COMPLETION_DIR="`pkg-config --variable=completionsdir bash-completion`"],
+    [BASH_COMPLETION_DIR="$datadir/bash-completion/completionsss"])
+AC_SUBST([BASH_COMPLETION_DIR])
 
 AC_CONFIG_FILES([
    	Makefile

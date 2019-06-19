@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -35,6 +36,8 @@
 
 #include <string>
 #include <stdexcept>
+#include <climits>
+#include <algorithm>
 
 #include "config_types.h"
 
@@ -276,9 +279,47 @@ static int hex_digit_to_int(char c) {
     }
 }
 
-bool arbitrary_command::split_command_to_args(const char* command) {
-    const char *p = command;
-    size_t command_len = strlen(command);
+arbitrary_command::arbitrary_command(const char* cmd) : command(cmd), key_pattern('R'), ratio(1) {
+    // command name is the first word in the command
+    size_t pos = command.find(" ");
+    if (pos == std::string::npos) {
+        pos = command.size();
+    }
+
+    command_name.assign(command.c_str(), pos);
+    std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::toupper);
+}
+
+bool arbitrary_command::set_key_pattern(const char* pattern_str) {
+    if (strlen(pattern_str) > 1) {
+        return false;
+    }
+
+    if (pattern_str[0] != 'R' &&
+        pattern_str[0] != 'G' &&
+        pattern_str[0] != 'S' &&
+        pattern_str[0] != 'P') {
+
+        return false;
+    }
+
+    key_pattern = pattern_str[0];
+    return true;
+}
+
+bool arbitrary_command::set_ratio(const char* ratio_str) {
+    char *q = NULL;
+    ratio = strtoul(ratio_str, &q, 10);
+    if (!q || *q != '\0') {
+        return false;
+    }
+
+    return true;
+}
+
+bool arbitrary_command::split_command_to_args() {
+    const char *p = command.c_str();
+    size_t command_len = command.length();
 
     char buffer[command_len];
     unsigned int buffer_len = 0;

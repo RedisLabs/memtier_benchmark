@@ -107,7 +107,7 @@ public:
     unsigned int value_len;
 };
 
-class protocol_response {
+struct protocol_response {
 protected:
     const char *m_status;
     mbulk_size_el *m_mbulk_value;
@@ -193,7 +193,7 @@ public:
 
     // handle arbitrary command
     virtual bool format_arbitrary_command(arbitrary_command &cmd) = 0;
-    virtual int write_arbitrary_command(command_arg *arg) = 0;
+    virtual int write_arbitrary_command(const command_arg *arg) = 0;
     virtual int write_arbitrary_command(const char *val, int val_len) = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }

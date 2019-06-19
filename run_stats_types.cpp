@@ -64,25 +64,79 @@ void one_sec_cmd_stats::update_ask_op(unsigned int bytes, unsigned int latency) 
     m_ask++;
 }
 
+void ar_one_sec_cmd_stats::setup(size_t n_arbitrary_commands) {
+    m_commands.resize(n_arbitrary_commands);
+    reset();
+}
+
+void ar_one_sec_cmd_stats::reset() {
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        m_commands[i].reset();
+    }
+}
+
+void ar_one_sec_cmd_stats::merge(const ar_one_sec_cmd_stats& other) {
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        m_commands[i].merge(other.m_commands[i]);
+    }
+}
+
+unsigned long int ar_one_sec_cmd_stats::ops() {
+    unsigned long int total_ops = 0;
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        total_ops += m_commands[i].m_ops;
+    }
+
+    return total_ops;
+}
+
+
+unsigned long int ar_one_sec_cmd_stats::bytes() {
+    unsigned long int total_bytes = 0;
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        total_bytes += m_commands[i].m_bytes;
+    }
+
+    return total_bytes;
+}
+
+unsigned long long int ar_one_sec_cmd_stats::total_latency() {
+    unsigned long long int latency = 0;
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        latency += m_commands[i].m_total_latency;
+    }
+
+    return latency;
+}
+
+size_t ar_one_sec_cmd_stats::size() const {
+    return m_commands.size();
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 one_second_stats::one_second_stats(unsigned int second) {
     reset(second);
 }
 
+void one_second_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
+    m_ar_commands.setup(n_arbitrary_commands);
+}
+
+
 void one_second_stats::reset(unsigned int second) {
     m_second = second;
     m_get_cmd.reset();
     m_set_cmd.reset();
     m_wait_cmd.reset();
-    m_ar_cmd.reset();
+    m_ar_commands.reset();
 }
 
 void one_second_stats::merge(const one_second_stats& other) {
     m_get_cmd.merge(other.m_get_cmd);
     m_set_cmd.merge(other.m_set_cmd);
     m_wait_cmd.merge(other.m_wait_cmd);
-    m_ar_cmd.merge(other.m_ar_cmd);
+    m_ar_commands.merge(other.m_ar_commands);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -128,13 +182,39 @@ void totals_cmd::summarize(const one_sec_cmd_stats& other, unsigned long test_du
     m_ask_sec = (double) other.m_ask / test_duration_usec * 1000000;
 }
 
+void ar_totals_cmd::setup(size_t n_arbitrary_commands) {
+    m_commands.resize(n_arbitrary_commands);
+}
+
+void ar_totals_cmd::add(const ar_totals_cmd& other) {
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        m_commands[i].add(other.m_commands[i]);
+    }
+}
+
+void ar_totals_cmd::aggregate_average(size_t stats_size) {
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        m_commands[i].aggregate_average(stats_size);
+    }
+}
+
+void ar_totals_cmd::summarize(const ar_one_sec_cmd_stats& other, unsigned long test_duration_usec) {
+    for (size_t i = 0; i<m_commands.size(); i++) {
+        m_commands[i].summarize(other.at(i), test_duration_usec);
+    }
+}
+
+size_t ar_totals_cmd::size() const {
+    return m_commands.size();
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 totals::totals() :
         m_set_cmd(),
         m_get_cmd(),
         m_wait_cmd(),
-        m_ar_cmd(),
+        m_ar_commands(),
         m_ops_sec(0),
         m_bytes_sec(0),
         m_hits_sec(0),
@@ -146,11 +226,15 @@ totals::totals() :
         m_ops(0) {
 }
 
+void totals::setup_arbitrary_commands(size_t n_arbitrary_commands) {
+    m_ar_commands.setup(n_arbitrary_commands);
+}
+
 void totals::add(const totals& other) {
     m_set_cmd.add(other.m_set_cmd);
     m_get_cmd.add(other.m_get_cmd);
     m_wait_cmd.add(other.m_wait_cmd);
-    m_ar_cmd.add(other.m_ar_cmd);
+    m_ar_commands.add(other.m_ar_commands);
 
     m_ops_sec += other.m_ops_sec;
     m_hits_sec += other.m_hits_sec;
@@ -161,4 +245,10 @@ void totals::add(const totals& other) {
     m_latency += other.m_latency;
     m_bytes += other.m_bytes;
     m_ops += other.m_ops;
+}
+
+void totals::update_op(unsigned long int bytes, double latency) {
+    m_bytes += bytes;
+    m_ops++;
+    m_latency += latency;
 }

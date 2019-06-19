@@ -19,6 +19,7 @@
 #ifndef MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 #define MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 
+#include "memtier_benchmark.h"
 
 class one_sec_cmd_stats {
 public:
@@ -37,15 +38,38 @@ public:
     void update_ask_op(unsigned int bytes, unsigned int latency);
 };
 
+class one_second_stats; // forward deceleration
+
+class ar_one_sec_cmd_stats {
+public:
+    ar_one_sec_cmd_stats() {;}
+    void setup(size_t n_arbitrary_commands);
+    void reset();
+    void merge(const ar_one_sec_cmd_stats& other);
+    unsigned long int ops();
+    unsigned long int bytes();
+    unsigned long long int total_latency();
+    size_t size() const;
+    one_sec_cmd_stats& at(std::size_t idx) { return m_commands.at(idx); }
+    const one_sec_cmd_stats& at(std::size_t idx) const { return m_commands.at(idx); }
+
+    // array subscript operator
+    one_sec_cmd_stats& operator[](std::size_t idx) { return m_commands[idx]; }
+    const one_sec_cmd_stats& operator[](std::size_t idx) const { return m_commands[idx]; }
+
+    std::vector<one_sec_cmd_stats> m_commands;
+};
+
 class one_second_stats {
 public:
     unsigned int m_second;        // from start of test
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
-    one_sec_cmd_stats m_ar_cmd;
+    ar_one_sec_cmd_stats m_ar_commands;
 
     one_second_stats(unsigned int second);
+    void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
     void merge(const one_second_stats& other);
 };
@@ -64,12 +88,31 @@ public:
     void summarize(const one_sec_cmd_stats& other, unsigned long test_duration_usec);
 };
 
+class ar_totals_cmd {
+public:
+    ar_totals_cmd() {;}
+    void setup(size_t n_arbitrary_commands);
+    void add(const ar_totals_cmd& other);
+    void aggregate_average(size_t stats_size);
+    void summarize(const ar_one_sec_cmd_stats& other, unsigned long test_duration_usec);
+    size_t size() const;
+
+    totals_cmd& at(std::size_t idx) { return m_commands.at(idx); }
+    const totals_cmd& at(std::size_t idx) const { return m_commands.at(idx); }
+
+    // array subscript operator
+    totals_cmd& operator[](std::size_t idx) { return m_commands[idx]; }
+    const totals_cmd& operator[](std::size_t idx) const { return m_commands[idx]; }
+
+    std::vector<totals_cmd> m_commands;
+};
+
 class totals {
 public:
     totals_cmd m_set_cmd;
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
-    totals_cmd m_ar_cmd;
+    ar_totals_cmd m_ar_commands;
     double m_ops_sec;
     double m_bytes_sec;
     double m_hits_sec;
@@ -80,7 +123,9 @@ public:
     unsigned long int m_bytes;
     unsigned long int m_ops;
     totals();
+    void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
+    void update_op(unsigned long int bytes, double latency);
 };
 
 

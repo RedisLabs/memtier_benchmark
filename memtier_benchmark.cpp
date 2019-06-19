@@ -39,7 +39,6 @@
 #include "JSON_handler.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
-#include "run_stats.h"
 
 
 static int log_level = 0;
@@ -250,7 +249,7 @@ static void config_init_defaults(struct benchmark_config *cfg)
 
 static int generate_random_seed()
 {
-    int R;
+    int R = 0;
     FILE* f = fopen("/dev/random", "r");
     if (f)
     {
@@ -278,7 +277,7 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     } else if (cfg->unix_socket) {
         fprintf(stderr, "error: cluster mode dose not support unix-socket option.\n");
         return false;
-    } else if (cfg->command) {
+    } else if (cfg->arbitrary_commands->is_defined()) {
         fprintf(stderr, "error: cluster mode dose not support arbitrary command option.\n");
         return false;
     }
@@ -286,37 +285,26 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     return true;
 }
 
-static bool verify_key_pattern_option(struct benchmark_config *cfg) {
-    if (cfg->key_pattern == NULL) {
-        return true;
+static bool verify_arbitrary_command_option(struct benchmark_config *cfg) {
+    if (cfg->key_pattern) {
+        fprintf(stderr, "error: when using arbitrary command, key pattern is configured with --command-key-pattern option.\n");
+        return false;
+    } else if (cfg->ratio.is_defined()) {
+        fprintf(stderr, "error: when using arbitrary command, ratio is configured with --command-ratio option.\n");
+        return false;
     }
 
-    if (cfg->command) {
-        if (strlen(cfg->key_pattern) != 1) {
-            fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P].\n");
-            return false;
+    // verify that when using Parallel key pattern, it's configured to all commands
+    size_t parallel_count = 0;
+    for (size_t i = 0; i<cfg->arbitrary_commands->size(); i++) {
+        arbitrary_command& cmd =  cfg->arbitrary_commands->at(i);
+        if (cmd.key_pattern == 'P') {
+            parallel_count++;
         }
-
-        cfg->key_pattern = cfg->key_pattern[key_pattern_set] == 'R' ? "R:R" :
-                           cfg->key_pattern[key_pattern_set] == 'S' ? "S:S" :
-                           cfg->key_pattern[key_pattern_set] == 'G' ? "G:G" :
-                           cfg->key_pattern[key_pattern_set] == 'P' ? "P:P" :
-                           "N/A";
     }
 
-    if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[key_pattern_delimiter] != ':' ||
-        (cfg->key_pattern[key_pattern_set] != 'R' &&
-         cfg->key_pattern[key_pattern_set] != 'S' &&
-         cfg->key_pattern[key_pattern_set] != 'G' &&
-         cfg->key_pattern[key_pattern_set] != 'P') ||
-        (cfg->key_pattern[key_pattern_get] != 'R' &&
-         cfg->key_pattern[key_pattern_get] != 'S' &&
-         cfg->key_pattern[key_pattern_get] != 'G' &&
-         cfg->key_pattern[key_pattern_get] != 'P')) {
-
-        fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]%s.\n",
-                cfg->command ? "" : ":[S/R/G/P]");
-
+    if (parallel_count > 0 && parallel_count != cfg->arbitrary_commands->size()) {
+        fprintf(stderr, "error: parallel key-pattern must be configured to all commands.\n");
         return false;
     }
 
@@ -358,7 +346,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_wait_timeout, 
         o_json_out_file,
         o_cluster_mode,
-        o_command
+        o_command,
+        o_command_key_pattern,
+        o_command_ratio
     };
     
     static struct option long_options[] = {
@@ -406,10 +396,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
-        { "cluster-mode",                0, 0, o_cluster_mode },
+        { "cluster-mode",               0, 0, o_cluster_mode },
         { "help",                       0, 0, 'h' },
         { "version",                    0, 0, 'v' },
         { "command",                    1, 0, o_command },
+        { "command-key-pattern",        1, 0, o_command_key_pattern },
+        { "command-ratio",              1, 0, o_command_ratio },
         { NULL,                         0, 0, 0 }
     };
 
@@ -638,6 +630,27 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
+
+                    if (strlen(cfg->key_pattern) != 3 || cfg->key_pattern[key_pattern_delimiter] != ':' ||
+                        (cfg->key_pattern[key_pattern_set] != 'R' &&
+                         cfg->key_pattern[key_pattern_set] != 'S' &&
+                         cfg->key_pattern[key_pattern_set] != 'G' &&
+                         cfg->key_pattern[key_pattern_set] != 'P') ||
+                        (cfg->key_pattern[key_pattern_get] != 'R' &&
+                         cfg->key_pattern[key_pattern_get] != 'S' &&
+                         cfg->key_pattern[key_pattern_get] != 'G' &&
+                         cfg->key_pattern[key_pattern_get] != 'P')) {
+                        fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]:[S/R/G/P].\n");
+                        return -1;
+                    }
+
+                    if ((cfg->key_pattern[key_pattern_set] == 'P' ||
+                         cfg->key_pattern[key_pattern_get] == 'P') &&
+                        (cfg->key_pattern[key_pattern_set] != cfg->key_pattern[key_pattern_get])) {
+
+                        fprintf(stderr, "error: parallel key-pattern must be configured for both SET and GET commands.\n");
+                        return -1;
+                    }
                     break;
                 case o_reconnect_interval:
                     endptr = NULL;
@@ -698,18 +711,46 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_cluster_mode:
                     cfg->cluster_mode = true;
                     break;
-                case o_command:
-                    if (cfg->command) {
-                        fprintf(stderr, "error: multiple arbitrary commands is not supported.\n");
-                        return -1;
-                    }
+                case o_command: {
+                    // add new arbitrary command
+                    arbitrary_command cmd(optarg);
 
-                    cfg->command = new arbitrary_command();
-                    if (!cfg->command->split_command_to_args(optarg)) {
+                    if (cmd.split_command_to_args()) {
+                        cfg->arbitrary_commands->add_command(cmd);
+                    } else {
                         fprintf(stderr, "error: failed to parse arbitrary command.\n");
                         return -1;
                     }
                     break;
+                }
+                case o_command_key_pattern: {
+                    if (cfg->arbitrary_commands->size() == 0) {
+                        fprintf(stderr, "error: no arbitrary command found.\n");
+                        return -1;
+                    }
+
+                    // command configuration always applied on last configured command
+                    arbitrary_command& cmd = cfg->arbitrary_commands->get_last_command();
+                    if (!cmd.set_key_pattern(optarg)) {
+                        fprintf(stderr, "error: key-pattern for command %s must be in the format of [S/R/G/P].\n", cmd.command_name.c_str());
+                        return -1;
+                    }
+                    break;
+                }
+                case o_command_ratio: {
+                    if (cfg->arbitrary_commands->size() == 0) {
+                        fprintf(stderr, "error: no arbitrary command found.\n");
+                        return -1;
+                    }
+
+                    // command configuration always applied on last configured command
+                    arbitrary_command& cmd = cfg->arbitrary_commands->get_last_command();
+                    if (!cmd.set_ratio(optarg)) {
+                        fprintf(stderr, "error: failed to set ratio for command %s.\n", cmd.command_name.c_str());
+                        return -1;
+                    }
+                    break;
+                }
             default:
                     return -1;
                     break;
@@ -717,7 +758,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     }
 
     if ((cfg->cluster_mode && !verify_cluster_option(cfg)) ||
-        !verify_key_pattern_option(cfg)) {
+        (cfg->arbitrary_commands->is_defined() && !verify_arbitrary_command_option(cfg))) {
         return -1;
     }
 
@@ -761,7 +802,20 @@ void usage() {
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
             "      --randomize                random seed based on timestamp (default is constant value)\n"
-            "      --command=COMMAND          use arbitrary command instead of set:get commands\n"
+            "\n"
+            "Arbitrary command:\n"
+            "      --command=COMMAND          Specify a command to send in quotes.\n"
+            "                                 Each command that you specify is run with its ratio and key-pattern options.\n"
+            "                                 For example: --command=\"set __key__ 5\" --command-ratio=2 --command-key-pattern=G\n"
+            "                                 To use a generated key or object, enter:\n"
+            "                                   __key__: Use key generated from Key Options.\n"
+            "                                   __data__: Use data generated from Object Options.\n"
+            "      --command-ratio            The number of times the command is sent in sequence.(default: 1)\n"
+            "      --command-key-pattern      Key pattern for the command (default: R):\n"
+            "                                 G for Gaussian distribution.\n"
+            "                                 R for uniform Random.\n"
+            "                                 S for Sequential.\n"
+            "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size (default: 32)\n"
@@ -787,8 +841,7 @@ void usage() {
             "      --key-prefix=PREFIX        Prefix for keys (default: \"memtier-\")\n"
             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
-            "      --key-pattern=PATTERN      Set:Get pattern (default: R:R), in case of using --command option,\n"
-            "                                 only one pattern is required.\n"
+            "      --key-pattern=PATTERN      Set:Get pattern (default: R:R)\n"
             "                                 G for Gaussian distribution.\n"
             "                                 R for uniform Random.\n"
             "                                 S for Sequential.\n"
@@ -902,9 +955,9 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         threads.push_back(t);
     }
 
-    // if user configure arbitrary command, we use one of the thread's protocol to format and prepare it
-    if (cfg->command) {
-        if (!threads.front()->m_protocol->format_arbitrary_command(*cfg->command)) {
+    // if user configure arbitrary commands, we use one of the thread's protocol to format and prepare it
+    for (unsigned int i=0; i<cfg->arbitrary_commands->size(); i++) {
+        if (!threads.front()->m_protocol->format_arbitrary_command(cfg->arbitrary_commands->at(i))) {
             exit(1);
         }
     }
@@ -986,7 +1039,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     fprintf(stderr, "\n\n");
 
     // join all threads back and unify stats
-    run_stats stats;
+    run_stats stats(cfg);
+
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
         (*i)->join();
         (*i)->m_cg->merge_run_stats(&stats);
@@ -1021,6 +1075,8 @@ int main(int argc, char *argv[])
     struct benchmark_config cfg;
 
     memset(&cfg, 0, sizeof(struct benchmark_config));
+    cfg.arbitrary_commands = new arbitrary_command_list();
+
     if (config_parse_args(argc, argv, &cfg) < 0) {
         usage();
     }
@@ -1089,8 +1145,12 @@ int main(int argc, char *argv[])
             fprintf(stderr, "error: use no-expiry only with data-import\n");
             exit(1);
         }
-        
-        obj_gen = new object_generator();
+
+        if (cfg.arbitrary_commands->is_defined()) {
+            obj_gen = new object_generator(cfg.arbitrary_commands->size());
+        } else {
+            obj_gen = new object_generator();
+        }
         assert(obj_gen != NULL);
     } else {
         // check paramters
@@ -1216,10 +1276,12 @@ int main(int argc, char *argv[])
 
     if (!cfg.verify_only) {
         std::vector<run_stats> all_stats;
+        all_stats.reserve(cfg.run_count);
+
         for (unsigned int run_id = 1; run_id <= cfg.run_count; run_id++) {
             if (run_id > 1)
                 sleep(1);   // let connections settle
-            
+
             run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
             all_stats.push_back(stats);
         }
@@ -1243,9 +1305,6 @@ int main(int argc, char *argv[])
             jsonhandler->close_nesting();
         }
 
-        // in case of arbitrary command, get the command name
-        std::string command_name = cfg.command ? cfg.command->command_name : "";
-
         // If more than 1 run was used, compute best, worst and average
         if (cfg.run_count > 1) {
             unsigned int min_ops_sec = (unsigned int) -1;
@@ -1266,21 +1325,17 @@ int main(int argc, char *argv[])
             }
 
             // Best results:
-            best->print(outfile, !cfg.hide_histogram, "BEST RUN RESULTS",
-                        jsonhandler, cfg.cluster_mode, command_name);
+            best->print(outfile, &cfg, "BEST RUN RESULTS", jsonhandler);
             // worst results:
-            worst->print(outfile, !cfg.hide_histogram, "WORST RUN RESULTS",
-                         jsonhandler, cfg.cluster_mode, command_name);
+            worst->print(outfile, &cfg, "WORST RUN RESULTS", jsonhandler);
             // average results:
-            run_stats average;
+            run_stats average(&cfg);
             average.aggregate_average(all_stats);
             char average_header[50];
             sprintf(average_header,"AGGREGATED AVERAGE RESULTS (%u runs)", cfg.run_count);
-            average.print(outfile, !cfg.hide_histogram, average_header,
-                          jsonhandler, cfg.cluster_mode, command_name);
+            average.print(outfile, &cfg, average_header, jsonhandler);
         } else {
-            all_stats.begin()->print(outfile, !cfg.hide_histogram, "ALL STATS",
-                                     jsonhandler, cfg.cluster_mode, command_name);
+            all_stats.begin()->print(outfile, &cfg, "ALL STATS", jsonhandler);
         }
     }
 
@@ -1328,7 +1383,7 @@ int main(int argc, char *argv[])
     if (keylist != NULL)
         delete keylist;
 
-    if (cfg.command) {
-        delete cfg.command;
+    if (cfg.arbitrary_commands != NULL) {
+        delete cfg.arbitrary_commands;
     }
 }
