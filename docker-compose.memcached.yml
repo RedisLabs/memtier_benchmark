@@ -1,0 +1,12 @@
+memtier_benchmark:
+#  build: .
+  image: redislabs/memtier_benchmark
+  command: --protocol=memcache_text --server=memcached --port=11211 --generate-keys
+  links:
+    - memcached
+
+memcached:
+  image: memcached
+#  command: -vv
+  ports:
+    - "11211:11211"
