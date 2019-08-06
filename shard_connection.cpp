@@ -48,15 +48,22 @@
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
 #include "connections_manager.h"
+#include "event2/bufferevent.h"
 
-void cluster_client_event_handler(evutil_socket_t sfd, short evtype, void *opaque)
+void cluster_client_read_handler(bufferevent *bev, void *ctx)
 {
-    shard_connection *sc = (shard_connection *) opaque;
+    shard_connection *sc = (shard_connection *) ctx;
+    assert(sc != NULL);
+
+    sc->process_response();
+}
+
+void cluster_client_event_handler(bufferevent *bev, short events, void *ctx)
+{
+    shard_connection *sc = (shard_connection *) ctx;
 
     assert(sc != NULL);
-    assert(sc->m_sockfd == sfd);
-
-    sc->handle_event(evtype);
+    sc->handle_event(events);
 }
 
 request::request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys)
@@ -111,7 +118,7 @@ verify_request::~verify_request(void)
 shard_connection::shard_connection(unsigned int id, connections_manager* conns_man, benchmark_config* config,
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_sockfd(-1), m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
-        m_event(NULL), m_pending_resp(0), m_connection_state(conn_disconnected),
+        m_bev(NULL), m_pending_resp(0), m_connection_state(conn_disconnected),
         m_authentication(auth_done), m_db_selection(select_done), m_cluster_slots(slots_done) {
     m_id = id;
     m_conns_manager = conns_man;
@@ -127,15 +134,8 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
         m_unix_sockaddr->sun_path[sizeof(m_unix_sockaddr->sun_path)-1] = '\0';
     }
 
-    m_read_buf = evbuffer_new();
-    assert(m_read_buf != NULL);
-
-    m_write_buf = evbuffer_new();
-    assert(m_write_buf != NULL);
-
     m_protocol = abs_protocol->clone();
     assert(m_protocol != NULL);
-    m_protocol->set_buffers(m_read_buf, m_write_buf);
 
     m_pipeline = new std::queue<request *>;
     assert(m_pipeline != NULL);
@@ -162,19 +162,9 @@ shard_connection::~shard_connection() {
         m_unix_sockaddr = NULL;
     }
 
-    if (m_read_buf != NULL) {
-        evbuffer_free(m_read_buf);
-        m_read_buf = NULL;
-    }
-
-    if (m_write_buf != NULL) {
-        evbuffer_free(m_write_buf);
-        m_write_buf = NULL;
-    }
-
-    if (m_event != NULL) {
-        event_free(m_event);
-        m_event = NULL;
+    if (m_bev != NULL) {
+        bufferevent_free(m_bev);
+        m_bev = NULL;
     }
 
     if (m_protocol != NULL) {
@@ -189,23 +179,15 @@ shard_connection::~shard_connection() {
 }
 
 void shard_connection::setup_event() {
-    int ret;
-
-    if (!m_event) {
-        m_event = event_new(m_event_base, m_sockfd, EV_WRITE,
-                            cluster_client_event_handler, (void *)this);
-        assert(m_event != NULL);
-    } else {
-        ret = event_del(m_event);
-        assert(ret ==0);
-
-        ret = event_assign(m_event, m_event_base, m_sockfd, EV_WRITE,
-                           cluster_client_event_handler, (void *)this);
-        assert(ret ==0);
+    if (m_bev) {
+        bufferevent_free(m_bev);
     }
 
-    ret = event_add(m_event, NULL);
-    assert(ret == 0);
+    m_bev = bufferevent_socket_new(m_event_base, m_sockfd, 0);
+    assert(m_bev != NULL);
+    bufferevent_setcb(m_bev, cluster_client_read_handler,
+        NULL, cluster_client_event_handler, (void *)this);
+    m_protocol->set_buffers(bufferevent_get_input(m_bev), bufferevent_get_output(m_bev));
 }
 
 int shard_connection::setup_socket(struct connect_info* addr) {
@@ -258,14 +240,10 @@ int shard_connection::connect(struct connect_info* addr) {
     m_authentication = m_config->authenticate ? auth_none : auth_done;
     m_db_selection = m_config->select_db ? select_none : select_done;
 
-    // clean up existing buffers
-    evbuffer_drain(m_read_buf, evbuffer_get_length(m_read_buf));
-    evbuffer_drain(m_write_buf, evbuffer_get_length(m_write_buf));
-
     // setup socket
     setup_socket(addr);
 
-    // set up event
+    // set up bufferevent
     setup_event();
 
     // set readable id
@@ -274,12 +252,9 @@ int shard_connection::connect(struct connect_info* addr) {
     // call connect
     m_connection_state = conn_in_progress;
 
-    if (::connect(m_sockfd,
+    if (bufferevent_socket_connect(m_bev, 
                   m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
                   m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == -1) {
-        if (errno == EINPROGRESS || errno == EWOULDBLOCK)
-            return 0;
-
         benchmark_error_log("connect failed, error = %s\n", strerror(errno));
         return -1;
     }
@@ -293,11 +268,8 @@ void shard_connection::disconnect() {
         m_sockfd = -1;
     }
 
-    evbuffer_drain(m_read_buf, evbuffer_get_length(m_read_buf));
-    evbuffer_drain(m_write_buf, evbuffer_get_length(m_write_buf));
-
-    int ret = event_del(m_event);
-    assert(ret == 0);
+    bufferevent_free(m_bev);
+    m_bev = NULL;
 
     m_connection_state = conn_disconnected;
 
@@ -457,7 +429,12 @@ void shard_connection::process_response(void)
         }
     }
 
-    fill_pipeline();
+    if (m_conns_manager->finished()) {
+        m_conns_manager->set_end_time();
+        bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+    } else {
+        fill_pipeline();
+    }
 }
 
 void shard_connection::process_first_request() {
@@ -485,30 +462,15 @@ void shard_connection::fill_pipeline(void)
     }
 }
 
-void shard_connection::handle_event(short evtype)
+void shard_connection::handle_event(short events)
 {
     // connect() returning to us?  normally we expect EV_WRITE, but for UNIX domain
     // sockets we workaround since connect() returned immediately, but we don't want
     // to do any I/O from the client::connect() call...
-    if ((get_connection_state() != conn_connected) && (evtype == EV_WRITE || m_unix_sockaddr != NULL)) {
-        int error = -1;
-        socklen_t errsz = sizeof(error);
 
-        if (getsockopt(m_sockfd, SOL_SOCKET, SO_ERROR, (void *) &error, &errsz) == -1) {
-            benchmark_error_log("connect: error getting connect response (getsockopt): %s\n", strerror(errno));
-            disconnect();
-
-            return;
-        }
-
-        if (error != 0) {
-            benchmark_error_log("connect: connection failed: %s\n", strerror(error));
-            disconnect();
-
-            return;
-        }
-
+    if ((get_connection_state() != conn_connected) && (events & BEV_EVENT_CONNECTED)) {
         m_connection_state = conn_connected;
+        bufferevent_enable(m_bev, EV_READ|EV_WRITE);
 
         if (!m_conns_manager->get_reqs_processed()) {
             process_first_request();
@@ -516,71 +478,22 @@ void shard_connection::handle_event(short evtype)
             benchmark_debug_log("reconnection complete, proceeding with test\n");
             fill_pipeline();
         }
+
+        return;
     }
 
-    assert(get_connection_state() == conn_connected);
-    if ((evtype & EV_WRITE) == EV_WRITE && evbuffer_get_length(m_write_buf) > 0) {
-        if (evbuffer_write(m_write_buf, m_sockfd) < 0) {
-            if (errno != EWOULDBLOCK) {
-                benchmark_error_log("write error: %s\n", strerror(errno));
-                disconnect();
+    if (events & BEV_EVENT_ERROR) {
+        benchmark_error_log("connection error: %s\n", strerror(errno));
+        disconnect();
 
-                return;
-            }
-        }
+        return;
     }
 
-    if ((evtype & EV_READ) == EV_READ) {
-        int ret = 1;
-        while (ret > 0) {
-            ret = evbuffer_read(m_read_buf, m_sockfd, -1);
-        }
+    if (events & BEV_EVENT_EOF) {
+        benchmark_error_log("connection dropped.\n");
+        disconnect();
 
-        if (ret < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-            benchmark_error_log("read error: %s\n", strerror(errno));
-            disconnect();
-
-            return;
-        }
-        if (ret == 0) {
-            benchmark_error_log("connection dropped.\n");
-            disconnect();
-
-            return;
-        }
-
-        if (evbuffer_get_length(m_read_buf) > 0) {
-            process_response();
-
-            // process_response may have disconnected, in which case
-            // we just abort and wait for libevent to call us back sometime
-            if (get_connection_state() == conn_disconnected) {
-                return;
-            }
-
-        }
-    }
-
-    // update event
-    short new_evtype = 0;
-    if (m_pending_resp) {
-        new_evtype = EV_READ;
-    }
-
-    if (evbuffer_get_length(m_write_buf) > 0) {
-        assert(!m_conns_manager->finished());
-        new_evtype |= EV_WRITE;
-    }
-
-    if (new_evtype) {
-        int ret = event_assign(m_event, m_event_base,
-                               m_sockfd, new_evtype, cluster_client_event_handler, (void *)this);
-        assert(ret == 0);
-
-        ret = event_add(m_event, NULL);
-        assert(ret == 0);
-    } else if (m_conns_manager->finished()) {
-        m_conns_manager->set_end_time();
+        return;
     }
 }
 

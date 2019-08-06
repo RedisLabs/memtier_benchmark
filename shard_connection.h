@@ -26,6 +26,7 @@
 #include <sys/un.h>
 #include <event2/event.h>
 #include <event2/buffer.h>
+#include <event2/bufferevent.h>
 
 #include "protocol.h"
 
@@ -78,7 +79,8 @@ struct verify_request : public request {
 };
 
 class shard_connection {
-    friend void cluster_client_event_handler(evutil_socket_t sfd, short evtype, void *opaque);
+    friend void cluster_client_read_handler(bufferevent *bev, void *ctx);
+    friend void cluster_client_event_handler(bufferevent *bev, short events, void *ctx);
 
 public:
     shard_connection(unsigned int id, connections_manager* conn_man, benchmark_config* config,
@@ -168,12 +170,8 @@ private:
     std::string m_readable_id;
 
     struct sockaddr_un* m_unix_sockaddr;
-
-    struct evbuffer* m_read_buf;
-    struct evbuffer* m_write_buf;
-
+    struct bufferevent *m_bev;
     struct event_base* m_event_base;
-    struct event* m_event;
 
     abstract_protocol* m_protocol;
     std::queue<request *>* m_pipeline;
