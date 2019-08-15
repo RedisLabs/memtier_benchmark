@@ -22,6 +22,10 @@
 #include <vector>
 #include "config_types.h"
 
+#ifdef USE_TLS
+#include <openssl/ssl.h>
+#endif
+
 #define LOGLEVEL_ERROR 0
 #define LOGLEVEL_DEBUG 1
 
@@ -45,6 +49,14 @@ struct benchmark_config {
     const char *protocol;
     const char *out_file;
     const char *client_stats;
+    bool tls;
+    const char *tls_cert;
+    const char *tls_key;
+    const char *tls_cacert;
+    bool tls_skip_verify;
+#ifdef USE_TLS
+    SSL_CTX *openssl_ctx;
+#endif
     unsigned int run_count;
     int debug;
     int show_config;

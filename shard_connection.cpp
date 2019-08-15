@@ -50,6 +50,12 @@
 #include "connections_manager.h"
 #include "event2/bufferevent.h"
 
+#ifdef USE_TLS
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include "event2/bufferevent_ssl.h"
+#endif
+
 void cluster_client_read_handler(bufferevent *bev, void *ctx)
 {
     shard_connection *sc = (shard_connection *) ctx;
@@ -183,7 +189,18 @@ void shard_connection::setup_event() {
         bufferevent_free(m_bev);
     }
 
-    m_bev = bufferevent_socket_new(m_event_base, m_sockfd, 0);
+#ifdef USE_TLS
+    if (m_config->openssl_ctx) {
+        SSL *ctx = SSL_new(m_config->openssl_ctx);
+        m_bev = bufferevent_openssl_socket_new(m_event_base,
+                m_sockfd, ctx, BUFFEREVENT_SSL_CONNECTING, 0);
+    } else {
+#endif
+        m_bev = bufferevent_socket_new(m_event_base, m_sockfd, 0);
+#ifdef USE_TLS
+    }
+#endif
+
     assert(m_bev != NULL);
     bufferevent_setcb(m_bev, cluster_client_read_handler,
         NULL, cluster_client_event_handler, (void *)this);
@@ -487,7 +504,18 @@ void shard_connection::handle_event(short events)
     }
 
     if (events & BEV_EVENT_ERROR) {
-        benchmark_error_log("connection error: %s\n", strerror(errno));
+        bool ssl_error = false;
+#ifdef USE_TLS
+        unsigned long sslerr;
+        while ((sslerr = bufferevent_get_openssl_error(m_bev))) {
+            ssl_error = true;
+            benchmark_error_log("TLS connection error: %s\n",
+                    ERR_reason_error_string(sslerr));
+        }
+#endif
+        if (!ssl_error && errno) {
+            benchmark_error_log("Connection error: %s\n", strerror(errno));
+        }
         disconnect();
 
         return;
