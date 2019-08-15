@@ -1,0 +1,14 @@
+  version: 2.1
+  jobs:
+    build:
+      machine: true
+      steps:
+        - checkout
+
+        - run: docker build -t memtier_benchmark .
+        - run: docker run --rm memtier_benchmark --help || echo "memtier_benchmark --help returns status 2 so we ignore it"
+
+        # We save the docker image as tarball.
+        - run: docker save memtier_benchmark | gzip > memtier_benchmark_docker_image.tar.gz
+        - store_artifacts:
+            path: memtier_benchmark_docker_image.tar.gz
