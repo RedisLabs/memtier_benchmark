@@ -255,6 +255,8 @@ int shard_connection::connect(struct connect_info* addr) {
     if (bufferevent_socket_connect(m_bev, 
                   m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
                   m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == -1) {
+        disconnect();
+
         benchmark_error_log("connect failed, error = %s\n", strerror(errno));
         return -1;
     }
@@ -268,7 +270,9 @@ void shard_connection::disconnect() {
         m_sockfd = -1;
     }
 
-    bufferevent_free(m_bev);
+    if (m_bev) {
+        bufferevent_free(m_bev);
+    }
     m_bev = NULL;
 
     m_connection_state = conn_disconnected;
@@ -468,7 +472,7 @@ void shard_connection::handle_event(short events)
     // sockets we workaround since connect() returned immediately, but we don't want
     // to do any I/O from the client::connect() call...
 
-    if ((get_connection_state() != conn_connected) && (events & BEV_EVENT_CONNECTED)) {
+    if ((get_connection_state() == conn_in_progress) && (events & BEV_EVENT_CONNECTED)) {
         m_connection_state = conn_connected;
         bufferevent_enable(m_bev, EV_READ|EV_WRITE);
 
