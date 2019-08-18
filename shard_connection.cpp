@@ -123,7 +123,7 @@ verify_request::~verify_request(void)
 
 shard_connection::shard_connection(unsigned int id, connections_manager* conns_man, benchmark_config* config,
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
-        m_sockfd(-1), m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
+        m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
         m_bev(NULL), m_pending_resp(0), m_connection_state(conn_disconnected),
         m_authentication(auth_done), m_db_selection(select_done), m_cluster_slots(slots_done) {
     m_id = id;
@@ -148,11 +148,6 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
 }
 
 shard_connection::~shard_connection() {
-    if (m_sockfd != -1) {
-        close(m_sockfd);
-        m_sockfd = -1;
-    }
-
     if (m_address != NULL) {
         free(m_address);
         m_address = NULL;
@@ -184,7 +179,7 @@ shard_connection::~shard_connection() {
     }
 }
 
-void shard_connection::setup_event() {
+void shard_connection::setup_event(int sockfd) {
     if (m_bev) {
         bufferevent_free(m_bev);
     }
@@ -193,10 +188,10 @@ void shard_connection::setup_event() {
     if (m_config->openssl_ctx) {
         SSL *ctx = SSL_new(m_config->openssl_ctx);
         m_bev = bufferevent_openssl_socket_new(m_event_base,
-                m_sockfd, ctx, BUFFEREVENT_SSL_CONNECTING, 0);
+                sockfd, ctx, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
     } else {
 #endif
-        m_bev = bufferevent_socket_new(m_event_base, m_sockfd, 0);
+        m_bev = bufferevent_socket_new(m_event_base, sockfd, BEV_OPT_CLOSE_ON_FREE);
 #ifdef USE_TLS
     }
 #endif
@@ -209,47 +204,42 @@ void shard_connection::setup_event() {
 
 int shard_connection::setup_socket(struct connect_info* addr) {
     int flags;
-
-    // clean up existing socket
-    if (m_sockfd != -1)
-        close(m_sockfd);
+    int sockfd;
 
     if (m_unix_sockaddr != NULL) {
-        m_sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (m_sockfd < 0) {
-            return -errno;
+        sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (sockfd < 0) {
+            return -1;
         }
     } else {
         // initialize socket
-        m_sockfd = socket(addr->ci_family, addr->ci_socktype, addr->ci_protocol);
-        if (m_sockfd < 0) {
-            return -errno;
+        sockfd = socket(addr->ci_family, addr->ci_socktype, addr->ci_protocol);
+        if (sockfd < 0) {
+            return -1;
         }
 
         // configure socket behavior
         struct linger ling = {0, 0};
         int flags = 1;
-        int error = setsockopt(m_sockfd, SOL_SOCKET, SO_KEEPALIVE, (void *) &flags, sizeof(flags));
+        int error = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (void *) &flags, sizeof(flags));
         assert(error == 0);
 
-        error = setsockopt(m_sockfd, SOL_SOCKET, SO_LINGER, (void *) &ling, sizeof(ling));
+        error = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (void *) &ling, sizeof(ling));
         assert(error == 0);
 
-        error = setsockopt(m_sockfd, IPPROTO_TCP, TCP_NODELAY, (void *) &flags, sizeof(flags));
+        error = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void *) &flags, sizeof(flags));
         assert(error == 0);
     }
 
     // set non-blocking behavior
     flags = 1;
-    if ((flags = fcntl(m_sockfd, F_GETFL, 0)) < 0 ||
-        fcntl(m_sockfd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        benchmark_error_log("connect: failed to set non-blocking flag.\n");
-        close(m_sockfd);
-        m_sockfd = -1;
+    if ((flags = fcntl(sockfd, F_GETFL, 0)) < 0 ||
+        fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(sockfd);
         return -1;
     }
 
-    return 0;
+    return sockfd;
 }
 
 int shard_connection::connect(struct connect_info* addr) {
@@ -258,10 +248,14 @@ int shard_connection::connect(struct connect_info* addr) {
     m_db_selection = m_config->select_db ? select_none : select_done;
 
     // setup socket
-    setup_socket(addr);
+    int sockfd = setup_socket(addr);
+    if (sockfd < 0) {
+        fprintf(stderr, "Failed to setup socket: %s", strerror(errno));
+        return -1;
+    }
 
     // set up bufferevent
-    setup_event();
+    setup_event(sockfd);
 
     // set readable id
     set_readable_id();
@@ -282,11 +276,6 @@ int shard_connection::connect(struct connect_info* addr) {
 }
 
 void shard_connection::disconnect() {
-    if (m_sockfd != -1) {
-        close(m_sockfd);
-        m_sockfd = -1;
-    }
-
     if (m_bev) {
         bufferevent_free(m_bev);
     }

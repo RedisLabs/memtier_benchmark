@@ -1481,6 +1481,11 @@ int main(int argc, char *argv[])
         fclose(outfile);
     }
 
+    if (cfg.server_addr) {
+        delete cfg.server_addr;
+        cfg.server_addr = NULL;
+    }
+
     if (jsonhandler != NULL) {
         // closing the JSON
         delete jsonhandler;
@@ -1493,4 +1498,11 @@ int main(int argc, char *argv[])
     if (cfg.arbitrary_commands != NULL) {
         delete cfg.arbitrary_commands;
     }
+
+#ifdef USE_TLS
+    if (cfg.openssl_ctx) {
+        SSL_CTX_free(cfg.openssl_ctx);
+        cfg.openssl_ctx = NULL;
+    }
+#endif
 }

@@ -144,7 +144,7 @@ public:
 
 
 private:
-    void setup_event();
+    void setup_event(int sockfd);
     int setup_socket(struct connect_info* addr);
     void set_readable_id();
 
@@ -164,7 +164,6 @@ private:
     connections_manager* m_conns_manager;
     benchmark_config* m_config;
 
-    int m_sockfd;
     char* m_address;
     char* m_port;
     std::string m_readable_id;
