@@ -10,6 +10,7 @@ memtier_benchmark is a command line utility developed by Redis Labs (formerly Ga
  * Random and sequential key name pattern policies
  * Random or ranged key expiration
  * Redis cluster
+ * TLS support
  * ...and much more
 
 Read more at:
@@ -25,6 +26,7 @@ The following libraries are required for building:
 
 * libevent 2.0.10 or newer.
 * libpcre 8.x.
+* OpenSSL (unless TLS support is disabled by `./configure --disable-tls`).
 
 The following tools are required
 * autoconf
@@ -70,7 +72,7 @@ Then proceed to follow the build instructions below.
 On Ubuntu/Debian distributions, simply install all prerequisites as follows:
 
 ```
-# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev
+# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
 ```
 
 #### macOS
