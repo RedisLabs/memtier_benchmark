@@ -790,6 +790,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     }
                     break;
                 }
+#ifdef USE_TLS
                 case o_tls:
                     cfg->tls = true;
                     break;
@@ -805,6 +806,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_tls_skip_verify:
                     cfg->tls_skip_verify = true;
                     break;
+#endif
             default:
                     return -1;
                     break;
