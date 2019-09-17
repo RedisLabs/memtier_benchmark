@@ -20,6 +20,7 @@ AC_INIT(memtier_benchmark,1.2.17,yossigo@gmail.com)
 AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
+AM_SILENT_RULES([yes])
 LT_INIT
 
 CXXFLAGS="-O2 -g -Wall"
@@ -44,6 +45,25 @@ AC_TYPE_SIZE_T
 AC_FUNC_MALLOC
 AC_FUNC_MEMCMP
 AC_CHECK_FUNCS([gettimeofday memchr memset socket strerror random_r drand48])
+
+# TLS support is optional.
+AC_ARG_ENABLE([tls],
+  [AS_HELP_STRING([--disable-tls],
+                  [Disable TLS/SSL support])])
+AS_IF([test "x$enable_tls" != "xno"], [
+       AC_DEFINE([USE_TLS],
+                 [1],
+                 [define to enable TLS/SSL support])
+       PKG_CHECK_MODULES([LIBEVENT_OPENSSL],
+                         [libevent_openssl >= 2.0.10],
+                         AC_SUBST(LIBEVENT_OPENSSL_CFLAGS) AC_SUBST(LIBEVENT_OPENSSL_LIBS))
+       PKG_CHECK_MODULES([LIBSSL],
+                         [libssl],
+                         AC_SUBST(LIBSSL_CFLAGS) AC_SUBST(LIBSSL_LIBS))
+       PKG_CHECK_MODULES([LIBCRYPTO],
+                         [libcrypto],
+                         AC_SUBST(LIBCRYPTO_CFLAGS) AC_SUBST(LIBCRYPTO_LIBS))
+       ], [])
 
 # clock_gettime requires -lrt on old glibc only.
 AC_SEARCH_LIBS([clock_gettime], [rt], , AC_MSG_ERROR([rt is required libevent.]))

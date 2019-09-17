@@ -23,7 +23,11 @@ bin_PROGRAMS = memtier_benchmark
 completionsdir=$(BASH_COMPLETION_DIR)
 completions_DATA=bash-completion/memtier_benchmark
 
-memtier_benchmark_CPPFLAGS = $(LIBEVENT_CFLAGS)
+memtier_benchmark_CPPFLAGS = \
+	$(LIBEVENT_CFLAGS) \
+	$(LIBEVENT_OPENSSL_CFLAGS) \
+	$(LIBCRYPTO_CFLAGS) \
+	$(LIBSSL_CFLAGS)
 memtier_benchmark_SOURCES = \
 	memtier_benchmark.cpp memtier_benchmark.h \
 	client.cpp client.h \
@@ -37,7 +41,11 @@ memtier_benchmark_SOURCES = \
 	item.cpp item.h \
 	file_io.cpp file_io.h \
 	config_types.cpp config_types.h
-memtier_benchmark_LDADD = $(LIBEVENT_LIBS)
+memtier_benchmark_LDADD = \
+	$(LIBEVENT_LIBS) \
+	$(LIBEVENT_OPENSSL_LIBS) \
+	$(LIBCRYPTO_LIBS) \
+	$(LIBSSL_LIBS)
 
 dist_man1_MANS = memtier_benchmark.1
 
