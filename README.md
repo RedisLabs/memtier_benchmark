@@ -111,7 +111,6 @@ $ memtier_benchmark --help
 
 for command line options.
 
-
 ### Cluster mode
 
 #### Connections
@@ -129,7 +128,3 @@ Also, the ratio and the key generator is per client (and not connection).
 In this case, setting the ratio to 1:1 does not guarantee 100% hits because
 the keys spread to different connections/nodes.
 
-
-
-
-[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/c1e8ecf15c469fbeb0e4eb12e8436c82 "githalytics.com")](http://githalytics.com/RedisLabs/memtier_benchmark)
