@@ -111,7 +111,6 @@ $ memtier_benchmark --help
 
 for command line options.
 
-
 ### Cluster mode
 
 #### Connections
