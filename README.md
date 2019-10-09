@@ -77,7 +77,7 @@ On Ubuntu/Debian distributions, simply install all prerequisites as follows:
 
 #### macOS
 
-To build natively on macOS, use Homebrew to install the required dependencies::
+To build natively on macOS, use Homebrew to install the required dependencies:
 
 ```
 $ brew install autoconf automake libtool libevent pkg-config
@@ -85,7 +85,7 @@ $ brew install autoconf automake libtool libevent pkg-config
 
 ### Building and installing
 
-After downloading the source tree, use standard autoconf/automake commands::
+After downloading the source tree, use standard autoconf/automake commands:
 
 ```
 $ autoreconf -ivf
@@ -103,7 +103,7 @@ $ docker run --rm memtier_benchmark --help
 
 ## Using memtier_benchmark
 
-See the included manpage or run::
+See the included manpage or run:
 
 ```
 $ memtier_benchmark --help
@@ -128,8 +128,3 @@ the --requests option, there may be gaps in the generated keys.
 Also, the ratio and the key generator is per client (and not connection).
 In this case, setting the ratio to 1:1 does not guarantee 100% hits because
 the keys spread to different connections/nodes.
-
-
-
-
-[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/c1e8ecf15c469fbeb0e4eb12e8436c82 "githalytics.com")](http://githalytics.com/RedisLabs/memtier_benchmark)
