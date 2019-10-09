@@ -10,6 +10,7 @@ memtier_benchmark is a command line utility developed by Redis Labs (formerly Ga
  * Random and sequential key name pattern policies
  * Random or ranged key expiration
  * Redis cluster
+ * TLS support
  * ...and much more
 
 Read more at:
@@ -25,16 +26,18 @@ The following libraries are required for building:
 
 * libevent 2.0.10 or newer.
 * libpcre 8.x.
+* OpenSSL (unless TLS support is disabled by `./configure --disable-tls`).
 
 The following tools are required
 * autoconf
 * automake
+* pkg-config
 * GNU make
 * GCC C++ compiler
 
-### CentOS 6.x Prerequisites
+#### CentOS 6.x
 
-On a CentOS 6.4 system, use the following to install prerequisites:
+On a CentOS 6.x system, use the following to install prerequisites:
 ```
 # yum install autoconf automake make gcc-c++ 
 # yum install pcre-devel zlib-devel libmemcached-devel
@@ -64,33 +67,21 @@ $ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}
 
 Then proceed to follow the build instructions below.
 
+#### Ubuntu/Debian
 
-### Ubuntu 12.x Prerequisites
-
-On recent Ubuntu versions, simply install all prerequisites as follows:
+On Ubuntu/Debian distributions, simply install all prerequisites as follows:
 
 ```
-# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev
+# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
 ```
 
+#### macOS
 
-### Cluster mode
+To build natively on macOS, use Homebrew to install the required dependencies::
 
-#### Connections
-
-When using the cluster-mode option, each client opens one connection for each node.
-So, when using a large number of threads and clients, the user must verify that he is not
-limited by the maximum number of file descriptors.
-
-#### Using sequential key pattern
-
-When there is an asymmetry between the Redis nodes and user set
-the --requests option, there may be gaps in the generated keys.
-
-Also, the ratio and the key generator is per client (and not connection).
-In this case, setting the ratio to 1:1 does not guarantee 100% hits because
-the keys spread to different connections/nodes.
-
+```
+$ brew install autoconf automake libtool libevent pkg-config
+```
 
 ### Building and installing
 
@@ -119,3 +110,21 @@ $ memtier_benchmark --help
 ```
 
 for command line options.
+
+### Cluster mode
+
+#### Connections
+
+When using the cluster-mode option, each client opens one connection for each node.
+So, when using a large number of threads and clients, the user must verify that he is not
+limited by the maximum number of file descriptors.
+
+#### Using sequential key pattern
+
+When there is an asymmetry between the Redis nodes and user set
+the --requests option, there may be gaps in the generated keys.
+
+Also, the ratio and the key generator is per client (and not connection).
+In this case, setting the ratio to 1:1 does not guarantee 100% hits because
+the keys spread to different connections/nodes.
+

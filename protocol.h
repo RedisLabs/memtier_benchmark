@@ -107,7 +107,7 @@ public:
     unsigned int value_len;
 };
 
-class protocol_response {
+struct protocol_response {
 protected:
     const char *m_status;
     mbulk_size_el *m_mbulk_value;
