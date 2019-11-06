@@ -80,7 +80,14 @@ On Ubuntu/Debian distributions, simply install all prerequisites as follows:
 To build natively on macOS, use Homebrew to install the required dependencies::
 
 ```
-$ brew install autoconf automake libtool libevent pkg-config
+$ brew install autoconf automake libtool libevent pkg-config openssl@1.1
+```
+
+When running `./configure`, if it fails to find libssl it may be necessary to
+tweak the `PKG_CONFIG_PATH` environment variable:
+
+```
+PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure
 ```
 
 ### Building and installing
