@@ -24,4 +24,4 @@ jobs:
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent pkg-config openssl@1.1
     - name: Build
-      run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure 
+      run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure && make
