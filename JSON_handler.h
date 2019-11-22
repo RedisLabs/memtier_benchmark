@@ -30,24 +30,24 @@ typedef enum{
     NESTED_ARRAY    // []
 }eJSON_NESTED_TYPE;
 
-/** represents an JSON handler, At this phase, only writes to JSON. */ 
+/** represents an JSON handler, At this phase, only writes to JSON. */
 class json_handler {
 protected:
-    FILE * m_json_file; 
+    FILE * m_json_file;
     // This list is used later for closing the nesting
     std::list<eJSON_NESTED_TYPE>    m_nest_closer_types;
     void beutify(bool only_tabs = false);
 public:
     json_handler(const char * jsonfilename);
     ~json_handler();
-    
+
     // Write a single object to JSON
     void write_obj(const char * objectname, const char * format, ...);
 
-    // Starts nesting, the type is used for deciding which charecter to be used for opening and closing 
+    // Starts nesting, the type is used for deciding which charecter to be used for opening and closing
     // the nesting ('{}','[]')
     void open_nesting(const char * objectname,eJSON_NESTED_TYPE type = NESTED_GENERAL);
-    
+
     // returns the nested level left after closing
     int close_nesting();
 };

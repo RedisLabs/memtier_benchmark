@@ -148,15 +148,15 @@ protected:
         char *key_ptr;
         unsigned int key_len;
     };
-    
+
     char *m_buffer;
     char *m_buffer_ptr;
     unsigned int m_buffer_size;
-    
+
     key_entry *m_keys;
     unsigned int m_keys_size;
     unsigned int m_keys_count;
-    
+
 public:
     keylist(unsigned int max_keys);
     ~keylist();
@@ -179,7 +179,7 @@ public:
     abstract_protocol();
     virtual ~abstract_protocol();
     virtual abstract_protocol* clone(void) = 0;
-    void set_buffers(struct evbuffer* read_buf, struct evbuffer* write_buf);    
+    void set_buffers(struct evbuffer* read_buf, struct evbuffer* write_buf);
     void set_keep_value(bool flag);
 
     virtual int select_db(int db) = 0;

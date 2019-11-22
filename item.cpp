@@ -27,10 +27,10 @@
 
 memcache_item::memcache_item(unsigned int dumpflags, time_t time,
     time_t exptime,
-    unsigned short flags, 
+    unsigned short flags,
     unsigned int nsuffix,
-    unsigned int clsid) : 
-    m_dumpflags(dumpflags), m_time(time), m_exptime(exptime), 
+    unsigned int clsid) :
+    m_dumpflags(dumpflags), m_time(time), m_exptime(exptime),
     m_flags(flags), m_nsuffix(nsuffix), m_clsid(clsid),
     m_version(0)
 {
@@ -50,7 +50,7 @@ memcache_item::~memcache_item()
  * \param key pointer to malloc() allocated key data.
  * \param nkey length of key.
  */
- 
+
 void memcache_item::set_key(char *key, unsigned int nkey)
 {
     if (m_key != NULL)
@@ -63,7 +63,7 @@ void memcache_item::set_key(char *key, unsigned int nkey)
  * \param data pointer to malloc() allocated data.
  * \param nbytes length of data.
  */
- 
+
 void memcache_item::set_data(char *data, unsigned int nbytes)
 {
     if (m_data != NULL)

@@ -264,7 +264,7 @@ int shard_connection::connect(struct connect_info* addr) {
     // call connect
     m_connection_state = conn_in_progress;
 
-    if (bufferevent_socket_connect(m_bev, 
+    if (bufferevent_socket_connect(m_bev,
                   m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
                   m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == -1) {
         disconnect();

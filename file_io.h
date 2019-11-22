@@ -52,7 +52,7 @@ protected:
     FILE *m_file;               /** handle of open file */
 
     char* get_quoted_str(char* str, int str_len, int* new_str_len);
-    
+
 public:
     file_writer(const char *filename);
     ~file_writer();
