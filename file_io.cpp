@@ -31,7 +31,7 @@
  * \param filename name of file to open.
  */
 file_reader::file_reader(const char *filename) :
-    m_filename(filename), m_file(NULL), 
+    m_filename(filename), m_file(NULL),
     m_line(2)
 {
 }
@@ -55,7 +55,7 @@ file_reader::file_reader(const file_reader& from) :
  * this method reads the file header and verifies that it is valid.
  * \return true for success, false for error.
  */
- 
+
 bool file_reader::open_file(void)
 {
     char header_line[80];
@@ -65,7 +65,7 @@ bool file_reader::open_file(void)
 
     if (m_file != NULL)
         fclose(m_file);
-    
+
     m_file = fopen(m_filename, "r");
     if (!m_file) {
         perror(m_filename);
@@ -102,7 +102,7 @@ bool file_reader::open_file(void)
  * \param actual_len pointer to unsigned int in which the actual string length read is returned
  * \return pointer to allocated buffer, or NULL on error.
  */
- 
+
 char* file_reader::read_string(unsigned int len,
     unsigned int alloc_len,
     unsigned int* actual_len)
@@ -112,7 +112,7 @@ char* file_reader::read_string(unsigned int len,
     bool skip_quote = false;
     bool first_byte = true;
     bool dequote = false;
-    
+
     d = dest_str = (char *) malloc(alloc_len);
     while (len > 0) {
         int c = fgetc(m_file);
@@ -124,7 +124,7 @@ char* file_reader::read_string(unsigned int len,
                 continue;
             }
         }
-        
+
         // did we hit the eof?
         if (c == EOF) {
             fprintf(stderr, "%s:%d: premature end of file.\n", m_filename, m_line);
@@ -135,7 +135,7 @@ char* file_reader::read_string(unsigned int len,
         if (skip_quote && c != '"') {
             break;
         }
-        
+
         if (c == '"') {
             if (skip_quote) {
                 skip_quote = false;
@@ -156,7 +156,7 @@ char* file_reader::read_string(unsigned int len,
             fseek(m_file, -1, SEEK_CUR);
             break;
         }
-        
+
         // copy
         *d = (char) c;
         d++;
@@ -177,14 +177,14 @@ char* file_reader::read_string(unsigned int len,
                     m_filename, m_line);
             }
         }
-        
+
         int c = fgetc(m_file);
         if (c != '"') {
             fprintf(stderr, "%s:%d: warning: missing '\"' at end of column (got '%c').\n",
                 m_filename, m_line, c);
         }
     }
-    
+
     if (actual_len != NULL)
         *actual_len = (d - dest_str);
 
@@ -202,7 +202,7 @@ bool file_reader::is_eof(void)
 /** \brief read the next memcache_item object from the opened file.
  * \return pointer to heap-allocated object, or NULL if error/no more items in file.
  */
- 
+
 memcache_item* file_reader::read_item(void)
 {
     // parse next line
@@ -228,7 +228,7 @@ memcache_item* file_reader::read_item(void)
 
         if (is_eof())
             return NULL;
-        
+
         fprintf(stderr, "%s:%u: error parsing item values.\n",
             m_filename, m_line);
         return NULL;
@@ -242,17 +242,17 @@ memcache_item* file_reader::read_item(void)
             m_filename, m_line, key_actlen, s_nkey);
     }
     key[s_nkey] = '\0';
-    
+
     // read data
     int c = fgetc(m_file);
     if (c != ',') {
-        fprintf(stderr, "%s:%u: error parsing csv file, got '%c' instead of delmiter.\n", 
+        fprintf(stderr, "%s:%u: error parsing csv file, got '%c' instead of delmiter.\n",
             m_filename, m_line, c);
         free(key);
         return NULL;
     }
     fgetc(m_file);
-    
+
     unsigned int data_actlen = 0;
     char *data = read_string(s_nbytes - 2, s_nbytes, &data_actlen);
     if (data_actlen != s_nbytes - 2) {
@@ -278,11 +278,11 @@ memcache_item* file_reader::read_item(void)
     m_line++;
 
     // return item
-    memcache_item *item = new memcache_item(s_dumpflags, 
+    memcache_item *item = new memcache_item(s_dumpflags,
         s_time, s_exptime, s_flags, s_nsuffix, s_clsid);
     item->set_key(key, s_nkey);
     item->set_data(data, s_nbytes);
-    
+
     return item;
 }
 
@@ -323,7 +323,7 @@ bool file_writer::open_file(void)
         return false;
     }
 
-    fprintf(m_file, 
+    fprintf(m_file,
         "dumpflags, time, exptime, nbytes, nsuffix, it_flags, clsid, nkey, key, data\n");
     return true;
 }
@@ -339,7 +339,7 @@ bool file_writer::open_file(void)
  * \param new_str_len pointer to int which will be set with the new, quoted string length.
  * \return pointer to quoted string, or to the same string if quoting is not needed.
  */
- 
+
 char* file_writer::get_quoted_str(char* str, int str_len, int* new_str_len)
 {
     char *new_str;
@@ -347,7 +347,7 @@ char* file_writer::get_quoted_str(char* str, int str_len, int* new_str_len)
     char *s;
 
     *new_str_len = str_len;
-    
+
     // is it necessary?
     if (memchr(str, '"', str_len) == NULL) {
         return str;
@@ -384,7 +384,7 @@ bool file_writer::write_item(memcache_item *item)
     char *quoted_data;
     int quoted_data_len;
 
-    quoted_key = get_quoted_str(item->get_key(), 
+    quoted_key = get_quoted_str(item->get_key(),
         item->get_nkey(), &quoted_key_len);
     quoted_data = get_quoted_str(item->get_data(),
         item->get_nbytes() - 2, &quoted_data_len);
@@ -413,5 +413,5 @@ bool file_writer::write_item(memcache_item *item)
     if (quoted_data != item->get_data())
         free(quoted_data);
 
-    return true;    
+    return true;
 }

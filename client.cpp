@@ -125,7 +125,7 @@ client::client(struct event_base *event_base, benchmark_config *config,
     if (!setup_client(config, protocol, obj_gen)) {
         return;
     }
-    
+
     benchmark_debug_log("new client %p successfully set up.\n", this);
     m_initialized = true;
 }
@@ -203,7 +203,7 @@ bool client::finished(void)
         return true;
     if (m_config->test_time > 0 && m_stats.get_duration() >= m_config->test_time)
         return true;
-    return false;    
+    return false;
 }
 
 void client::set_start_time() {
@@ -333,7 +333,7 @@ void client::create_request(struct timeval timestamp, unsigned int conn_id)
 
                 assert(key != NULL);
                 assert(keylen > 0);
-                
+
                 m_keylist->add_key(key, keylen);
             }
 
@@ -353,14 +353,14 @@ void client::create_request(struct timeval timestamp, unsigned int conn_id)
     } else {
         // overlap counters
         m_get_ratio_count = m_set_ratio_count = 0;
-    }        
+    }
 }
 
 int client::prepare(void)
 {
     if (MAIN_CONNECTION == NULL)
         return -1;
-    
+
     int ret = this->connect();
     if (ret < 0) {
         benchmark_error_log("prepare: failed to connect, test aborted.\n");
@@ -522,7 +522,7 @@ bool verify_client::finished(void)
 
 ///////////////////////////////////////////////////////////////////////////
 
-client_group::client_group(benchmark_config* config, abstract_protocol *protocol, object_generator* obj_gen) : 
+client_group::client_group(benchmark_config* config, abstract_protocol *protocol, object_generator* obj_gen) :
     m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen)
 {
     m_base = event_base_new();
@@ -561,7 +561,7 @@ int client_group::create_clients(int num)
             delete c;
             return i;
         }
-        
+
         m_clients.push_back(c);
     }
 
@@ -625,14 +625,14 @@ unsigned long int client_group::get_duration_usec(void)
         float factor = ((float)(thread_counter - 1) / thread_counter);
         duration =  factor * duration +  (float)(*i)->get_stats()->get_duration_usec() / thread_counter ;
     }
-        
+
     return duration;
 }
 
 void client_group::merge_run_stats(run_stats* target)
 {
     assert(target != NULL);
-    unsigned int iteration_counter = 1;    
+    unsigned int iteration_counter = 1;
     for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
         target->merge(*(*i)->get_stats(), iteration_counter++);
     }
@@ -649,5 +649,5 @@ void client_group::write_client_stats(const char *prefix)
         if (!(*i)->get_stats()->save_csv(filename, m_config)) {
             fprintf(stderr, "error: %s: failed to write client stats.\n", filename);
         }
-    }        
+    }
 }
