@@ -1018,13 +1018,6 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         threads.push_back(t);
     }
 
-    // if user configure arbitrary commands, we use one of the thread's protocol to format and prepare it
-    for (unsigned int i=0; i<cfg->arbitrary_commands->size(); i++) {
-        if (!threads.front()->m_protocol->format_arbitrary_command(cfg->arbitrary_commands->at(i))) {
-            exit(1);
-        }
-    }
-
     // launch threads
     fprintf(stderr, "[RUN #%u] Launching threads now...\n", run_id);
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
@@ -1162,6 +1155,19 @@ int main(int argc, char *argv[])
         config_print(stdout, &cfg);
         fprintf(stderr, "===================================================\n");
     }
+
+    // if user configure arbitrary commands, format and prepare it
+    for (unsigned int i=0; i<cfg.arbitrary_commands->size(); i++) {
+        abstract_protocol* tmp_protocol = protocol_factory(cfg.protocol);
+        assert(tmp_protocol != NULL);
+
+        if (!tmp_protocol->format_arbitrary_command(cfg.arbitrary_commands->at(i))) {
+            exit(1);
+        }
+
+        delete tmp_protocol;
+    }
+
 
 #ifdef USE_TLS
     // Initialize OpenSSL only if we're really going to use it.
