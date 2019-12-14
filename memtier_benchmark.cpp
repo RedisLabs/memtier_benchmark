@@ -390,6 +390,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     static struct option long_options[] = {
         { "server",                     1, 0, 's' },
         { "port",                       1, 0, 'p' },
+        { "print-frequency",            1, 0, 'f' },
         { "unix-socket",                1, 0, 'S' },
         { "protocol",                   1, 0, 'P' },
 #ifdef USE_TLS
@@ -453,7 +454,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     int c;
     char *endptr;
     while ((c = getopt_long(argc, argv,
-                "s:S:p:P:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
+                "s:S:p:P:f:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
     {
         switch (c) {
                 case 'h':
@@ -478,6 +479,14 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->port = (unsigned short) strtoul(optarg, &endptr, 10);
                     if (!cfg->port || cfg->port > 65535 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: port must be a number in the range [1-65535].\n");
+                        return -1;
+                    }
+                    break;
+                case 'f':
+                    endptr = NULL;
+                    cfg->print_frequency_every_seconds = (int) strtoul(optarg, &endptr, 10);
+                    if (cfg->print_frequency_every_seconds < 0 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: print_frequency_every_seconds must be greater than zero.\n");
                         return -1;
                     }
                     break;
@@ -845,6 +854,7 @@ void usage() {
             "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"
             "                                 specified for memcache_binary or Redis 6.x\n"
             "                                 or newer with ACL user support.\n"
+            "  -f, --print-frequency print frequncy (default: 1)\n"
 #ifdef USE_TLS
             "      --tls                      Enable SSL/TLS transport security\n"
             "      --cert=FILE                Use specified client certificate for TLS\n"
@@ -1047,7 +1057,11 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     unsigned int active_threads = 0;
     do {
         active_threads = 0;
-        sleep(1);
+        if (cfg->print_frequency_every_seconds) {
+            sleep(cfg->print_frequency_every_seconds);
+        } else {
+            sleep(1);
+        }
 
         unsigned long int total_ops = 0;
         unsigned long int total_bytes = 0;
