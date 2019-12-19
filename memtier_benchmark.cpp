@@ -92,6 +92,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key = %s\n"
         "cacert = %s\n"
         "tls_skip_verify = %s\n"
+        "sni = %s\n"
 #endif
         "out_file = %s\n"
         "client_stats = %s\n"
@@ -139,6 +140,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->tls_key,
         cfg->tls_cacert,
         cfg->tls_skip_verify ? "yes" : "no",
+        cfg->tls_sni,
 #endif
         cfg->out_file,
         cfg->client_stats,
@@ -195,6 +197,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key"               ,"\"%s\"",      	cfg->tls_key);
     jsonhandler->write_obj("cacert"            ,"\"%s\"",      	cfg->tls_cacert);
     jsonhandler->write_obj("tls_skip_verify"   ,"\"%s\"",      	cfg->tls_skip_verify ? "true" : "false");
+    jsonhandler->write_obj("sni"               ,"\"%s\"",       cfg->tls_sni);
 #endif
     jsonhandler->write_obj("client_stats"      ,"\"%s\"",      	cfg->client_stats);
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
@@ -380,7 +383,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_cert,
         o_tls_key,
         o_tls_cacert,
-        o_tls_skip_verify
+        o_tls_skip_verify,
+        o_tls_sni
     };
 
     static struct option long_options[] = {
@@ -394,6 +398,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key",                        1, 0, o_tls_key },
         { "cacert",                     1, 0, o_tls_cacert },
         { "tls-skip-verify",            0, 0, o_tls_skip_verify },
+        { "sni",                        1, 0, o_tls_sni },
 #endif
         { "out-file",                   1, 0, 'o' },
         { "client-stats",               1, 0, o_client_stats },
@@ -806,6 +811,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_tls_skip_verify:
                     cfg->tls_skip_verify = true;
                     break;
+                case o_tls_sni:
+                    cfg->tls_sni = optarg;
+                    break;
 #endif
             default:
                     return -1;
@@ -839,6 +847,7 @@ void usage() {
             "      --key=FILE                 Use specified private key for TLS\n"
             "      --cacert=FILE              Use specified CA certs bundle for TLS\n"
             "      --tls-skip-verify          Skip verification of server certificate\n"
+            "      --sni=STRING               Add an SNI header\n"
 #endif
             "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"

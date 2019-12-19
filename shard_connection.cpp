@@ -188,6 +188,11 @@ void shard_connection::setup_event(int sockfd) {
     if (m_config->openssl_ctx) {
         SSL *ctx = SSL_new(m_config->openssl_ctx);
         assert(ctx != NULL);
+
+        if (m_config->tls_sni) {
+          SSL_set_tlsext_host_name(ctx, m_config->tls_sni);
+        }
+
         m_bev = bufferevent_openssl_socket_new(m_event_base,
                 sockfd, ctx, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
     } else {
