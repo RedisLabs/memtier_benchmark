@@ -26,12 +26,12 @@
 /** \name values of the bitwise dump flag */
 #define ITEM_DUMPFLAGS_EXPIRED      0x0001      /** item's expiration time has passed when dump conducted */
 
-/** represents a memcache item while it's being processed by the tool. */ 
+/** represents a memcache item while it's being processed by the tool. */
 class memcache_item {
 protected:
     unsigned int m_dumpflags;       /** from file: dump flags (added by memcache_dump) */
     time_t m_time;                  /** from file: time (last modified time) */
-    time_t m_exptime;               /** from file: exptime (expiration time) */   
+    time_t m_exptime;               /** from file: exptime (expiration time) */
     unsigned int m_nbytes;          /** from file: nbytes (size of data, including trailing CRLF) */
     unsigned int m_nkey;            /** from file: nkey (size of key) */
     unsigned short m_flags;         /** from file: flags (internal memcached) */

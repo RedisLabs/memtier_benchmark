@@ -99,6 +99,7 @@ struct benchmark_config {
     const char *tls_key;
     const char *tls_cacert;
     bool tls_skip_verify;
+    const char *tls_sni;
     SSL_CTX *openssl_ctx;
 #endif
 };
@@ -108,4 +109,3 @@ extern void benchmark_log_file_line(int level, const char *filename, unsigned in
 extern void benchmark_log(int level, const char *fmt, ...);
 
 #endif /* _MEMTIER_BENCHMARK_H */
-

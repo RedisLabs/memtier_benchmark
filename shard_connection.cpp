@@ -188,6 +188,11 @@ void shard_connection::setup_event(int sockfd) {
     if (m_config->openssl_ctx) {
         SSL *ctx = SSL_new(m_config->openssl_ctx);
         assert(ctx != NULL);
+
+        if (m_config->tls_sni) {
+          SSL_set_tlsext_host_name(ctx, m_config->tls_sni);
+        }
+
         m_bev = bufferevent_openssl_socket_new(m_event_base,
                 sockfd, ctx, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
     } else {
@@ -264,7 +269,7 @@ int shard_connection::connect(struct connect_info* addr) {
     // call connect
     m_connection_state = conn_in_progress;
 
-    if (bufferevent_socket_connect(m_bev, 
+    if (bufferevent_socket_connect(m_bev,
                   m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
                   m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == -1) {
         disconnect();
@@ -465,8 +470,10 @@ void shard_connection::fill_pipeline(void)
         }
 
         // don't exceed requests
-        if (m_conns_manager->hold_pipeline(m_id))
+        if (m_conns_manager->hold_pipeline(m_id)) {
+            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
             break;
+        }
 
         // client manage requests logic
         m_conns_manager->create_request(now, m_id);
