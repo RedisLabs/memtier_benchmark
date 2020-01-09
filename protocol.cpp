@@ -203,13 +203,53 @@ int redis_protocol::authenticate(const char *credentials)
     int size = 0;
     assert(credentials != NULL);
 
-    size = evbuffer_add_printf(m_write_buf,
-        "*2\r\n"
-        "$4\r\n"
-        "AUTH\r\n"
-        "$%u\r\n"
-        "%s\r\n",
-        (unsigned int)strlen(credentials), credentials);
+    /* Credentials may be one of:
+     * <PASSWORD>           For Redis <6.0 simple AUTH commands.
+     * <USER>:<PASSWORD>    For Redis 6.0+ AUTH with both username and password.
+     *
+     * A :<PASSWORD> will be handled as a special case of quoting a password that
+     * contains a colon.
+     */
+
+    const char *user = NULL;
+    const char *password;
+
+    if (credentials[0] == ':') {
+        password = credentials + 1;
+    } else {
+        password = strchr(credentials, ':');
+        if (!password) {
+            password = credentials;
+        } else {
+            user = credentials;
+            password++;
+        }
+    }
+
+    if (!user) {
+        size = evbuffer_add_printf(m_write_buf,
+            "*2\r\n"
+            "$4\r\n"
+            "AUTH\r\n"
+            "$%zu\r\n"
+            "%s\r\n",
+            strlen(password), password);
+    } else {
+        size_t user_len = password - user - 1;
+        size = evbuffer_add_printf(m_write_buf,
+            "*3\r\n"
+            "$4\r\n"
+            "AUTH\r\n"
+            "$%zu\r\n"
+            "%.*s\r\n"
+            "$%zu\r\n"
+            "%s\r\n",
+            user_len,
+            (int) user_len,
+            user,
+            strlen(password),
+            password);
+    }
     return size;
 }
 
