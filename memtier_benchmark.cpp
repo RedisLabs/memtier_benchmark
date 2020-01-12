@@ -462,7 +462,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'v':
                     puts(PACKAGE_STRING);
                 // FIXME!!
-                    puts("Copyright (C) 2011-2017 Redis Labs Ltd.");
+                    puts("Copyright (C) 2011-2020 Redis Labs Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
@@ -840,7 +840,11 @@ void usage() {
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
             "                                 supported protocols are memcache_text,\n"
             "                                 memcache_binary.\n"
-            "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
+            "  -a, --authenticate=CREDENTIALS Authenticate using specified credentials.\n"
+            "                                 A simple password is used for memcache_text\n"
+            "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"
+            "                                 specified for memcache_binary or Redis 6.x\n"
+            "                                 or newer with ACL user support.\n"
 #ifdef USE_TLS
             "      --tls                      Enable SSL/TLS transport security\n"
             "      --cert=FILE                Use specified client certificate for TLS\n"
@@ -849,7 +853,6 @@ void usage() {
             "      --tls-skip-verify          Skip verification of server certificate\n"
             "      --sni=STRING               Add an SNI header\n"
 #endif
-            "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
             "  -D, --debug                    Print debug output\n"
             "      --client-stats=FILE        Produce per-client stats file\n"
