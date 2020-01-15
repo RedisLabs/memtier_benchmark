@@ -471,7 +471,11 @@ void shard_connection::fill_pipeline(void)
 
         // don't exceed requests
         if (m_conns_manager->hold_pipeline(m_id)) {
-            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+            // if we are still connected, disable any event
+            if (get_connection_state() == conn_connected) {
+                bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+            }
+
             break;
         }
 
