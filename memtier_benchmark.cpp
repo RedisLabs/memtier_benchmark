@@ -1138,6 +1138,62 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 }
 
 #ifdef USE_TLS
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+static pthread_mutex_t *lock_cs;
+static long *lock_count;
+
+static void __openssl_locking_callback(int mode, int type, const char *file, int line)
+{
+    if (mode & CRYPTO_LOCK) {
+        pthread_mutex_lock(&(lock_cs[type]));
+        lock_count[type]++;
+    } else {
+        pthread_mutex_unlock(&(lock_cs[type]));
+    }
+}
+
+static unsigned long __openssl_thread_id(void)
+{
+    unsigned long id;
+
+    id = (unsigned long) pthread_self();
+    return id;
+}
+#pragma GCC diagnostic pop
+
+static void init_openssl_threads(void)
+{
+    int i;
+
+    lock_cs = (pthread_mutex_t *) malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    assert(lock_cs != NULL);
+
+    lock_count = (long *) malloc(CRYPTO_num_locks() * sizeof(long));
+    assert(lock_count != NULL);
+
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        lock_count[i] = 0;
+        pthread_mutex_init(&(lock_cs[i]), NULL);
+    }
+
+    CRYPTO_set_id_callback(__openssl_thread_id);
+    CRYPTO_set_locking_callback(__openssl_locking_callback);
+}
+
+static void cleanup_openssl_threads(void)
+{
+    int i;
+
+    CRYPTO_set_locking_callback(NULL);
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        pthread_mutex_destroy(&(lock_cs[i]));
+    }
+    OPENSSL_free(lock_cs);
+    OPENSSL_free(lock_count);
+}
+
 static void init_openssl(void)
 {
     SSL_library_init();
@@ -1146,7 +1202,15 @@ static void init_openssl(void)
         fprintf(stderr, "Failed to initialize OpenSSL random entropy.\n");
         exit(1);
     }
+
+    init_openssl_threads();
 }
+
+static void cleanup_openssl(void)
+{
+    cleanup_openssl_threads();
+}
+
 #endif
 
 int main(int argc, char *argv[])
@@ -1526,5 +1590,7 @@ int main(int argc, char *argv[])
         SSL_CTX_free(cfg.openssl_ctx);
         cfg.openssl_ctx = NULL;
     }
+
+    cleanup_openssl();
 #endif
 }
