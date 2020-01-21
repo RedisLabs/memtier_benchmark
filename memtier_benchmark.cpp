@@ -1141,16 +1141,14 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
-static pthread_mutex_t *lock_cs;
-static long *lock_count;
+static pthread_mutex_t *__openssl_locks;
 
 static void __openssl_locking_callback(int mode, int type, const char *file, int line)
 {
     if (mode & CRYPTO_LOCK) {
-        pthread_mutex_lock(&(lock_cs[type]));
-        lock_count[type]++;
+        pthread_mutex_lock(&(__openssl_locks[type]));
     } else {
-        pthread_mutex_unlock(&(lock_cs[type]));
+        pthread_mutex_unlock(&(__openssl_locks[type]));
     }
 }
 
@@ -1167,15 +1165,11 @@ static void init_openssl_threads(void)
 {
     int i;
 
-    lock_cs = (pthread_mutex_t *) malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
-    assert(lock_cs != NULL);
-
-    lock_count = (long *) malloc(CRYPTO_num_locks() * sizeof(long));
-    assert(lock_count != NULL);
+    __openssl_locks = (pthread_mutex_t *) malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    assert(__openssl_locks != NULL);
 
     for (i = 0; i < CRYPTO_num_locks(); i++) {
-        lock_count[i] = 0;
-        pthread_mutex_init(&(lock_cs[i]), NULL);
+        pthread_mutex_init(&(__openssl_locks[i]), NULL);
     }
 
     CRYPTO_set_id_callback(__openssl_thread_id);
@@ -1188,10 +1182,9 @@ static void cleanup_openssl_threads(void)
 
     CRYPTO_set_locking_callback(NULL);
     for (i = 0; i < CRYPTO_num_locks(); i++) {
-        pthread_mutex_destroy(&(lock_cs[i]));
+        pthread_mutex_destroy(&(__openssl_locks[i]));
     }
-    OPENSSL_free(lock_cs);
-    OPENSSL_free(lock_count);
+    OPENSSL_free(__openssl_locks);
 }
 
 static void init_openssl(void)
