@@ -1579,11 +1579,13 @@ int main(int argc, char *argv[])
     }
 
 #ifdef USE_TLS
-    if (cfg.openssl_ctx) {
-        SSL_CTX_free(cfg.openssl_ctx);
-        cfg.openssl_ctx = NULL;
-    }
+    if(cfg.tls) {
+        if (cfg.openssl_ctx) {
+            SSL_CTX_free(cfg.openssl_ctx);
+            cfg.openssl_ctx = NULL;
+        }
 
-    cleanup_openssl();
+        cleanup_openssl();
+    }
 #endif
 }
