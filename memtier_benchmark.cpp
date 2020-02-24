@@ -92,6 +92,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key = %s\n"
         "cacert = %s\n"
         "tls_skip_verify = %s\n"
+        "sni = %s\n"
 #endif
         "out_file = %s\n"
         "client_stats = %s\n"
@@ -139,6 +140,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->tls_key,
         cfg->tls_cacert,
         cfg->tls_skip_verify ? "yes" : "no",
+        cfg->tls_sni,
 #endif
         cfg->out_file,
         cfg->client_stats,
@@ -195,6 +197,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key"               ,"\"%s\"",      	cfg->tls_key);
     jsonhandler->write_obj("cacert"            ,"\"%s\"",      	cfg->tls_cacert);
     jsonhandler->write_obj("tls_skip_verify"   ,"\"%s\"",      	cfg->tls_skip_verify ? "true" : "false");
+    jsonhandler->write_obj("sni"               ,"\"%s\"",       cfg->tls_sni);
 #endif
     jsonhandler->write_obj("client_stats"      ,"\"%s\"",      	cfg->client_stats);
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
@@ -380,7 +383,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_cert,
         o_tls_key,
         o_tls_cacert,
-        o_tls_skip_verify
+        o_tls_skip_verify,
+        o_tls_sni
     };
 
     static struct option long_options[] = {
@@ -394,6 +398,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key",                        1, 0, o_tls_key },
         { "cacert",                     1, 0, o_tls_cacert },
         { "tls-skip-verify",            0, 0, o_tls_skip_verify },
+        { "sni",                        1, 0, o_tls_sni },
 #endif
         { "out-file",                   1, 0, 'o' },
         { "client-stats",               1, 0, o_client_stats },
@@ -457,7 +462,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'v':
                     puts(PACKAGE_STRING);
                 // FIXME!!
-                    puts("Copyright (C) 2011-2017 Redis Labs Ltd.");
+                    puts("Copyright (C) 2011-2020 Redis Labs Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
@@ -806,6 +811,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_tls_skip_verify:
                     cfg->tls_skip_verify = true;
                     break;
+                case o_tls_sni:
+                    cfg->tls_sni = optarg;
+                    break;
 #endif
             default:
                     return -1;
@@ -832,15 +840,19 @@ void usage() {
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
             "                                 supported protocols are memcache_text,\n"
             "                                 memcache_binary.\n"
-            "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
+            "  -a, --authenticate=CREDENTIALS Authenticate using specified credentials.\n"
+            "                                 A simple password is used for memcache_text\n"
+            "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"
+            "                                 specified for memcache_binary or Redis 6.x\n"
+            "                                 or newer with ACL user support.\n"
 #ifdef USE_TLS
             "      --tls                      Enable SSL/TLS transport security\n"
             "      --cert=FILE                Use specified client certificate for TLS\n"
             "      --key=FILE                 Use specified private key for TLS\n"
             "      --cacert=FILE              Use specified CA certs bundle for TLS\n"
             "      --tls-skip-verify          Skip verification of server certificate\n"
+            "      --sni=STRING               Add an SNI header\n"
 #endif
-            "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
             "  -D, --debug                    Print debug output\n"
             "      --client-stats=FILE        Produce per-client stats file\n"
@@ -1018,13 +1030,6 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         threads.push_back(t);
     }
 
-    // if user configure arbitrary commands, we use one of the thread's protocol to format and prepare it
-    for (unsigned int i=0; i<cfg->arbitrary_commands->size(); i++) {
-        if (!threads.front()->m_protocol->format_arbitrary_command(cfg->arbitrary_commands->at(i))) {
-            exit(1);
-        }
-    }
-
     // launch threads
     fprintf(stderr, "[RUN #%u] Launching threads now...\n", run_id);
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
@@ -1133,6 +1138,55 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 }
 
 #ifdef USE_TLS
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+static pthread_mutex_t *__openssl_locks;
+
+static void __openssl_locking_callback(int mode, int type, const char *file, int line)
+{
+    if (mode & CRYPTO_LOCK) {
+        pthread_mutex_lock(&(__openssl_locks[type]));
+    } else {
+        pthread_mutex_unlock(&(__openssl_locks[type]));
+    }
+}
+
+static unsigned long __openssl_thread_id(void)
+{
+    unsigned long id;
+
+    id = (unsigned long) pthread_self();
+    return id;
+}
+#pragma GCC diagnostic pop
+
+static void init_openssl_threads(void)
+{
+    int i;
+
+    __openssl_locks = (pthread_mutex_t *) malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    assert(__openssl_locks != NULL);
+
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        pthread_mutex_init(&(__openssl_locks[i]), NULL);
+    }
+
+    CRYPTO_set_id_callback(__openssl_thread_id);
+    CRYPTO_set_locking_callback(__openssl_locking_callback);
+}
+
+static void cleanup_openssl_threads(void)
+{
+    int i;
+
+    CRYPTO_set_locking_callback(NULL);
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        pthread_mutex_destroy(&(__openssl_locks[i]));
+    }
+    OPENSSL_free(__openssl_locks);
+}
+
 static void init_openssl(void)
 {
     SSL_library_init();
@@ -1141,7 +1195,15 @@ static void init_openssl(void)
         fprintf(stderr, "Failed to initialize OpenSSL random entropy.\n");
         exit(1);
     }
+
+    init_openssl_threads();
 }
+
+static void cleanup_openssl(void)
+{
+    cleanup_openssl_threads();
+}
+
 #endif
 
 int main(int argc, char *argv[])
@@ -1162,6 +1224,19 @@ int main(int argc, char *argv[])
         config_print(stdout, &cfg);
         fprintf(stderr, "===================================================\n");
     }
+
+    // if user configure arbitrary commands, format and prepare it
+    for (unsigned int i=0; i<cfg.arbitrary_commands->size(); i++) {
+        abstract_protocol* tmp_protocol = protocol_factory(cfg.protocol);
+        assert(tmp_protocol != NULL);
+
+        if (!tmp_protocol->format_arbitrary_command(cfg.arbitrary_commands->at(i))) {
+            exit(1);
+        }
+
+        delete tmp_protocol;
+    }
+
 
 #ifdef USE_TLS
     // Initialize OpenSSL only if we're really going to use it.
@@ -1504,9 +1579,13 @@ int main(int argc, char *argv[])
     }
 
 #ifdef USE_TLS
-    if (cfg.openssl_ctx) {
-        SSL_CTX_free(cfg.openssl_ctx);
-        cfg.openssl_ctx = NULL;
+    if(cfg.tls) {
+        if (cfg.openssl_ctx) {
+            SSL_CTX_free(cfg.openssl_ctx);
+            cfg.openssl_ctx = NULL;
+        }
+
+        cleanup_openssl();
     }
 #endif
 }
