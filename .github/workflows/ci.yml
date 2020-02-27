@@ -14,6 +14,25 @@ jobs:
       run: sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
     - name: Build
       run: autoreconf -ivf && ./configure && make
+    - name: Install test dependencies
+      run: |
+        git clone git://github.com/antirez/redis.git --branch 5.0.7
+        cd redis && make malloc=libc && make && cd ..
+        ./redis/src/redis-server --version
+        sudo apt-get install python3-pip 
+        sudo apt-get install python3-setuptools
+        pip3 install git+https://github.com/RedisLabsModules/RLTest.git@master
+        pip3 install git+https://github.com/RedisLabs/mbdirector.git@master
+    - name: Test OSS TCP
+      run: |
+        cd tests 
+        MEMTIER_BINARY=./../memtier_benchmark python3 -m RLTest --env oss -v --clear-logs --oss-redis-path ./../redis/src/redis-server
+        cd ..
+    - name: Test OSS-CLUSTER TCP
+      run: |
+        cd tests 
+        MEMTIER_BINARY=./../memtier_benchmark python3 -m RLTest --env oss-cluster -v --clear-logs --shards-count 3 --oss-redis-path ./../redis/src/redis-server
+        cd ..
   build-macos:
     strategy:
       matrix:
