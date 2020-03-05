@@ -15,14 +15,15 @@ jobs:
     - name: Build
       run: autoreconf -ivf && ./configure && make
     - name: Install test dependencies
+      uses: actions/setup-python@v1
+        with:
+          python-version: '3.x'
+          architecture: 'x64'
       run: |
         git clone git://github.com/antirez/redis.git --branch 5.0.7
-        cd redis && make malloc=libc && make && cd ..
+        cd redis && make && cd ..
         ./redis/src/redis-server --version
-        sudo apt-get install python3-pip 
-        sudo apt-get install python3-setuptools
-        pip3 install git+https://github.com/RedisLabsModules/RLTest.git@master
-        pip3 install git+https://github.com/RedisLabs/mbdirector.git@master
+        pip3 install -r tests/test_requirements.txt
     - name: Test OSS TCP
       run: |
         cd tests 
