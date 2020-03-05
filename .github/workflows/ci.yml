@@ -16,9 +16,9 @@ jobs:
       run: autoreconf -ivf && ./configure && make
     - name: Install test dependencies
       uses: actions/setup-python@v1
-        with:
-          python-version: '3.x'
-          architecture: 'x64'
+      with:
+        python-version: '3.x'
+        architecture: 'x64'
       run: |
         git clone git://github.com/antirez/redis.git --branch 5.0.7
         cd redis && make && cd ..
