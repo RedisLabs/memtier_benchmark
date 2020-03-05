@@ -9,21 +9,25 @@ jobs:
         platform: [ubuntu-latest, ubuntu-16.04]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Install dependencies
       run: sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
     - name: Build
       run: autoreconf -ivf && ./configure && make
-    - name: Install test dependencies
+    - name: Setup up Python 
       uses: actions/setup-python@v1
       with:
         python-version: '3.x'
         architecture: 'x64'
+    - name: Install Python test dependencies
+      run: |
+        pip3 install -r tests/test_requirements.txt
+    - name: Install Redis Server test dependencies
       run: |
         git clone git://github.com/antirez/redis.git --branch 5.0.7
         cd redis && make && cd ..
         ./redis/src/redis-server --version
-        pip3 install -r tests/test_requirements.txt
+        
     - name: Test OSS TCP
       run: |
         cd tests 
