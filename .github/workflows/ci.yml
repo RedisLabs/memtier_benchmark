@@ -14,14 +14,23 @@ jobs:
       run: sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
     - name: Build
       run: autoreconf -ivf && ./configure && make
-    - name: Setup up Python 
+    - name: Setup Python
       uses: actions/setup-python@v1
       with:
-        python-version: '3.6'
-        architecture: 'x64'
-    - name: Install Python test dependencies
-      run: |
-        python3 -m pip install -r tests/test_requirements.txt
+        python-version: '3.x'
+
+    - name: Cache pip
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/pip # This path is specific to Ubuntu
+        # Look to see if there is a cache hit for the corresponding requirements file
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          ${{ runner.os }}-
+    - name: Install Python dependencies
+      run: pip install -r tests/test_requirements.txt
+
     - name: Install Redis Server test dependencies
       run: |
         git clone git://github.com/antirez/redis.git --branch 5.0.7
