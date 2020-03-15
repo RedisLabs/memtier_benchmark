@@ -41,6 +41,12 @@ def debugPrintMemtierOnError(config, env, memtier_ok):
             for line in stderr:
                 env.debugPrint(line.rstrip(), True)
 
+        with open('{0}/mb.stdout'.format(config.results_dir)) as stderr:
+            env.debugPrint("### PRINTING STDERR OUTPUT OF MEMTIER ON FAILURE ###", True)
+            env.debugPrint("### mb.stderr file location: {0}".format('{0}/mb.stdout'.format(config.results_dir)), True)
+            for line in stderr:
+                env.debugPrint(line.rstrip(), True)
+
         if not env.isCluster():
             if env.envRunner is not None:
                 log_file = os.path.join( env.envRunner.dbDirPath , env.envRunner._getFileName('master', '.log'))
