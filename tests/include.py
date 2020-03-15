@@ -33,6 +33,15 @@ def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
         config['redis_process_port'] = master_nodes_list[0]['port']
 
 
+def debugPrintMemtierOnError(config, env, memtier_ok):
+    if not memtier_ok:
+        with open('{0}/mb.stderr'.format(config.results_dir)) as stderr:
+            env.debugPrint("### PRINTING STDERR OUTPUT OF MEMTIER ON FAILURE ###", True)
+            env.debugPrint("### mb.stderr file location: {0}".format('{0}/mb.stderr'.format(config.results_dir)), True)
+            for line in stderr:
+                env.debugPrint(line.rstrip(), True)
+
+
 def get_expected_request_count(config):
     result = -1
     if 'memtier_benchmark' in config:

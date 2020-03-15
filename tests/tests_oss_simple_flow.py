@@ -1,3 +1,5 @@
+import tempfile
+
 from include import *
 from mbdirector.benchmark import Benchmark
 from mbdirector.runner import RunConfig
@@ -12,13 +14,17 @@ def test_default_set_get(env):
 
     add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
 
-    config = RunConfig(env.testName, "", config, {})
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
     ensure_clean_benchmark_folder(config.results_dir)
 
     benchmark = Benchmark.from_json(config, benchmark_specs)
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env, memtier_ok)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
@@ -37,13 +43,17 @@ def test_default_set_get_1_1(env):
 
     add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
 
-    config = RunConfig(env.testName, "", config, {})
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
     ensure_clean_benchmark_folder(config.results_dir)
 
     benchmark = Benchmark.from_json(config, benchmark_specs)
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env, memtier_ok)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
@@ -67,13 +77,17 @@ def test_default_set_get_3_runs(env):
 
     add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
 
-    config = RunConfig(env.testName, "", config, {})
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
     ensure_clean_benchmark_folder(config.results_dir)
 
     benchmark = Benchmark.from_json(config, benchmark_specs)
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env, memtier_ok)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}

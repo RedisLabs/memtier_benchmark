@@ -11,7 +11,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
     - name: Build
       run: autoreconf -ivf && ./configure && make
     - name: Setup Python
