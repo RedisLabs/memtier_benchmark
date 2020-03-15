@@ -87,7 +87,6 @@ def test_default_set_get_3_runs(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
-    memtier_ok = False
     debugPrintMemtierOnError(config, env, memtier_ok)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
