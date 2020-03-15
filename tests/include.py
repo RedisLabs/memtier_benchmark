@@ -41,6 +41,16 @@ def debugPrintMemtierOnError(config, env, memtier_ok):
             for line in stderr:
                 env.debugPrint(line.rstrip(), True)
 
+        if not env.isCluster():
+            if env.envRunner is not None:
+                log_file = os.path.join( env.envRunner.dbDirPath , env.envRunner._getFileName('master', '.log'))
+                with open(log_file) as redislog:
+                    env.debugPrint("### REDIS LOG ###", True)
+                    env.debugPrint(
+                        "### log_file file location: {0}".format(log_file), True)
+                    for line in redislog:
+                        env.debugPrint(line.rstrip(), True)
+
 
 def get_expected_request_count(config):
     result = -1
