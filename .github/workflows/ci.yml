@@ -19,7 +19,7 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get purge libssl-dev
-        sudo apt-get install libssl1.0.0
+        sudo apt-get install libssl1.0.2
         sudo apt-get install libssl1.0-dev
         sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev
     - name: Build
