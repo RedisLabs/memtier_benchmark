@@ -36,9 +36,12 @@ jobs:
     - name: Install Redis Server test dependencies
       run: |
         git clone git://github.com/antirez/redis.git --branch unstable
-        cd redis && make BUILD_TLS=yes && cd ..
-        redis/src/redis-server --version
-        
+        cd redis
+        make BUILD_TLS=yes
+        ./utils/gen-test-certs.sh
+        ./src/redis-server --version
+        cd ..
+
     - name: Test OSS TCP
       run: |
         cd tests 
@@ -51,16 +54,16 @@ jobs:
     - name: Test OSS TCP TLS
       run: |
         cd tests
-        TLS_CERT=tls/redis.crt \
-        TLS_KEY=tls/redis.key \
-        TLS_CACERT=tls/ca.crt \
+        TLS_CERT=../redis/tests/tls/redis.crt \
+        TLS_KEY=../redis/tests/tls/redis.key \
+        TLS_CACERT=../redis/tests/tls/ca.crt \
         MEMTIER_BINARY=../memtier_benchmark \
         python3 -m RLTest \
           --env oss -v --clear-logs \
           --oss-redis-path ../redis/src/redis-server \
-          --tls-cert-file tls/redis.crt \
-          --tls-key-file tls/redis.key \
-          --tls-ca-cert-file tls/ca.crt \
+          --tls-cert-file ../redis/tests/tls/redis.crt \
+          --tls-key-file ../redis/tests/tls/redis.key \
+          --tls-ca-cert-file ../redis/tests/tls/ca.crt \
           --tls
         cd ..
 
@@ -76,16 +79,16 @@ jobs:
     - name: Test OSS-CLUSTER TCP TLS
       run: |
         cd tests
-        TLS_CERT=tls/redis.crt \
-        TLS_KEY=tls/redis.key \
-        TLS_CACERT=tls/ca.crt \
+        TLS_CERT=../redis/tests/tls/redis.crt \
+        TLS_KEY=../redis/tests/tls/redis.key \
+        TLS_CACERT=../redis/tests/tls/ca.crt \
         MEMTIER_BINARY=../memtier_benchmark \
         python3 -m RLTest \
           --env oss-cluster --shards-count 3 -v --clear-logs \
           --oss-redis-path ../redis/src/redis-server \
-          --tls-cert-file tls/redis.crt \
-          --tls-key-file tls/redis.key \
-          --tls-ca-cert-file tls/ca.crt \
+          --tls-cert-file ../redis/tests/tls/redis.crt \
+          --tls-key-file ../redis/tests/tls/redis.key \
+          --tls-ca-cert-file ../redis/tests/tls/ca.crt \
           --tls
         cd ..
 
