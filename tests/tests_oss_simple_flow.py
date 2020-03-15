@@ -3,17 +3,10 @@ from mbdirector.benchmark import Benchmark
 from mbdirector.runner import RunConfig
 
 
-# run each test on different env
 def test_default_set_get(env):
     benchmark_specs = {"name": env.testName, "args": []}
-    config = {
-        "memtier_benchmark": {
-            "binary": MEMTIER_BINARY,
-            "threads": 10,
-            "clients": 5,
-            "requests": 1000
-        },
-    }
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
@@ -37,14 +30,8 @@ def test_default_set_get(env):
 # run each test on different env
 def test_default_set_get_1_1(env):
     benchmark_specs = {"name": env.testName, "args": ['--ratio=1:1']}
-    config = {
-        "memtier_benchmark": {
-            "binary": MEMTIER_BINARY,
-            "threads": 10,
-            "clients": 5,
-            "requests": 1000
-        },
-    }
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
@@ -73,14 +60,8 @@ def test_default_set_get_3_runs(env):
     env.skipOnCluster()
     run_count = 3
     benchmark_specs = {"name": env.testName, "args": ['--run-count={}'.format(run_count)]}
-    config = {
-        "memtier_benchmark": {
-            "binary": MEMTIER_BINARY,
-            "threads": 10,
-            "clients": 5,
-            "requests": 1000
-        },
-    }
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config) * run_count
 

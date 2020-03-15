@@ -2,6 +2,9 @@ import glob
 import os
 
 MEMTIER_BINARY = os.environ.get("MEMTIER_BINARY", "memtier_benchmark")
+TLS_CERT = os.environ.get("TLS_CERT", "./tls/redis.crt")
+TLS_KEY = os.environ.get("TLS_KEY", "./tls/redis.key")
+TLS_CACERT = os.environ.get("TLS_CACERT", "./tls/ca.crt")
 
 
 def assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
@@ -49,6 +52,26 @@ def agg_info_commandstats(master_nodes_connections, merged_command_stats):
                 overall_request_count += cmd_stat['calls']
                 merged_command_stats[cmd_name]['calls'] = merged_command_stats[cmd_name]['calls'] + cmd_stat['calls']
     return overall_request_count
+
+
+def addTLSArgs(benchmark_specs, env):
+    if env.useTLS:
+        benchmark_specs['args'].append('--tls')
+        benchmark_specs['args'].append('--cert={}'.format(TLS_CERT))
+        benchmark_specs['args'].append('--key={}'.format(TLS_KEY))
+        benchmark_specs['args'].append('--cacert={}'.format(TLS_CACERT))
+
+
+def get_default_memtier_config():
+    config = {
+        "memtier_benchmark": {
+            "binary": MEMTIER_BINARY,
+            "threads": 10,
+            "clients": 5,
+            "requests": 1000
+        },
+    }
+    return config
 
 
 def ensure_clean_benchmark_folder(dirname):

@@ -43,10 +43,32 @@ jobs:
         cd tests 
         MEMTIER_BINARY=./../memtier_benchmark python3 -m RLTest --env oss -v --clear-logs --oss-redis-path ./../redis/src/redis-server
         cd ..
+    - name: Test OSS TCP TLS
+      run: |
+        cd tests
+        MEMTIER_BINARY=./../memtier_benchmark python3 -m RLTest \
+          --env oss -v --clear-logs \
+          --oss-redis-path ../redis/src/redis-server \
+          --tls-cert-file ./tls/redis.crt \
+          --tls-key-file ./tls/redis.key \
+          --tls-ca-cert-file ./tls/ca.crt \
+          --tls
+        cd ..
     - name: Test OSS-CLUSTER TCP
       run: |
         cd tests 
         MEMTIER_BINARY=./../memtier_benchmark python3 -m RLTest --env oss-cluster -v --clear-logs --shards-count 3 --oss-redis-path ./../redis/src/redis-server
+        cd ..
+    - name: Test OSS-CLUSTER TCP TLS
+      run: |
+        cd tests
+        MEMTIER_BINARY=./../memtier_benchmark python3 -m RLTest \
+          --env oss-cluster --shards-count 3 -v --clear-logs \
+          --oss-redis-path ../redis/src/redis-server \
+          --tls-cert-file ./tls/redis.crt \
+          --tls-key-file ./tls/redis.key \
+          --tls-ca-cert-file ./tls/ca.crt \
+          --tls
         cd ..
   build-macos:
     strategy:
