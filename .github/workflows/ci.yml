@@ -6,14 +6,102 @@ jobs:
   build-ubuntu:
     strategy:
       matrix:
-        platform: [ubuntu-latest, ubuntu-16.04]
+        platform: [ubuntu-latest,ubuntu-16.04]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
     - name: Build
       run: autoreconf -ivf && ./configure && make
+    - name: Setup Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: '3.6'
+
+    - name: Cache pip
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/pip # This path is specific to Ubuntu
+        # Look to see if there is a cache hit for the corresponding requirements file
+        key: ${{ runner.os }}-pip-${{ hashFiles('tests/test_requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          ${{ runner.os }}-
+    - name: Install Python dependencies
+      run: pip install -r tests/test_requirements.txt
+
+    - name: Cache Redis
+      id: cache-redis
+      uses: actions/cache@v1
+      with:
+        path: /home/runner/work/memtier_benchmark/memtier_benchmark/redis
+        key: ${{ runner.os }}-redis
+
+    - name: Install Redis Server test dependencies
+      if: steps.cache-redis.outputs.cache-hit != 'true'
+      run: |
+        git clone git://github.com/antirez/redis.git --branch unstable
+        cd redis
+        make BUILD_TLS=yes
+        ./utils/gen-test-certs.sh
+        ./src/redis-server --version
+        cd ..
+
+    - name: Test OSS TCP
+      run: |
+        cd tests 
+        MEMTIER_BINARY=./../memtier_benchmark \
+        python3 -m RLTest \
+        --env oss -v --clear-logs \
+        --oss-redis-path ../redis/src/redis-server
+        cd ..
+
+    - name: Test OSS TCP TLS
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+        cd tests
+        TLS_CERT=../redis/tests/tls/redis.crt \
+        TLS_KEY=../redis/tests/tls/redis.key \
+        TLS_CACERT=../redis/tests/tls/ca.crt \
+        MEMTIER_BINARY=../memtier_benchmark \
+        python3 -m RLTest \
+          --env oss -v --clear-logs \
+          --oss-redis-path ../redis/src/redis-server \
+          --tls-cert-file ../redis/tests/tls/redis.crt \
+          --tls-key-file ../redis/tests/tls/redis.key \
+          --tls-ca-cert-file ../redis/tests/tls/ca.crt \
+          --tls
+        cd ..
+
+    - name: Test OSS-CLUSTER TCP
+      run: |
+        cd tests 
+        MEMTIER_BINARY=./../memtier_benchmark \
+        python3 -m RLTest \
+        --env oss-cluster -v --clear-logs --shards-count 3 \
+        --oss-redis-path ../redis/src/redis-server
+        cd ..
+
+    - name: Test OSS-CLUSTER TCP TLS
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+        cd tests
+        TLS_CERT=../redis/tests/tls/redis.crt \
+        TLS_KEY=../redis/tests/tls/redis.key \
+        TLS_CACERT=../redis/tests/tls/ca.crt \
+        MEMTIER_BINARY=../memtier_benchmark \
+        python3 -m RLTest \
+          --env oss-cluster --shards-count 3 -v --clear-logs \
+          --oss-redis-path ../redis/src/redis-server \
+          --tls-cert-file ../redis/tests/tls/redis.crt \
+          --tls-key-file ../redis/tests/tls/redis.key \
+          --tls-ca-cert-file ../redis/tests/tls/ca.crt \
+          --tls
+        cd ..
+
   build-macos:
     strategy:
       matrix:
