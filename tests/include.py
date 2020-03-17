@@ -2,9 +2,9 @@ import glob
 import os
 
 MEMTIER_BINARY = os.environ.get("MEMTIER_BINARY", "memtier_benchmark")
-TLS_CERT = os.environ.get("TLS_CERT", "./tls/redis.crt")
-TLS_KEY = os.environ.get("TLS_KEY", "./tls/redis.key")
-TLS_CACERT = os.environ.get("TLS_CACERT", "./tls/ca.crt")
+TLS_CERT = os.environ.get("TLS_CERT", "")
+TLS_KEY = os.environ.get("TLS_KEY", "")
+TLS_CACERT = os.environ.get("TLS_CACERT", "")
 
 
 def assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
@@ -49,7 +49,7 @@ def debugPrintMemtierOnError(config, env, memtier_ok):
 
         if not env.isCluster():
             if env.envRunner is not None:
-                log_file = os.path.join( env.envRunner.dbDirPath , env.envRunner._getFileName('master', '.log'))
+                log_file = os.path.join(env.envRunner.dbDirPath, env.envRunner._getFileName('master', '.log'))
                 with open(log_file) as redislog:
                     env.debugPrint("### REDIS LOG ###", True)
                     env.debugPrint(
