@@ -37,7 +37,7 @@ jobs:
       id: cache-redis
       uses: actions/cache@v1
       with:
-        path: redis
+        path: /home/runner/work/memtier_benchmark/memtier_benchmark/redis
         key: ${{ runner.os }}-redis
 
     - name: Install Redis Server test dependencies
