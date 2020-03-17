@@ -33,7 +33,15 @@ jobs:
     - name: Install Python dependencies
       run: pip install -r tests/test_requirements.txt
 
+    - name: Cache Redis
+      id: cache-redis
+      uses: actions/cache@v1
+      with:
+        path: redis
+        key: ${{ runner.os }}-redis
+
     - name: Install Redis Server test dependencies
+      if: steps.cache-redis.outputs.cache-hit != 'true'
       run: |
         git clone git://github.com/antirez/redis.git --branch unstable
         cd redis
