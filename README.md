@@ -108,6 +108,15 @@ $ docker build -t memtier_benchmark .
 $ docker run --rm memtier_benchmark --help
 ```
 
+### Using Docker Compose
+```
+$ docker-compose -f docker-compose.memcached.yml up --build
+```
+or
+```
+$ docker-compose -f docker-compose.redis.yml up --build
+```
+
 ## Using memtier_benchmark
 
 See the included manpage or run::
