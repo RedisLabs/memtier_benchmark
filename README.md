@@ -77,7 +77,7 @@ On Ubuntu/Debian distributions, simply install all prerequisites as follows:
 
 #### macOS
 
-To build natively on macOS, use Homebrew to install the required dependencies::
+To build natively on macOS, use Homebrew to install the required dependencies:
 
 ```
 $ brew install autoconf automake libtool libevent pkg-config openssl@1.1
@@ -92,7 +92,7 @@ PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure
 
 ### Building and installing
 
-After downloading the source tree, use standard autoconf/automake commands::
+After downloading the source tree, use standard autoconf/automake commands:
 
 ```
 $ autoreconf -ivf
@@ -102,6 +102,18 @@ $ make install
 ```
 
 ## Using Docker
+
+Use available images on Docker Hub:
+
+```
+# latest stable release
+$ docker run --rm redislabs/memtier_benchmark:latest --help
+
+# master branch edge build
+$ docker run --rm redislabs/memtier_benchmark:edge --help
+```
+
+Or, build locally:
 
 ```
 $ docker build -t memtier_benchmark .
@@ -119,7 +131,7 @@ $ docker-compose -f docker-compose.redis.yml up --build
 
 ## Using memtier_benchmark
 
-See the included manpage or run::
+See the included manpage or run:
 
 ```
 $ memtier_benchmark --help
