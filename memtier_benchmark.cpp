@@ -1208,9 +1208,7 @@ static void cleanup_openssl(void)
 
 int main(int argc, char *argv[])
 {
-    struct benchmark_config cfg;
-
-    memset(&cfg, 0, sizeof(struct benchmark_config));
+    benchmark_config cfg = benchmark_config();
     cfg.arbitrary_commands = new arbitrary_command_list();
 
     if (config_parse_args(argc, argv, &cfg) < 0) {

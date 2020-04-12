@@ -237,10 +237,10 @@ void object_generator::alloc_value_buffer(void)
                 assert(m_random_fd != -1);
             }
 
-            char buf1[64];
-            char buf2[64];
-            int buf1_idx = sizeof(buf1);
-            int buf2_idx = sizeof(buf2);
+            char buf1[64] = { 0 };
+            char buf2[64] = { 0 };
+            unsigned int buf1_idx = sizeof(buf1);
+            unsigned int buf2_idx = sizeof(buf2);
             char *d = m_value_buffer;
             int ret;
             int iter = 0;
@@ -249,7 +249,7 @@ void object_generator::alloc_value_buffer(void)
                 if (buf1_idx == sizeof(buf1)) {
                     buf1_idx = 0;
                     buf2_idx++;
-                    if (buf2_idx == sizeof(buf2)) {
+                    if (buf2_idx >= sizeof(buf2)) {
                         iter++;
                         if (iter == 20) {
                             ret = read(m_random_fd, buf1, sizeof(buf1));
