@@ -209,6 +209,7 @@ bool cluster_client::connect_shard_connection(shard_connection* sc, char* addres
     memcpy(ci.addr_buf, addr_info->ai_addr, addr_info->ai_addrlen);
     ci.ci_addr = (struct sockaddr *) ci.addr_buf;
     ci.ci_addrlen = addr_info->ai_addrlen;
+    freeaddrinfo(addr_info);
 
     // call connect
     res = sc->connect(&ci);
@@ -240,7 +241,7 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
 
         // port
         bulk_el* mbulk_port_el = shard->mbulks_elements[2]->as_mbulk_size()->mbulks_elements[1]->as_bulk();
-        char* port = (char*) malloc(mbulk_port_el->value_len);
+        char* port = (char*) malloc(mbulk_port_el->value_len + 1);
         memcpy(port, mbulk_port_el->value + 1, mbulk_port_el->value_len);
         port[mbulk_port_el->value_len] = '\0';
 

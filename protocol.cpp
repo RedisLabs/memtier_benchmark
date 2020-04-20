@@ -165,7 +165,7 @@ protected:
     mbulk_size_el* m_current_mbulk;
 
 public:
-    redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0) { }
+    redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
