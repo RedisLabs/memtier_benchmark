@@ -1,5 +1,8 @@
 * Version 1.3.0
-    * Support ACL
+    * Redis 6.x ACL support
+    * TLS support
+    * Docker related fixes/cleanups
+    * Numerous other smaller fixes
 
 * Version 1.2.17
     * fix parallel key-pattern command line usage
