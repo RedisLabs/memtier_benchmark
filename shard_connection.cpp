@@ -445,11 +445,23 @@ void shard_connection::process_response(void)
         }
     }
 
+    fill_pipeline();
+
+    // update events
+    if (m_bev != NULL) {
+        // no pending response, nothing to read
+        if (m_pending_resp == 0) {
+            bufferevent_disable(m_bev, EV_READ);
+        }
+
+        // output buffer empty, nothing to write
+        if (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0) {
+            bufferevent_disable(m_bev, EV_WRITE);
+        }
+    }
+
     if (m_conns_manager->finished()) {
         m_conns_manager->set_end_time();
-        bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-    } else {
-        fill_pipeline();
     }
 }
 
@@ -471,11 +483,6 @@ void shard_connection::fill_pipeline(void)
 
         // don't exceed requests
         if (m_conns_manager->hold_pipeline(m_id)) {
-            // if we are still connected, disable any event
-            if (get_connection_state() == conn_connected) {
-                bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-            }
-
             break;
         }
 
