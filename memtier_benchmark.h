@@ -93,6 +93,7 @@ struct benchmark_config {
     const char *json_out_file;
     bool cluster_mode;
     struct arbitrary_command_list* arbitrary_commands;
+    int print_frequency_every_seconds;
 #ifdef USE_TLS
     bool tls;
     const char *tls_cert;
