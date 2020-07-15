@@ -158,7 +158,7 @@ class redis_protocol : public abstract_protocol {
 protected:
     enum response_state { rs_initial, rs_read_bulk, rs_read_line, rs_end_bulk };
     response_state m_response_state;
-    unsigned int m_bulk_len;
+    long m_bulk_len;
     size_t m_response_len;
 
     unsigned int m_total_bulks_count;
@@ -472,14 +472,16 @@ int redis_protocol::parse_response(void)
                         m_total_bulks_count++;
                     }
 
-                    int len = strtol(line + 1, NULL, 10);
+                    m_bulk_len = strtol(line + 1, NULL, 10);
                     m_last_response.set_status(line);
 
-                    if (len <= 0) {
-                        m_bulk_len = 0;
+                    /*
+                     * only on negative bulk, the data ends right after the first CRLF ($-1\r\n), so
+                     * we skip on rs_read_bulk and jump into rs_end_bulk
+                     */
+                    if (m_bulk_len < 0) {
                         m_response_state = rs_end_bulk;
                     } else {
-                        m_bulk_len = (unsigned int) len;
                         m_response_state = rs_read_bulk;
                     }
                 } else if (line[0] == '+' || line[0] == '-' || line[0] == ':') {
@@ -520,9 +522,20 @@ int redis_protocol::parse_response(void)
                 }
                 break;
             case rs_read_bulk:
-                if (evbuffer_get_length(m_read_buf) >= m_bulk_len + 2) {
+                if (evbuffer_get_length(m_read_buf) >= (unsigned long)(m_bulk_len + 2)) {
                     m_response_len += m_bulk_len + 2;
-                    m_last_response.incr_hits();
+
+                    /*
+                     * KNOWN ISSUE:
+                     * in case of key with zero size (SET X "") that will return $0,
+                     * we are not counting it as "hit", and the report will be wrong.
+                     * currently this is a limitation because GETRANGE returns $0 for
+                     * such key as well as non existing key or existing key without data
+                     * in the requested range
+                     */
+                    if (m_bulk_len > 0) {
+                        m_last_response.incr_hits();
+                    }
 
                     m_response_state = rs_end_bulk;
                 } else {
@@ -538,14 +551,17 @@ int redis_protocol::parse_response(void)
                      * otherwise we insert it to the current mbulk element
                      */
                     char *bulk_value = NULL;
+                    int ret;
                     if (m_bulk_len > 0) {
                         bulk_value = (char *) malloc(m_bulk_len);
                         assert(bulk_value != NULL);
 
-                        int ret = evbuffer_remove(m_read_buf, bulk_value, m_bulk_len);
+                        ret = evbuffer_remove(m_read_buf, bulk_value, m_bulk_len);
                         assert(ret != -1);
+                    }
 
-                        // drain CRLF
+                    // drain last CRLF, zero bulk also includes it ($0\r\n\r\n)
+                    if (m_bulk_len >= 0) {
                         ret = evbuffer_drain(m_read_buf, 2);
                         assert(ret != -1);
                     }
@@ -554,17 +570,19 @@ int redis_protocol::parse_response(void)
                     if (m_current_mbulk) {
                         bulk_el* new_bulk = new bulk_el();
                         new_bulk->value = bulk_value;
-                        new_bulk->value_len = m_bulk_len;
+                        // negative bulk len counted as empty bulk
+                        new_bulk->value_len = m_bulk_len > 0 ? m_bulk_len : 0;
 
                         // insert it to current mbulk
                         m_current_mbulk->add_new_element(new_bulk);
                         m_current_mbulk = m_current_mbulk->get_next_mbulk();
                     } else {
-                        m_last_response.set_value(bulk_value, m_bulk_len);
+                        // negative bulk len counted as empty bulk
+                        m_last_response.set_value(bulk_value, m_bulk_len > 0 ? m_bulk_len : 0);
                     }
                 } else {
                     // just drain the buffer, include the CRLF
-                    if (m_bulk_len > 0) {
+                    if (m_bulk_len >= 0) {
                         int ret = evbuffer_drain(m_read_buf, m_bulk_len + 2);
                         assert(ret != -1);
                     }
