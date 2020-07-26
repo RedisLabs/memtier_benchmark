@@ -449,14 +449,9 @@ void shard_connection::process_response(void)
 
     // update events
     if (m_bev != NULL) {
-        // no pending response, nothing to read
-        if (m_pending_resp == 0) {
-            bufferevent_disable(m_bev, EV_READ);
-        }
-
-        // output buffer empty, nothing to write
-        if (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0) {
-            bufferevent_disable(m_bev, EV_WRITE);
+        // no pending response (nothing to read) and output buffer empty (nothing to write)
+        if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
+            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
         }
     }
 
