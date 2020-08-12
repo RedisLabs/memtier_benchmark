@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-AUTOMAKE_OPTIONS = foreign 1.9
+AUTOMAKE_OPTIONS = foreign 1.9 subdir-objects
 
 EXTRA_DIST = README.md COPYING
 
