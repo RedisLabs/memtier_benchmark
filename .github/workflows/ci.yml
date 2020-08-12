@@ -1,0 +1,66 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        os: [linux, windows, macos]
+        build_type: [Debug, RelWithDebInfo]
+        arch: [x86, x64]
+        cmake: [minimal, latest]
+        exclude:
+          - os: linux
+            arch: x86
+          - os: windows
+            cmake: minimal
+          - os: macos
+            arch: x86
+          - os: macos
+            cmake: minimal
+        include:
+          - cmake: minimal
+            cmake_url_part: v3.5/cmake-3.5.2
+          - cmake: latest
+            cmake_url_part: v3.17/cmake-3.17.3
+          - os: linux
+            runner: ubuntu-latest
+          - os: windows
+            runner: windows-latest
+          - os: windows
+            arch: x86
+            cmake_args: -A Win32 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+          - os: windows
+            arch: x64
+            cmake_args: -A x64 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+          - os: macos
+            runner: macos-latest
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-${{ matrix.os }}
+      VCPKG_TARGET_ARCHITECTURE: ${{ matrix.arch }}
+      VCPKG_LIBRARY_LINKAGE: static
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+        with:
+          submodules: recursive
+      - name: Install dependencies (linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get install -y zlib1g-dev
+          wget --no-check-certificate https://cmake.org/files/${{ matrix.cmake_url_part }}-Linux-x86_64.tar.gz -O /tmp/cmake.tar.gz
+          sudo tar xf /tmp/cmake.tar.gz -C /usr/local --strip-components 1
+      - name: Install dependencies (windows)
+        if: matrix.os == 'windows'
+        run: vcpkg install zlib
+      - name: CMake version
+        run: |
+          cmake --version
+          ctest --version
+          cpack --version
+      - name: Configure
+        run: cmake -E make_directory _build && cmake -E chdir _build cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ${{ matrix.cmake_args }}
+      - name: Build
+        run: cmake --build _build --config ${{ matrix.build_type }}
+      - name: Test
+        run: cmake -E chdir _build ctest --build-config ${{ matrix.build_type }} --output-in-failure
