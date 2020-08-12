@@ -275,6 +275,10 @@ static void config_init_defaults(struct benchmark_config *cfg)
     }
     if (!cfg->requests && !cfg->test_time)
         cfg->requests = 10000;
+    if (!cfg->hdr_prefix)
+        cfg->hdr_prefix = "";
+    if (!cfg->print_percentiles.is_defined())
+        cfg->print_percentiles = config_quantiles("50,99,99.9");
 }
 
 static int generate_random_seed()
@@ -363,6 +367,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_key_median,
         o_show_config,
         o_hide_histogram,
+        o_print_percentiles,
         o_distinct_client_seed,
         o_randomize,
         o_client_stats,
@@ -384,7 +389,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_key,
         o_tls_cacert,
         o_tls_skip_verify,
-        o_tls_sni
+        o_tls_sni,
+        o_hdr_file_prefix
     };
 
     static struct option long_options[] = {
@@ -401,11 +407,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "sni",                        1, 0, o_tls_sni },
 #endif
         { "out-file",                   1, 0, 'o' },
+        { "hdr-file-prefix",            1, 0, o_hdr_file_prefix },
         { "client-stats",               1, 0, o_client_stats },
         { "run-count",                  1, 0, 'x' },
         { "debug",                      0, 0, 'D' },
         { "show-config",                0, 0, o_show_config },
         { "hide-histogram",             0, 0, o_hide_histogram },
+        { "print-percentiles",          1, 0, o_print_percentiles },
         { "distinct-client-seed",       0, 0, o_distinct_client_seed },
         { "randomize",                  0, 0, o_randomize },
         { "requests",                   1, 0, 'n' },
@@ -493,6 +501,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'o':
                     cfg->out_file = optarg;
                     break;
+                case o_hdr_file_prefix:
+                    cfg->hdr_prefix = optarg;
+                    break;
                 case o_client_stats:
                     cfg->client_stats = optarg;
                     break;
@@ -512,6 +523,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_hide_histogram:
                     cfg->hide_histogram++;
+                    break;
+                case o_print_percentiles:
+                    cfg->print_percentiles = config_quantiles(optarg);
+                    if (!cfg->print_percentiles.is_defined()) {
+                        fprintf(stderr, "error: quantiles must be expressed as [0.0-100.0],[0.0-100.0](,...) .\n");
+                        return -1;
+                    }
                     break;
                 case o_distinct_client_seed:
                     cfg->distinct_client_seed++;
@@ -858,8 +876,10 @@ void usage() {
             "      --client-stats=FILE        Produce per-client stats file\n"
             "      --out-file=FILE            Name of output file (default: stdout)\n"
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
+            "      --hdr-file-prefix=FILE     Prefix of HDR Latency Histogram output files, if not set, will not save latency histogram files\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --print-percentiles        Specify which percentiles info to print on the results table (by default prints percentiles: 50,99,99.9)\n"
             "      --cluster-mode             Run client in cluster mode\n"
             "      --help                     Display this help\n"
             "      --version                  Display version information\n"
@@ -1455,6 +1475,7 @@ int main(int argc, char *argv[])
             perror(cfg.out_file);
         }
     } else {
+        fprintf(stderr, "Writing results to stdout\n");
         outfile = stdout;
     }
 
@@ -1468,6 +1489,10 @@ int main(int argc, char *argv[])
 
             run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
             all_stats.push_back(stats);
+            stats.save_hdr_full_run( &cfg,run_id );
+            stats.save_hdr_get_command( &cfg,run_id );
+            stats.save_hdr_set_command( &cfg,run_id );
+            stats.save_hdr_arbitrary_commands( &cfg,run_id );
         }
         //
         // Print some run information
@@ -1485,7 +1510,7 @@ int main(int argc, char *argv[])
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
             jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%llu",
                                    cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
-
+            jsonhandler->write_obj("Format version","%d",2);
             jsonhandler->close_nesting();
         }
 

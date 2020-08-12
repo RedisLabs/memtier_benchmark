@@ -35,6 +35,7 @@
 #include <netdb.h>
 
 #include <string>
+#include <iostream>
 #include <stdexcept>
 #include <climits>
 #include <algorithm>
@@ -86,6 +87,34 @@ config_ratio::config_ratio(const char *ratio_str) :
         return;
     }
 }
+
+config_quantiles::config_quantiles(){
+
+}
+
+config_quantiles::config_quantiles(const char *str)
+{
+    assert(str != NULL);
+
+    do {
+        float quantile;
+        char *p = NULL;
+        quantile = strtof(str, &p);
+        if (!p || (*p != ',' && *p != '\0')) {
+            quantile_list.clear();
+            return;
+        }
+        str = p;
+        if (*str) str++;
+        quantile_list.push_back(quantile);
+    } while (*str);
+}
+
+bool config_quantiles::is_defined(void)
+{
+    return quantile_list.size() > 0;
+}
+
 
 config_weight_list::config_weight_list() :
     next_size_weight(0)

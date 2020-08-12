@@ -2,9 +2,11 @@ aclocal.m4
 autom4te.cache
 config.guess
 config.h.in
+config.h.in~
 config.h
 config.sub
 configure
+compile
 depcomp
 install-sh
 ltmain.sh
@@ -19,6 +21,11 @@ config.log
 config.status
 libtool
 stamp-h1
-.idea
-.vscode
+*.DS_Store
+.vscode/*
+.idea/*
+
+# memtier outputs
+*.hgrm
+*.txt
 __pycache__

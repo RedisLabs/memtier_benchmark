@@ -142,7 +142,6 @@ public:
         return m_connection_state;
     }
 
-
 private:
     void setup_event(int sockfd);
     int setup_socket(struct connect_info* addr);
@@ -155,6 +154,7 @@ private:
     void push_req(request* req);
 
     void process_response(void);
+    void process_subsequent_requests(void);
     void process_first_request();
     void fill_pipeline(void);
 
@@ -182,6 +182,7 @@ private:
     enum authentication_state m_authentication;
     enum select_db_state m_db_selection;
     enum cluster_slots_state m_cluster_slots;
+
 };
 
 #endif //MEMTIER_BENCHMARK_SHARD_CONNECTION_H
