@@ -19,6 +19,16 @@
 #ifndef MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 #define MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 
+#define LATENCY_HDR_MIN_VALUE 10
+#define LATENCY_HDR_MAX_VALUE 60000000 ## LL
+#define LATENCY_HDR_SIGDIGTS 3
+#define LATENCY_HDR_SEC_MIN_VALUE 10
+#define LATENCY_HDR_SEC_MAX_VALUE 1000000 ## LL
+#define LATENCY_HDR_SEC_SIGDIGTS 2
+#define LATENCY_HDR_RESULTS_MULTIPLIER 1000
+#define LATENCY_HDR_GRANULARITY 10
+
+#include "deps/hdr_histogram/hdr_histogram.h"
 #include "memtier_benchmark.h"
 
 class one_sec_cmd_stats {
@@ -30,6 +40,9 @@ public:
     unsigned int m_moved;
     unsigned int m_ask;
     unsigned long long int m_total_latency;
+    struct hdr_histogram* latency_histogram;
+    one_sec_cmd_stats();
+    one_sec_cmd_stats(const one_sec_cmd_stats& b1);
     void reset();
     void merge(const one_sec_cmd_stats& other);
     void update_op(unsigned int bytes, unsigned int latency);
@@ -38,7 +51,7 @@ public:
     void update_ask_op(unsigned int bytes, unsigned int latency);
 };
 
-class one_second_stats; // forward deceleration
+class one_second_stats; // forward declaration
 
 class ar_one_sec_cmd_stats {
 public:
@@ -67,7 +80,6 @@ public:
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
-
     one_second_stats(unsigned int second);
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
@@ -113,19 +125,20 @@ public:
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
     ar_totals_cmd m_ar_commands;
+    struct hdr_histogram* latency_histogram;
     double m_ops_sec;
     double m_bytes_sec;
     double m_hits_sec;
     double m_misses_sec;
     double m_moved_sec;
     double m_ask_sec;
-    double m_latency;
+    unsigned long long int m_latency;
     unsigned long int m_bytes;
     unsigned long int m_ops;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
-    void update_op(unsigned long int bytes, double latency);
+    void update_op(unsigned long int bytes, unsigned int latency);
 };
 
 

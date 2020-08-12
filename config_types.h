@@ -46,6 +46,15 @@ struct config_ratio {
     bool is_defined(void) { return (a > 0 || b > 0); }
 };
 
+struct config_quantiles {
+    std::vector<float> quantile_list;
+    config_quantiles();
+    config_quantiles(const char *ratio_str);
+    bool is_defined(void);
+    inline std::vector<float>::iterator begin()  { return quantile_list.begin(); }
+    inline std::vector<float>::iterator end()  { return quantile_list.end(); }
+};
+
 struct config_weight_list {
     struct weight_item {
         unsigned int size;
