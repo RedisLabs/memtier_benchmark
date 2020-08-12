@@ -140,6 +140,23 @@ int hdr_log_write_entry(
     struct hdr_log_entry* entry,
     struct hdr_histogram* histogram);
 
+/**
+ * Write an hdr_histogram entry to the string.  It will be encoded in a similar
+ * fashion to the approach used by the Java version of the HdrHistogram.
+ * where <histogram> is the binary histogram gzip compressed and base64 encoded.
+ *
+ * @param writer 'This' pointer
+ * @param encoded_histogram The string to write the entry to.
+ * @param histogram The histogram to encode and log.
+ * @return Will return 0 if it successfully completed or an error number if there
+ * was a failure.  Errors include HDR_DEFLATE_INIT_FAIL, HDR_DEFLATE_FAIL if
+ * something when wrong during gzip compression.  ENOMEM if we failed to allocate
+ * or reallocate the buffer used for encoding (out of memory problem). 
+ */
+int hdr_string_write(
+        char** encoded_histogram,
+        struct hdr_histogram *histogram);
+        
 struct hdr_log_reader
 {
     int major_version;

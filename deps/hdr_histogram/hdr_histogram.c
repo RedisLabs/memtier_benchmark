@@ -14,7 +14,6 @@
 #include <inttypes.h>
 
 #include "hdr_histogram.h"
-#include "hdr_tests.h"
 #include "hdr_atomic.h"
 
 /*  ######   #######  ##     ## ##    ## ########  ######  */
@@ -679,6 +678,10 @@ double hdr_mean(const struct hdr_histogram* h)
     }
 
     return (total * 1.0) / h->total_count;
+}
+
+int64_t hdr_total_count(const struct hdr_histogram *h) {
+    return h != NULL ? h->total_count : 0;
 }
 
 double hdr_stddev(const struct hdr_histogram* h)

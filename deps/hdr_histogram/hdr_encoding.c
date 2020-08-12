@@ -9,7 +9,6 @@
 #include <math.h>
 
 #include "hdr_encoding.h"
-#include "hdr_tests.h"
 
 int zig_zag_encode_i64(uint8_t* buffer, int64_t signed_value)
 {

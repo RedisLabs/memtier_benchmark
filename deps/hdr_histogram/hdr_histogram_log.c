@@ -20,7 +20,6 @@
 #include "hdr_encoding.h"
 #include "hdr_histogram.h"
 #include "hdr_histogram_log.h"
-#include "hdr_tests.h"
 
 #if defined(_MSC_VER)
 #include <intsafe.h>
@@ -876,6 +875,35 @@ int hdr_log_write_entry(
     cleanup:
     free(compressed_histogram);
     free(encoded_histogram);
+
+    return result;
+}
+
+int hdr_string_write(
+        char** encoded_histogram,
+        struct hdr_histogram *histogram) {
+    uint8_t *compressed_histogram = NULL;
+    size_t compressed_len = 0;
+    int rc = 0;
+    int result = 0;
+    size_t encoded_len;
+
+    rc = hdr_encode_compressed(histogram, &compressed_histogram, &compressed_len);
+    if (rc != 0) {
+        FAIL_AND_CLEANUP(cleanup, result, rc);
+    }
+
+    encoded_len = hdr_base64_encoded_len(compressed_len);
+    *encoded_histogram = calloc(encoded_len + 1, sizeof(char));
+
+    rc = hdr_base64_encode(
+            compressed_histogram, compressed_len, *encoded_histogram, encoded_len);
+    if (rc != 0) {
+        FAIL_AND_CLEANUP(cleanup, result, rc);
+    }
+
+    cleanup:
+    free(compressed_histogram);
 
     return result;
 }

@@ -289,6 +289,14 @@ double hdr_stddev(const struct hdr_histogram* h);
 double hdr_mean(const struct hdr_histogram* h);
 
 /**
+ * Gets the total count of values in the histogram.
+ *
+ * @param h "This" pointer
+ * @return The count
+ */
+int64_t hdr_total_count(const struct hdr_histogram *h);
+
+/**
  * Determine if two values are equivalent with the histogram's resolution.
  * Where "equivalent" means that value samples recorded for any two
  * equivalent values are counted in a common total count.
