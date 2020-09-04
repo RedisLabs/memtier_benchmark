@@ -31,6 +31,48 @@
 #include "deps/hdr_histogram/hdr_histogram.h"
 #include "memtier_benchmark.h"
 
+// A wrapper around hdr_histogram that handles allocation, deallocation
+// and deep copy.
+//
+// TODO: In the future we may want to consider extending this wrapper
+// further to expose all hdr functions as native methods and avoid the
+// casting operator completely.
+class safe_hdr_histogram {
+    hdr_histogram *m_hdr;
+public:
+    safe_hdr_histogram() {
+        hdr_init(
+            LATENCY_HDR_MIN_VALUE,          // Minimum value
+            LATENCY_HDR_SEC_MAX_VALUE,      // Maximum value
+            LATENCY_HDR_SEC_SIGDIGTS,       // Number of significant figures
+            &m_hdr);
+    }
+
+    virtual ~safe_hdr_histogram() {
+        hdr_close(m_hdr);
+    }
+
+    safe_hdr_histogram(const safe_hdr_histogram& other) {
+        hdr_init(
+            LATENCY_HDR_MIN_VALUE,          // Minimum value
+            LATENCY_HDR_SEC_MAX_VALUE,      // Maximum value
+            LATENCY_HDR_SEC_SIGDIGTS,       // Number of significant figures
+            &m_hdr);
+        hdr_add(m_hdr, other.m_hdr);
+    }
+
+    safe_hdr_histogram& operator=(const safe_hdr_histogram& other) {
+        if (this != &other) {
+            hdr_reset(m_hdr);
+            hdr_add(m_hdr, other.m_hdr);
+        }
+        return *this;
+    }
+
+    // Cast safe_hdr_historgram to hdr_histogram to make it transparent
+    operator hdr_histogram* () const { return m_hdr; }
+};
+
 class one_sec_cmd_stats {
 public:
     unsigned long int m_bytes;
@@ -40,9 +82,8 @@ public:
     unsigned int m_moved;
     unsigned int m_ask;
     unsigned long long int m_total_latency;
-    struct hdr_histogram* latency_histogram;
+    safe_hdr_histogram latency_histogram;
     one_sec_cmd_stats();
-    one_sec_cmd_stats(const one_sec_cmd_stats& b1);
     void reset();
     void merge(const one_sec_cmd_stats& other);
     void update_op(unsigned int bytes, unsigned int latency);
@@ -125,7 +166,7 @@ public:
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
     ar_totals_cmd m_ar_commands;
-    struct hdr_histogram* latency_histogram;
+    safe_hdr_histogram latency_histogram;
     double m_ops_sec;
     double m_bytes_sec;
     double m_hits_sec;

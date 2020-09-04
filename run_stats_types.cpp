@@ -26,36 +26,16 @@
 
 
 
-one_sec_cmd_stats::one_sec_cmd_stats() {
-    m_bytes = 0;
-    m_ops = 0;
-    m_hits = 0;
-    m_misses = 0;
-    m_moved = 0;
-    m_ask = 0;
-    m_total_latency = 0;
-    hdr_init(
-    LATENCY_HDR_MIN_VALUE,          // Minimum value
-    LATENCY_HDR_MAX_VALUE,          // Maximum value
-    LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-    &latency_histogram);            // Pointer to initialise
+one_sec_cmd_stats::one_sec_cmd_stats() :
+    m_bytes(0),
+    m_ops(0),
+    m_hits(0),
+    m_misses(0),
+    m_moved(0),
+    m_ask(0),
+    m_total_latency(0) {
 }
 
-one_sec_cmd_stats::one_sec_cmd_stats(const one_sec_cmd_stats& b1){
-    m_bytes = b1.m_bytes;
-    m_ops = b1.m_ops;
-    m_hits = b1.m_hits;
-    m_misses = b1.m_misses;
-    m_moved = b1.m_moved;
-    m_ask = b1.m_ask;
-    m_total_latency = b1.m_total_latency;
-    hdr_init(
-    LATENCY_HDR_MIN_VALUE,          // Minimum value
-    LATENCY_HDR_SEC_MAX_VALUE,          // Maximum value
-    LATENCY_HDR_SEC_SIGDIGTS,           // Number of significant figures
-    &latency_histogram);            // Pointer to initialise
-    hdr_add(latency_histogram, b1.latency_histogram);
-}
 
 void one_sec_cmd_stats::reset() {
     m_bytes = 0;
@@ -269,11 +249,6 @@ totals::totals() :
         m_latency(0),
         m_bytes(0),
         m_ops(0) {
-    hdr_init(
-    LATENCY_HDR_MIN_VALUE,          // Minimum value
-    LATENCY_HDR_MAX_VALUE,          // Maximum value
-    LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-    &latency_histogram);            // Pointer to initialise
 }
 
 void totals::setup_arbitrary_commands(size_t n_arbitrary_commands) {
