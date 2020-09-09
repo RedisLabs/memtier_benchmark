@@ -117,21 +117,6 @@ run_stats::run_stats(benchmark_config *config) :
 {
     memset(&m_start_time, 0, sizeof(m_start_time));
     memset(&m_end_time, 0, sizeof(m_end_time));
-    hdr_init(
-            LATENCY_HDR_MIN_VALUE,          // Minimum value
-            LATENCY_HDR_MAX_VALUE,          // Maximum value
-            LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-            &m_get_latency_histogram);      // Pointer to initialise
-    hdr_init(
-            LATENCY_HDR_MIN_VALUE,          // Minimum value
-            LATENCY_HDR_MAX_VALUE,          // Maximum value
-            LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-            &m_set_latency_histogram);      // Pointer to initialise
-    hdr_init(
-            LATENCY_HDR_MIN_VALUE,          // Minimum value
-            LATENCY_HDR_MAX_VALUE,          // Maximum value
-            LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-            &m_wait_latency_histogram);     // Pointer to initialise
 
     if (config->arbitrary_commands->is_defined()) {
         setup_arbitrary_commands(config->arbitrary_commands->size());
@@ -142,13 +127,6 @@ void run_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
     m_totals.setup_arbitrary_commands(n_arbitrary_commands);
     m_cur_stats.setup_arbitrary_commands(n_arbitrary_commands);
     m_ar_commands_latency_histograms.resize(n_arbitrary_commands);
-    for (unsigned int i=0; i<n_arbitrary_commands; i++) {
-        hdr_init(
-            LATENCY_HDR_MIN_VALUE,                 // Minimum value
-            LATENCY_HDR_MAX_VALUE,                 // Maximum value
-            LATENCY_HDR_SIGDIGTS,                  // Number of significant figures
-            &m_ar_commands_latency_histograms[i]); // Pointer to initialise
-    }
 }
 
 void run_stats::set_start_time(struct timeval* start_time)
@@ -1023,15 +1001,10 @@ void run_stats::print_avg_latency_column(output_table &table) {
     table_el el;
     table_column column(15);
 
-    struct hdr_histogram* m_totals_latency_histogram;
-	hdr_init(
-			LATENCY_HDR_MIN_VALUE,          // Minimum value
-			LATENCY_HDR_MAX_VALUE,          // Maximum value
-			LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-			&m_totals_latency_histogram);      // Pointer to initialise
-	hdr_add(m_totals_latency_histogram,m_set_latency_histogram);
-	hdr_add(m_totals_latency_histogram,m_get_latency_histogram);
-	hdr_add(m_totals_latency_histogram,m_wait_latency_histogram);
+    safe_hdr_histogram m_totals_latency_histogram;
+    hdr_add(m_totals_latency_histogram,m_set_latency_histogram);
+    hdr_add(m_totals_latency_histogram,m_get_latency_histogram);
+    hdr_add(m_totals_latency_histogram,m_wait_latency_histogram);
 
     column.elements.push_back(*el.init_str("%15s ", "Avg. Latency"));
     column.elements.push_back(*el.init_str("%s", "----------------"));
@@ -1070,12 +1043,7 @@ void run_stats::print_quantile_latency_column(output_table &table, double quanti
     table_el el;
     table_column column(15);
 
-    struct hdr_histogram* m_totals_latency_histogram;
-    hdr_init(
-            LATENCY_HDR_MIN_VALUE,          // Minimum value
-            LATENCY_HDR_MAX_VALUE,          // Maximum value
-            LATENCY_HDR_SIGDIGTS,           // Number of significant figures
-            &m_totals_latency_histogram);      // Pointer to initialise
+    safe_hdr_histogram m_totals_latency_histogram;
     hdr_add(m_totals_latency_histogram,m_set_latency_histogram);
     hdr_add(m_totals_latency_histogram,m_get_latency_histogram);
     hdr_add(m_totals_latency_histogram,m_wait_latency_histogram);

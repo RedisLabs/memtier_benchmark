@@ -101,10 +101,10 @@ protected:
     // current second stats ( appended to m_stats and reset every second )
     one_second_stats m_cur_stats;
 
-    struct hdr_histogram* m_get_latency_histogram;
-    struct hdr_histogram* m_set_latency_histogram;
-    struct hdr_histogram* m_wait_latency_histogram;
-    std::vector<struct hdr_histogram*> m_ar_commands_latency_histograms;
+    safe_hdr_histogram m_get_latency_histogram;
+    safe_hdr_histogram m_set_latency_histogram;
+    safe_hdr_histogram m_wait_latency_histogram;
+    std::vector<safe_hdr_histogram> m_ar_commands_latency_histograms;
 
     void roll_cur_stats(struct timeval* ts);
 
