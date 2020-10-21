@@ -461,7 +461,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     int c;
     char *endptr;
     while ((c = getopt_long(argc, argv,
-                "s:S:p:P:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
+                "vs:S:p:P:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
     {
         switch (c) {
                 case 'h':
@@ -874,15 +874,15 @@ void usage() {
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
             "  -D, --debug                    Print debug output\n"
             "      --client-stats=FILE        Produce per-client stats file\n"
-            "      --out-file=FILE            Name of output file (default: stdout)\n"
+            "  -o, --out-file=FILE            Name of output file (default: stdout)\n"
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
             "      --hdr-file-prefix=FILE     Prefix of HDR Latency Histogram output files, if not set, will not save latency histogram files\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
             "      --print-percentiles        Specify which percentiles info to print on the results table (by default prints percentiles: 50,99,99.9)\n"
             "      --cluster-mode             Run client in cluster mode\n"
-            "      --help                     Display this help\n"
-            "      --version                  Display version information\n"
+            "  -h, --help                     Display this help\n"
+            "  -v, --version                  Display version information\n"
             "\n"
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
