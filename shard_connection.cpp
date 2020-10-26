@@ -438,7 +438,7 @@ void shard_connection::process_response(void)
     }
 
     if (m_config->reconnect_interval > 0 && responses_handled) {
-        if ((m_conns_manager->get_reqs_processed() % m_config->reconnect_interval) == 0) {
+        if ((m_config->requests != m_conns_manager->get_reqs_processed()) && ((m_conns_manager->get_reqs_processed() % m_config->reconnect_interval) == 0)) {
             assert(m_pipeline->size() == 0);
             benchmark_debug_log("reconnecting, m_reqs_processed = %u\n", m_conns_manager->get_reqs_processed());
 
