@@ -25,8 +25,7 @@
 #include "run_stats_types.h"
 
 
-
-one_sec_cmd_stats::one_sec_cmd_stats() :
+one_sec_cmd_stats::one_sec_cmd_stats(bool has_latency_histogram) :
     m_bytes(0),
     m_ops(0),
     m_hits(0),
@@ -34,8 +33,51 @@ one_sec_cmd_stats::one_sec_cmd_stats() :
     m_moved(0),
     m_ask(0),
     m_total_latency(0) {
+
+    if(has_latency_histogram) {
+        latency_histogram = new safe_hdr_histogram();
+    } else {
+        latency_histogram = NULL;
+    }
 }
 
+one_sec_cmd_stats::one_sec_cmd_stats(const one_sec_cmd_stats& other) :
+    m_bytes(other.m_bytes),
+    m_ops(other.m_ops),
+    m_hits(other.m_hits),
+    m_misses(other.m_misses),
+    m_moved(other.m_moved),
+    m_ask(other.m_ask),
+    m_total_latency(other.m_total_latency) {
+
+    if(other.latency_histogram) {
+        latency_histogram = new safe_hdr_histogram();
+        *latency_histogram = *other.latency_histogram;
+    } else {
+        latency_histogram = NULL;
+    }
+}
+
+one_sec_cmd_stats& one_sec_cmd_stats::operator=(const one_sec_cmd_stats& rhs)
+{
+
+    if (this == &rhs)
+        return *this;
+
+    m_bytes = rhs.m_bytes;
+    m_ops = rhs.m_ops;
+    m_hits = rhs.m_hits;
+    m_misses = rhs.m_misses;
+    m_moved = rhs.m_moved;
+    m_ask = rhs.m_ask;
+    if(rhs.latency_histogram) {
+        *latency_histogram = *rhs.latency_histogram;
+    } else {
+        latency_histogram = NULL;
+    }
+
+    return *this;
+}
 
 void one_sec_cmd_stats::reset() {
     m_bytes = 0;
@@ -45,7 +87,9 @@ void one_sec_cmd_stats::reset() {
     m_moved = 0;
     m_ask = 0;
     m_total_latency = 0;
-    hdr_reset(latency_histogram); 
+    if ( latency_histogram ) {
+        hdr_reset(*latency_histogram); 
+    }
 }
 
 void one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
@@ -56,14 +100,18 @@ void one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
     m_moved += other.m_moved;
     m_ask += other.m_ask;
     m_total_latency += other.m_total_latency;
-    hdr_add(latency_histogram,other.latency_histogram);
+    if ( latency_histogram && other.latency_histogram ) {
+        hdr_add(*latency_histogram,*other.latency_histogram);
+    }
 }
 
 void one_sec_cmd_stats::update_op(unsigned int bytes, unsigned int latency) {
     m_bytes += bytes;
     m_ops++;
     m_total_latency += latency;
-    hdr_record_value(latency_histogram,latency);
+    if ( latency_histogram ) {
+        hdr_record_value(*latency_histogram,latency);
+    }
 }
 
 void one_sec_cmd_stats::update_op(unsigned int bytes, unsigned int latency,
@@ -83,8 +131,12 @@ void one_sec_cmd_stats::update_ask_op(unsigned int bytes, unsigned int latency) 
     m_ask++;
 }
 
-void ar_one_sec_cmd_stats::setup(size_t n_arbitrary_commands) {
-    m_commands.resize(n_arbitrary_commands);
+void ar_one_sec_cmd_stats::setup(size_t n_arbitrary_commands, bool has_latency_histogram) {
+    one_sec_cmd_stats cmd(has_latency_histogram);
+    m_commands.clear();
+    for (size_t i = 0; i<n_arbitrary_commands; i++) {
+        m_commands.push_back(cmd);
+    }
     reset();
 }
 
@@ -135,17 +187,17 @@ size_t ar_one_sec_cmd_stats::size() const {
 ///////////////////////////////////////////////////////////////////////////
 
 
-one_second_stats::one_second_stats(unsigned int second) :
-        m_set_cmd(),
-        m_get_cmd(),
-        m_wait_cmd(),
+one_second_stats::one_second_stats(unsigned int second, bool has_latency_histogram) :
+        m_set_cmd(has_latency_histogram),
+        m_get_cmd(has_latency_histogram),
+        m_wait_cmd(has_latency_histogram),
         m_ar_commands()
         {
     reset(second);
 }
 
-void one_second_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
-    m_ar_commands.setup(n_arbitrary_commands);
+void one_second_stats::setup_arbitrary_commands(size_t n_arbitrary_commands, bool has_latency_histogram) {
+    m_ar_commands.setup(n_arbitrary_commands, has_latency_histogram);
 }
 
 

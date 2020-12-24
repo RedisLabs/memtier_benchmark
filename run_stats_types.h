@@ -82,8 +82,11 @@ public:
     unsigned int m_moved;
     unsigned int m_ask;
     unsigned long long int m_total_latency;
-    safe_hdr_histogram latency_histogram;
-    one_sec_cmd_stats();
+    safe_hdr_histogram *latency_histogram;
+    one_sec_cmd_stats(bool has_latency_histogram = 1);
+    one_sec_cmd_stats(const one_sec_cmd_stats& other);
+    one_sec_cmd_stats& operator=(const one_sec_cmd_stats& other);
+    ~one_sec_cmd_stats() { delete latency_histogram; }
     void reset();
     void merge(const one_sec_cmd_stats& other);
     void update_op(unsigned int bytes, unsigned int latency);
@@ -97,7 +100,7 @@ class one_second_stats; // forward declaration
 class ar_one_sec_cmd_stats {
 public:
     ar_one_sec_cmd_stats() {;}
-    void setup(size_t n_arbitrary_commands);
+    void setup(size_t n_arbitrary_commands, bool has_latency_histogram = 1);
     void reset();
     void merge(const ar_one_sec_cmd_stats& other);
     unsigned long int ops();
@@ -121,8 +124,8 @@ public:
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
-    one_second_stats(unsigned int second);
-    void setup_arbitrary_commands(size_t n_arbitrary_commands);
+    one_second_stats(unsigned int second, bool has_latency_histogram = 1);
+    void setup_arbitrary_commands(size_t n_arbitrary_commands, bool has_latency_histogram = 1);
     void reset(unsigned int second);
     void merge(const one_second_stats& other);
 };

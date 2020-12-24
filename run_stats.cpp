@@ -113,7 +113,7 @@ inline timeval timeval_factorial_average(timeval a, timeval b, unsigned int weig
 run_stats::run_stats(benchmark_config *config) :
            m_config(config),
            m_totals(),
-           m_cur_stats(0)
+           m_cur_stats(0, config->json_out_file != NULL)
 {
     memset(&m_start_time, 0, sizeof(m_start_time));
     memset(&m_end_time, 0, sizeof(m_end_time));
@@ -125,7 +125,7 @@ run_stats::run_stats(benchmark_config *config) :
 
 void run_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
     m_totals.setup_arbitrary_commands(n_arbitrary_commands);
-    m_cur_stats.setup_arbitrary_commands(n_arbitrary_commands);
+    m_cur_stats.setup_arbitrary_commands(n_arbitrary_commands, m_config->json_out_file != NULL);
     m_ar_commands_latency_histograms.resize(n_arbitrary_commands);
 }
 
@@ -828,13 +828,13 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
             char timestamp_str[16];
             one_sec_cmd_stats cmd_stats = timeserie_stats[i];
             const unsigned int timestamp = timestamps[i];
-            const bool sec_has_samples = hdr_total_count(cmd_stats.latency_histogram)>0;
-            const double sec_avg_latency = sec_has_samples ? hdr_mean(cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-            const double sec_min_latency = has_samples ? hdr_min(cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-            const double sec_max_latency = has_samples ? hdr_max(cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+            const bool sec_has_samples = hdr_total_count(*cmd_stats.latency_histogram)>0;
+            const double sec_avg_latency = sec_has_samples ? hdr_mean(*cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+            const double sec_min_latency = has_samples ? hdr_min(*cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+            const double sec_max_latency = has_samples ? hdr_max(*cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
             snprintf(timestamp_str,sizeof(timestamp_str)-1,"%d", timestamp);
             jsonhandler->open_nesting(timestamp_str);
-            jsonhandler->write_obj("Count","%lld", hdr_total_count(cmd_stats.latency_histogram));
+            jsonhandler->write_obj("Count","%lld", hdr_total_count(*cmd_stats.latency_histogram));
             jsonhandler->write_obj("Average Latency","%.2f", sec_avg_latency);
             jsonhandler->write_obj("Min Latency","%.2f", sec_min_latency);
             jsonhandler->write_obj("Max Latency","%.2f", sec_max_latency);
@@ -842,7 +842,7 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
                 const float quantile = quantile_list[i];
                 char quantile_header[8];
                 snprintf(quantile_header,sizeof(quantile_header)-1,"p%.2f", quantile);
-                const double value = hdr_value_at_percentile(cmd_stats.latency_histogram, quantile )/ (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+                const double value = hdr_value_at_percentile(*cmd_stats.latency_histogram, quantile )/ (double) LATENCY_HDR_RESULTS_MULTIPLIER;
                 jsonhandler->write_obj((char *)quantile_header,"%.2f", value);
             }
             jsonhandler->close_nesting();
