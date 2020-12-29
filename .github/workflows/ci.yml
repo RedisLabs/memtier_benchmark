@@ -30,9 +30,10 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
           ${{ runner.os }}-
+    - name: update pip
+      run: /opt/hostedtoolcache/Python/3.6.12/x64/bin/python -m pip install --upgrade pip
     - name: Install Python dependencies
       run: pip install -r tests/test_requirements.txt
-
     - name: Cache Redis
       id: cache-redis
       uses: actions/cache@v1
