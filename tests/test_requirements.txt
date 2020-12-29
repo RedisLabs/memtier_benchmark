@@ -1,4 +1,4 @@
-redis>=3.0.0
+redis>=2.10.6
 git+https://github.com/Grokzen/redis-py-cluster.git@master
 git+https://github.com/RedisLabsModules/RLTest.git@master
 git+https://github.com/RedisLabs/mbdirector.git@master
