@@ -96,7 +96,7 @@ protected:
 
     totals m_totals;
 
-    std::vector<one_second_stats> m_stats;
+    std::list<one_second_stats> m_stats;
 
     // current second stats ( appended to m_stats and reset every second )
     one_second_stats m_cur_stats;

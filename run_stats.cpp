@@ -282,7 +282,7 @@ void run_stats::save_csv_one_sec(FILE *f,
     total_get_ops = 0;
     total_set_ops = 0;
     total_wait_ops = 0;
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
 
         fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%u.%06u,%lu,%u,%u,%lu,%u.%06u\n",
@@ -308,7 +308,7 @@ void run_stats::save_csv_one_sec(FILE *f,
 std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_get() {
     std::vector<one_sec_cmd_stats> result;
     result.reserve(m_stats.size());
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
             result.push_back(i->m_get_cmd);    
     }
@@ -318,7 +318,7 @@ std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_get() {
 std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_set() {
     std::vector<one_sec_cmd_stats> result;
     result.reserve(m_stats.size());
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
             result.push_back(i->m_set_cmd);    
     }
@@ -328,7 +328,7 @@ std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_set() {
 std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_wait() {
     std::vector<one_sec_cmd_stats> result;
     result.reserve(m_stats.size());
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
             result.push_back(i->m_wait_cmd);
     }
@@ -338,9 +338,9 @@ std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_wait() {
 std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_totals() {
     std::vector<one_sec_cmd_stats> result;
     result.reserve(m_stats.size());
-    for (size_t i = 0; i < m_stats.size(); i++)
+    for (std::list<one_second_stats>::iterator i = m_stats.begin(); i != m_stats.end(); ++i)
     {
-        one_second_stats current_second_stats = m_stats.at(i);
+        one_second_stats current_second_stats = *i;
         one_sec_cmd_stats total_stat = one_sec_cmd_stats(current_second_stats.m_get_cmd);
         total_stat.merge(current_second_stats.m_set_cmd);
         total_stat.merge(current_second_stats.m_wait_cmd);
@@ -357,7 +357,7 @@ std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_totals() {
 std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_arbitrary_command( unsigned int pos ){
     std::vector<one_sec_cmd_stats> result;
     result.reserve(m_stats.size());
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
             result.push_back(i->m_ar_commands.at(pos));
     }
@@ -367,7 +367,7 @@ std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_arbitrary_comman
 std::vector<unsigned int> run_stats::get_one_sec_cmd_stats_timestamp() {
     std::vector<unsigned int> result;
     result.reserve(m_stats.size());
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
             result.push_back(i->m_second);    
     }
@@ -379,7 +379,7 @@ void run_stats::save_csv_one_sec_cluster(FILE *f) {
     fprintf(f, "\nPer-Second Benchmark Cluster Data\n");
     fprintf(f, "Second,SET Moved,SET Ask,GET Moved,GET Ask\n");
 
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
 
         fprintf(f, "%u,%u,%u,%u,%u\n",
@@ -453,7 +453,7 @@ void run_stats::save_csv_arbitrary_commands_one_sec(FILE *f,
     fprintf(f, "\n");
 
     // print data
-    for (std::vector<one_second_stats>::iterator stat = m_stats.begin();
+    for (std::list<one_second_stats>::iterator stat = m_stats.begin();
          stat != m_stats.end(); stat++) {
 
         fprintf(f, "%u,", stat->m_second);
@@ -644,7 +644,7 @@ void run_stats::debug_dump(void)
                         m_start_time.tv_sec, m_start_time.tv_usec,
                         m_end_time.tv_sec, m_end_time.tv_usec);
 
-    for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
 
         benchmark_debug_log("  %u: get latency=%u.%ums, set latency=%u.%ums, wait latency=%u.%ums"
@@ -711,12 +711,12 @@ void run_stats::merge(const run_stats& other, int iteration)
 
     // aggregate the one_second_stats vectors. this is not efficient
     // but it's not really important (small numbers, not realtime)
-    for (std::vector<one_second_stats>::const_iterator other_i = other.m_stats.begin();
+    for (std::list<one_second_stats>::const_iterator other_i = other.m_stats.begin();
          other_i != other.m_stats.end(); other_i++) {
 
         // find ours
         bool merged = false;
-        for (std::vector<one_second_stats>::iterator i = m_stats.begin();
+        for (std::list<one_second_stats>::iterator i = m_stats.begin();
              i != m_stats.end(); i++) {
             if (i->m_second == other_i->m_second) {
                 i->merge(*other_i);
@@ -732,7 +732,7 @@ void run_stats::merge(const run_stats& other, int iteration)
     }
 
     if (new_stats) {
-        sort(m_stats.begin(), m_stats.end(), one_second_stats_predicate);
+        m_stats.sort(one_second_stats_predicate);
     }
 
     // aggregate totals
@@ -755,7 +755,7 @@ void run_stats::summarize(totals& result) const
     one_second_stats totals(0);
     totals.setup_arbitrary_commands(m_cur_stats.m_ar_commands.size());
 
-    for (std::vector<one_second_stats>::const_iterator i = m_stats.begin();
+    for (std::list<one_second_stats>::const_iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
         totals.merge(*i);
     }
