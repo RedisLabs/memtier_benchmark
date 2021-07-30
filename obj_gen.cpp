@@ -82,7 +82,7 @@ unsigned long long random_generator::get_random()
 
     rn = jrand48(m_data_blob);
     llrn |= rn & 0xffffffff; // reset the sign extension bits of negative numbers
-    llrn &= 0x8000000000000000; // avoid any trouble from sign mismatch and negative numbers
+    llrn &= 0x7FFFFFFFFFFFFFFF; // avoid any trouble from sign mismatch and negative numbers
 #else
     #error no random function
 #endif
