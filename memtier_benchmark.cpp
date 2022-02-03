@@ -34,6 +34,8 @@
 #include <sys/resource.h>
 
 #ifdef USE_TLS
+#include <openssl/crypto.h>
+#include <openssl/conf.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
@@ -1215,6 +1217,14 @@ static void init_openssl(void)
         fprintf(stderr, "Failed to initialize OpenSSL random entropy.\n");
         exit(1);
     }
+
+    //Enable memtier benchmark to load an OpenSSL config file.
+    #if OPENSSL_VERSION_NUMBER < 0x10100000L
+    OPENSSL_config(NULL);
+    #else
+    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
+    #endif
+
 
     init_openssl_threads();
 }
