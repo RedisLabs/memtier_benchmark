@@ -239,26 +239,29 @@ void object_generator::alloc_value_buffer(void)
 
             char buf1[64] = { 0 };
             char buf2[64] = { 0 };
-            unsigned int buf1_idx = sizeof(buf1);
-            unsigned int buf2_idx = sizeof(buf2);
+            unsigned int buf1_idx = 0;
+            unsigned int buf2_idx = 0;
             char *d = m_value_buffer;
-            int ret;
             int iter = 0;
-
+            int ret = read(m_random_fd, buf1, sizeof(buf1));
+            assert(ret > -1);
+            ret = read(m_random_fd, buf2, sizeof(buf2));
+            assert(ret > -1);
             while (d - m_value_buffer < size) {
                 if (buf1_idx == sizeof(buf1)) {
                     buf1_idx = 0;
                     buf2_idx++;
-                    if (buf2_idx >= sizeof(buf2)) {
-                        iter++;
-                        if (iter == 20) {
-                            ret = read(m_random_fd, buf1, sizeof(buf1));
-                            assert(ret > -1);
-                            ret = read(m_random_fd, buf2, sizeof(buf2));
-                            assert(ret > -1);
-                            buf1_idx = buf2_idx = iter = 0;
-                        }
+                }
+
+                if (buf2_idx == sizeof(buf2)) {
+                    if (iter % 20 == 0) {
+                        ret = read(m_random_fd, buf1, sizeof(buf1));
+                        assert(ret > -1);
+                        ret = read(m_random_fd, buf2, sizeof(buf2));
+                        assert(ret > -1);
                     }
+                    buf2_idx = 0;
+                    iter++;
                 }
                 *d = buf1[buf1_idx] ^ buf2[buf2_idx] ^ iter;
                 d++;
