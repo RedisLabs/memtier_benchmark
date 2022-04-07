@@ -40,15 +40,21 @@ jobs:
         path: /home/runner/work/memtier_benchmark/memtier_benchmark/redis
         key: ${{ runner.os }}-redis
 
-    - name: Install Redis Server test dependencies
+    - name: Check out Redis
+      if: steps.cache-redis.outputs.cache-hit != 'true'
+      uses: actions/checkout@v3
+      with:
+        repository: 'redis/redis'
+        ref: 'unstable'
+        path: 'redis'
+
+    - name: Build and run Redis
       if: steps.cache-redis.outputs.cache-hit != 'true'
       run: |
-        git clone git://github.com/antirez/redis.git --branch unstable
         cd redis
         make BUILD_TLS=yes
         ./utils/gen-test-certs.sh
         ./src/redis-server --version
-        cd ..
 
     - name: Test OSS TCP
       run: |
