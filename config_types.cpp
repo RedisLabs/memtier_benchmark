@@ -254,7 +254,7 @@ int server_addr::resolve(void)
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
+    hints.ai_family = PF_UNSPEC;
 
     snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
     m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);
