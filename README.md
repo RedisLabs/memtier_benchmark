@@ -103,9 +103,6 @@ $ make install
 
 #### Testing
 
-
-## Tests
-
 The project includes a basic set of integration tests.
 
 
