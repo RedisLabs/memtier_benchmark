@@ -11,19 +11,16 @@ help() {
 	cat <<-END
 		Run flow tests.
 
-		[ARGVARS...] tests.sh [--help|help]
+		[ARGVARS...] run_tests.sh [--help|help]
 
 		Argument variables:
 
 		OSS_STANDALONE=0|1  General tests on standalone Redis (default)
-		TLS=0|1             Run tests with TLS enabled
 		OSS_CLUSTER=0|1     General tests on Redis OSS Cluster
+		TLS=0|1             Run tests with TLS enabled 
 		SHARDS=n            Number of shards (default: 3)
 
 		REDIS_SERVER=path   Location of redis-server
-
-		TEST=test           Run specific test (e.g. test.py:test_name)
-
 		VERBOSE=1           Print commands
 
 	END

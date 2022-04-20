@@ -101,6 +101,33 @@ $ make
 $ make install
 ```
 
+#### Testing
+
+
+## Tests
+
+The project includes a basic set of integration tests.
+
+
+**Integration tests**
+
+
+Integration tests are based on [RLTest](https://github.com/RedisLabsModules/RLTest), and specific setup parameters can be provided
+to configure tests and topologies (OSS standalone and OSS cluster). By default the tests will be ran for all common commands, and with OSS standalone setup.
+
+
+To run all integration tests in a Python virtualenv, follow these steps:
+
+    $ mkdir -p .env
+    $ virtualenv .env
+    $ source .env/bin/activate
+    $ pip install -r tests/test_requirements.txt
+    $ ./tests/run_tests.sh
+
+To understand what test options are available simply run:
+
+    $ ./tests/run_tests.sh --help
+
 ## Using Docker
 
 Use available images on Docker Hub:
