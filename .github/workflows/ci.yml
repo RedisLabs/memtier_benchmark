@@ -14,6 +14,7 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+
     - name: Build
       run: autoreconf -ivf && ./configure && make -j
     - name: Setup Python
@@ -25,27 +26,12 @@ jobs:
     - name: Install Python dependencies
       run: pip install -r ./tests/test_requirements.txt
 
-    - name: Cache Redis
-      id: cache-redis
-      uses: actions/cache@v1
-      with:
-        path: /home/runner/work/redis
-        key: ${{ runner.os }}-redis
-
-    - name: Check out Redis
-      if: steps.cache-redis.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: 'redis/redis'
-        ref: 'unstable'
-        path: 'redis'
-
-    - name: Build and run Redis
-      if: steps.cache-redis.outputs.cache-hit != 'true'
+    - name: Install Redis
       run: |
-        cd redis
-        make BUILD_TLS=yes -j
-        ./src/redis-server --version
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
 
     - name: Generate TLS test certificates
       if: matrix.platform == 'ubuntu-latest'
