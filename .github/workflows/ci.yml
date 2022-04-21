@@ -32,6 +32,7 @@ jobs:
         echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
         sudo apt-get -qq update
         sudo apt-get install redis
+        sudo service redis-server stop
 
     - name: Generate TLS test certificates
       if: matrix.platform == 'ubuntu-latest'
