@@ -83,17 +83,21 @@ def addTLSArgs(benchmark_specs, env):
     if env.useTLS:
         benchmark_specs['args'].append('--tls')
         benchmark_specs['args'].append('--cert={}'.format(TLS_CERT))
-        benchmark_specs['args'].append('--key={}'.format(TLS_KEY))
         benchmark_specs['args'].append('--cacert={}'.format(TLS_CACERT))
+        if TLS_KEY != "":
+            benchmark_specs['args'].append('--key={}'.format(TLS_KEY))
+        else:
+            benchmark_specs['args'].append('--tls-skip-verify')
+            
 
 
-def get_default_memtier_config():
+def get_default_memtier_config(threads=10, clients=5, requests=1000):
     config = {
         "memtier_benchmark": {
             "binary": MEMTIER_BINARY,
-            "threads": 10,
-            "clients": 5,
-            "requests": 1000
+            "threads": threads,
+            "clients": clients,
+            "requests": requests
         },
     }
     return config
@@ -106,3 +110,4 @@ def ensure_clean_benchmark_folder(dirname):
     if os.path.exists(dirname):
         os.removedirs(dirname)
     os.makedirs(dirname)
+

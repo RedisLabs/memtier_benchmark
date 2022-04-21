@@ -25,7 +25,11 @@ stamp-h1
 .vscode/*
 .idea/*
 
+# tls helper related files
+tests/tls/*
+
 # memtier outputs
 *.hgrm
 *.txt
+!/tests/test_requirements.txt
 __pycache__
