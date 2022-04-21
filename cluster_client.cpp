@@ -358,9 +358,54 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
     }
 }
 
+
+void cluster_client::create_arbitrary_request(const arbitrary_command* cmd, struct timeval& timestamp, unsigned int conn_id) {
+    int cmd_size = 0;
+
+    benchmark_debug_log("%s [%s]:\n", cmd->command_name.c_str(), cmd->command.c_str());
+
+    for (unsigned int i = 0; i < cmd->command_args.size(); i++) {
+        const command_arg* arg = &cmd->command_args[i];
+
+        if (arg->type == const_type) {
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
+        } else if (arg->type == key_type) {
+            unsigned long long key_index;
+
+            // get key
+            if (!get_key_for_conn(conn_id,  get_arbitrary_obj_iter_type(cmd, m_executed_command_index), &key_index)) {
+                return;
+            }
+
+            assert(key_index >= 0);
+            assert(m_key_len > 0);
+
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_key_buffer, m_key_len);
+        } else if (arg->type == data_type) {
+            unsigned int value_len;
+            const char *value = m_obj_gen->get_value(0, &value_len);
+
+            assert(value != NULL);
+            assert(value_len > 0);
+
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
+        }
+    }
+
+    m_connections[conn_id]->send_arbitrary_command_end(m_executed_command_index, &timestamp, cmd_size);
+}
+
 // This function could use some urgent TLC -- but we need to do it without altering the behavior
 void cluster_client::create_request(struct timeval timestamp, unsigned int conn_id)
 {
+    // are we using arbitrary command?
+    if (m_config->arbitrary_commands->is_defined()) {
+        const arbitrary_command* executed_command = m_config->arbitrary_commands->get_next_executed_command(m_arbitrary_command_ratio_count,
+                                                                                                      m_executed_command_index);
+        create_arbitrary_request(executed_command, timestamp, conn_id);
+        return;
+    }
+
     // If the Set:Wait ratio is not 0, start off with WAITs
     if (m_config->wait_ratio.b &&
         (m_tot_wait_ops == 0 ||
@@ -416,16 +461,28 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
 void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp,
                                   request *request, protocol_response *response) {
     // update stats
-    if (request->m_type == rt_get) {
-        m_stats.update_moved_get_op(&timestamp,
+    switch (request->m_type) {
+        case rt_get:
+            m_stats.update_moved_get_op(&timestamp,
                                     request->m_size + response->get_total_len(),
                                     ts_diff(request->m_sent_time, timestamp));
-    } else if (request->m_type == rt_set) {
-        m_stats.update_moved_set_op(&timestamp,
+            break;
+        case rt_set:
+            m_stats.update_moved_set_op(&timestamp,
                                     request->m_size + response->get_total_len(),
                                     ts_diff(request->m_sent_time, timestamp));
-    } else {
-        assert(0);
+            break;
+        case rt_arbitrary: {
+            arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+            m_stats.update_moved_arbitrary_op(&timestamp,
+                                        request->m_size + response->get_total_len(),
+                                        ts_diff(request->m_sent_time, timestamp),
+                                        ar->index);
+            break;
+        }
+        default:
+            assert(0);
+            break;
     }
 
     // connection already issued 'cluster slots' command, wait for slots mapping to be updated
@@ -444,16 +501,28 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
 void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
                                 request *request, protocol_response *response) {
     // update stats
-    if (request->m_type == rt_get) {
-        m_stats.update_ask_get_op(&timestamp,
-                                    request->m_size + response->get_total_len(),
-                                    ts_diff(request->m_sent_time, timestamp));
-    } else if (request->m_type == rt_set) {
-        m_stats.update_ask_set_op(&timestamp,
-                                    request->m_size + response->get_total_len(),
-                                    ts_diff(request->m_sent_time, timestamp));
-    } else {
-        assert(0);
+    switch (request->m_type) {
+        case rt_get:
+            m_stats.update_ask_get_op(&timestamp,
+                                      request->m_size + response->get_total_len(),
+                                      ts_diff(request->m_sent_time, timestamp));
+            break;
+        case rt_set:
+            m_stats.update_ask_set_op(&timestamp,
+                                      request->m_size + response->get_total_len(),
+                                      ts_diff(request->m_sent_time, timestamp));
+            break;
+        case rt_arbitrary: {
+            arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+            m_stats.update_ask_arbitrary_op(&timestamp,
+                                              request->m_size + response->get_total_len(),
+                                              ts_diff(request->m_sent_time, timestamp),
+                                              ar->index);
+            break;
+        }
+        default:
+            assert(0);
+            break;
     }
 }
 

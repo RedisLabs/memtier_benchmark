@@ -52,6 +52,7 @@ public:
 
     // client manager api's
     virtual void handle_cluster_slots(protocol_response *r);
+    virtual void create_arbitrary_request(const arbitrary_command* cmd, struct timeval& timestamp, unsigned int conn_id);
     virtual void create_request(struct timeval timestamp, unsigned int conn_id);
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual void handle_response(unsigned int conn_id, struct timeval timestamp,

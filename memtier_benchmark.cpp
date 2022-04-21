@@ -313,9 +313,6 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     } else if (cfg->unix_socket) {
         fprintf(stderr, "error: cluster mode dose not support unix-socket option.\n");
         return false;
-    } else if (cfg->arbitrary_commands->is_defined()) {
-        fprintf(stderr, "error: cluster mode dose not support arbitrary command option.\n");
-        return false;
     }
 
     return true;

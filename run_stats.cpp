@@ -196,6 +196,17 @@ void run_stats::update_moved_set_op(struct timeval* ts, unsigned int bytes, unsi
     hdr_record_value(m_set_latency_histogram,latency);
 }
 
+void run_stats::update_moved_arbitrary_op(struct timeval *ts, unsigned int bytes,
+                                    unsigned int latency, size_t request_index) {
+    roll_cur_stats(ts);
+
+    m_cur_stats.m_ar_commands.at(request_index).update_moved_op(bytes, latency);
+    m_totals.update_op(bytes, latency);
+
+    struct hdr_histogram* hist = m_ar_commands_latency_histograms.at(request_index);
+    hdr_record_value(hist,latency);
+}
+
 void run_stats::update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
 {
     roll_cur_stats(ts);
@@ -212,6 +223,17 @@ void run_stats::update_ask_set_op(struct timeval* ts, unsigned int bytes, unsign
     m_cur_stats.m_set_cmd.update_ask_op(bytes, latency);
     m_totals.update_op(bytes, latency);
     hdr_record_value(m_set_latency_histogram,latency);
+}
+
+void run_stats::update_ask_arbitrary_op(struct timeval *ts, unsigned int bytes,
+                                          unsigned int latency, size_t request_index) {
+    roll_cur_stats(ts);
+
+    m_cur_stats.m_ar_commands.at(request_index).update_ask_op(bytes, latency);
+    m_totals.update_op(bytes, latency);
+
+    struct hdr_histogram* hist = m_ar_commands_latency_histograms.at(request_index);
+    hdr_record_value(hist,latency);
 }
 
 void run_stats::update_wait_op(struct timeval *ts, unsigned int latency)
@@ -975,11 +997,18 @@ void run_stats::print_moved_sec_column(output_table &table) {
 
     column.elements.push_back(*el.init_str("%12s ", "MOVED/sec"));
     column.elements.push_back(*el.init_str("%s", "-------------"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_moved_sec));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_moved_sec));
-    column.elements.push_back(*el.init_str("%12s ", "---"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec));
 
+    if (print_arbitrary_commands_results()) {
+        for (unsigned int i=0; i<m_totals.m_ar_commands.size(); i++) {
+            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_moved_sec));
+        }
+    } else {
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_moved_sec));
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_moved_sec));
+        column.elements.push_back(*el.init_str("%12s ", "---"));
+
+    }
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec));
     table.add_column(column);
 }
 
@@ -989,11 +1018,17 @@ void run_stats::print_ask_sec_column(output_table &table) {
 
     column.elements.push_back(*el.init_str("%12s ", "ASK/sec"));
     column.elements.push_back(*el.init_str("%s", "-------------"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ask_sec));
+    if (print_arbitrary_commands_results()) {
+        for (unsigned int i=0; i<m_totals.m_ar_commands.size(); i++) {
+            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_ask_sec));
+        }
+    } else {
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ask_sec));
     column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_ask_sec));
     column.elements.push_back(*el.init_str("%12s ", "---"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec));
 
+    }
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec));
     table.add_column(column);
 }
 
