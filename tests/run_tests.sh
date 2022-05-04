@@ -62,6 +62,7 @@ run_tests() {
 OSS_STANDALONE=${OSS_STANDALONE:-1}
 OSS_CLUSTER=${OSS_CLUSTER:-0}
 SHARDS=${SHARDS:-3}
+TEST=${TEST:-""}
 
 TLS_KEY=$ROOT/tests/tls/redis.key
 TLS_CERT=$ROOT/tests/tls/redis.crt
@@ -70,6 +71,7 @@ REDIS_SERVER=${REDIS_SERVER:-redis-server}
 MEMTIER_BINARY=$ROOT/memtier_benchmark
 
 RLTEST_ARGS=" --oss-redis-path $REDIS_SERVER"
+[[ "$TEST" != "" ]] && RLTEST_ARGS+=" --test $TEST"
 [[ $VERBOSE == 1 ]] && RLTEST_ARGS+=" -v"
 [[ $TLS == 1 ]] && RLTEST_ARGS+=" --tls-cert-file $TLS_CERT --tls-key-file $TLS_KEY --tls-ca-cert-file $TLS_CACERT --tls"
 
