@@ -332,27 +332,6 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
             return true;
         }
 
-        // handle key for other connection
-        unsigned int other_conn_id = m_slot_to_shard[hslot];
-
-        // in case we generated key for connection that is disconnected, 'slot to shard' map may need to be updated
-        if (m_connections[other_conn_id]->get_connection_state() == conn_disconnected) {
-            m_connections[conn_id]->set_cluster_slots();
-            return false;
-        }
-
-        // in case connection is during cluster slots command, his slots mapping not relevant
-        if (m_connections[other_conn_id]->get_cluster_slots_state() != slots_done)
-            continue;
-
-        // store key for other connection, if queue is not full
-        // In this case don't increment the m_reqs_generated given
-        // we're not sure the other connection will use it
-        key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
-        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE) {
-            key_idx_pool->push(*key_index);
-        }
-
         // don't exceed requests
         if (m_config->requests > 0 && m_reqs_generated >= m_config->requests)
             return false;
