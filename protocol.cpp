@@ -625,17 +625,22 @@ int redis_protocol::write_arbitrary_command(const char *rand_val, int rand_val_l
 }
 
 bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
+    int key_placeholder_count = 0;
     for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
         command_arg* current_arg = &cmd.command_args[i];
         current_arg->type = const_type;
 
         // check arg type
         if (current_arg->data.find(KEY_PLACEHOLDER) != std::string::npos) {
+            key_placeholder_count++;
             if (current_arg->data.length() != strlen(KEY_PLACEHOLDER)) {
                 benchmark_error_log("error: key placeholder can't combined with other data\n");
                 return false;
             }
-
+            if (key_placeholder_count > 1) {
+                benchmark_error_log("error: multiple key placeholders are not allowed on the same command\n");
+                return false;
+            }
             current_arg->type = key_type;
         } else if (current_arg->data.find(DATA_PLACEHOLDER) != std::string::npos) {
             if (current_arg->data.length() != strlen(DATA_PLACEHOLDER)) {
