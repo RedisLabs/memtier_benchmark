@@ -124,7 +124,7 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
         m_bev(NULL), m_pending_resp(0), m_connection_state(conn_disconnected),
-        m_authentication(auth_done), m_db_selection(select_done), m_cluster_slots(slots_done) {
+        m_hello(conf_done), m_authentication(auth_done), m_db_selection(select_done), m_cluster_slots(slots_done) {
     m_id = id;
     m_conns_manager = conns_man;
     m_config = config;
@@ -253,6 +253,7 @@ int shard_connection::connect(struct connect_info* addr) {
     // set required setup commands
     m_authentication = m_config->authenticate ? auth_none : auth_done;
     m_db_selection = m_config->select_db ? select_none : select_done;
+    m_hello = m_config->resp != 0 ? conf_none : conf_done;
 
     // setup socket
     int sockfd = setup_socket(addr);
@@ -294,6 +295,7 @@ void shard_connection::disconnect() {
     m_authentication = auth_done;
     m_db_selection = select_done;
     m_cluster_slots = slots_done;
+    m_hello = conf_done;
 }
 
 void shard_connection::set_address_port(const char* address, const char* port) {
@@ -340,7 +342,8 @@ void shard_connection::push_req(request* req) {
 bool shard_connection::is_conn_setup_done() {
     return m_authentication == auth_done &&
            m_db_selection == select_done &&
-           m_cluster_slots == slots_done;
+           m_cluster_slots == slots_done &&
+           m_hello == conf_done;
 }
 
 void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
@@ -356,6 +359,13 @@ void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
         m_protocol->select_db(m_config->select_db);
         push_req(new request(rt_select_db, 0, &timestamp, 0));
         m_db_selection = select_sent;
+    }
+
+    if (m_hello == conf_none) {
+        benchmark_debug_log("sending HELLO command.\n");
+        m_protocol->configure_protocol(m_config->resp == 3 ? PROTOCOL_CONF_RESP3 : PROTOCOL_CONF_RESP2);
+        push_req(new request(rt_hello, 0, &timestamp, 0));
+        m_hello = conf_sent;
     }
 
     if (m_cluster_slots == slots_none) {
@@ -413,6 +423,15 @@ void shard_connection::process_response(void)
 
                 m_cluster_slots = slots_done;
                 benchmark_debug_log("cluster slot command successful\n");
+            }
+            break;
+        case rt_hello:
+            if (r->is_error()) {
+                benchmark_error_log("error: HELLO failed [%s]\n", r->get_status());
+                error = true;
+            } else {
+                m_hello = conf_done;
+                benchmark_debug_log("HELLO successful.\n");
             }
             break;
         default:

@@ -83,6 +83,7 @@ struct benchmark_config {
     unsigned int reconnect_interval;
     int multi_key_get;
     const char *authenticate;
+    unsigned int resp;
     int select_db;
     bool no_expiry;
     bool resolve_on_connect;

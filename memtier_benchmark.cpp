@@ -352,6 +352,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     enum extended_options {
         o_test_time = 128,
         o_ratio,
+        o_resp,
         o_pipeline,
         o_data_size_range,
         o_data_size_list,
@@ -400,6 +401,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "port",                       1, 0, 'p' },
         { "unix-socket",                1, 0, 'S' },
         { "protocol",                   1, 0, 'P' },
+        { "resp",                       1, 0, o_resp },
 #ifdef USE_TLS
         { "tls",                        0, 0, o_tls },
         { "cert",                       1, 0, o_tls_cert },
@@ -588,6 +590,14 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->ratio = config_ratio(optarg);
                     if (!cfg->ratio.is_defined()) {
                         fprintf(stderr, "error: ratio must be expressed as [0-n]:[0-n].\n");
+                        return -1;
+                    }
+                    break;
+                case o_resp:
+                    endptr = NULL;
+                    cfg->resp = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!cfg->resp || !endptr || *endptr != '\0' || cfg->resp < 2 || cfg->resp > 3) {
+                        fprintf(stderr, "error: resp must be either 2 or 3.\n");
                         return -1;
                     }
                     break;
@@ -860,6 +870,7 @@ void usage() {
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
             "                                 supported protocols are memcache_text,\n"
             "                                 memcache_binary.\n"
+            "      --resp                     RESP protocol version.\n"
             "  -a, --authenticate=CREDENTIALS Authenticate using specified credentials.\n"
             "                                 A simple password is used for memcache_text\n"
             "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"

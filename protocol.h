@@ -124,7 +124,7 @@ public:
     void set_status(const char *status);
     const char *get_status(void);
 
-    void set_error(bool error);
+    void set_error();
     bool is_error(void);
 
     void set_value(const char *value, unsigned int value_len);
@@ -168,6 +168,11 @@ public:
     void clear(void);
 };
 
+enum PROTOCOL_CONFIGURATION {
+    PROTOCOL_CONF_RESP2,
+    PROTOCOL_CONF_RESP3,
+};
+
 class abstract_protocol {
 protected:
     struct evbuffer* m_read_buf;
@@ -184,6 +189,7 @@ public:
 
     virtual int select_db(int db) = 0;
     virtual int authenticate(const char *credentials) = 0;
+    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf) = 0;
     virtual int write_command_cluster_slots() = 0;
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset) = 0;
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;

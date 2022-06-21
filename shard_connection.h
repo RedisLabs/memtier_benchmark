@@ -38,11 +38,12 @@ class object_generator;
 
 enum connection_state { conn_disconnected, conn_in_progress, conn_connected };
 
+enum configuration_state {conf_none, conf_sent, conf_done};
 enum authentication_state { auth_none, auth_sent, auth_done };
 enum select_db_state { select_none, select_sent, select_done };
 enum cluster_slots_state { slots_none, slots_sent, slots_done };
 
-enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots };
+enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots, rt_hello };
 struct request {
     request_type m_type;
     struct timeval m_sent_time;
@@ -179,10 +180,10 @@ private:
 
     enum connection_state m_connection_state;
 
+    enum configuration_state m_hello;
     enum authentication_state m_authentication;
     enum select_db_state m_db_selection;
     enum cluster_slots_state m_cluster_slots;
-
 };
 
 #endif //MEMTIER_BENCHMARK_SHARD_CONNECTION_H

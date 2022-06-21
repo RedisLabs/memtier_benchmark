@@ -65,9 +65,9 @@ protocol_response::~protocol_response()
     clear();
 }
 
-void protocol_response::set_error(bool error)
+void protocol_response::set_error()
 {
-    m_error = error;
+    m_error = true;
 }
 
 bool protocol_response::is_error(void)
@@ -163,12 +163,20 @@ protected:
 
     unsigned int m_total_bulks_count;
     mbulk_size_el* m_current_mbulk;
+    bool m_resp3;
+    bool m_attribute;
+
+    bool aggregate_type(char c);
+    bool blob_type(char c);
+    bool single_type(char c);
+    bool response_ended();
 
 public:
-    redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL) { }
+    redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL), m_resp3(false), m_attribute(false) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -249,6 +257,21 @@ int redis_protocol::authenticate(const char *credentials)
             user,
             strlen(password),
             password);
+    }
+    return size;
+}
+
+int redis_protocol::configure_protocol(enum PROTOCOL_CONFIGURATION conf) {
+    int size = 0;
+    if (conf == PROTOCOL_CONF_RESP2 || conf == PROTOCOL_CONF_RESP3) {
+        m_resp3 = conf == PROTOCOL_CONF_RESP3;
+        size = evbuffer_add_printf(m_write_buf,
+                                   "*2\r\n"
+                                   "$5\r\n"
+                                   "HELLO\r\n"
+                                   "$1\r\n"
+                                   "%d\r\n",
+                                   conf == PROTOCOL_CONF_RESP2 ? 2 : 3);
     }
     return size;
 }
@@ -403,6 +426,48 @@ int redis_protocol::write_command_wait(unsigned int num_slaves, unsigned int tim
     return size;
 }
 
+bool redis_protocol::aggregate_type(char c) {
+    if (c == '*')
+        return true;
+
+    if (m_resp3 && (c == '%' || c == '~' || c == '|'))
+        return true;
+
+    return false;
+}
+
+bool redis_protocol::blob_type(char c) {
+    if (c == '$')
+        return true;
+
+    if (m_resp3 && (c == '!' || c == '='))
+        return true;
+
+    return false;
+}
+
+bool redis_protocol::single_type(char c) {
+    if (c == '+' || c == '-' || c == ':')
+        return true;
+
+    if (m_resp3 && (c == '_' || c == ',' || c == '#' || c == '('))
+        return true;
+
+    return false;
+}
+
+bool redis_protocol::response_ended() {
+    if (m_total_bulks_count != 0)
+        return false;
+
+    if (m_attribute) {
+        m_attribute = false;
+        return false;
+    }
+
+    return true;
+}
+
 int redis_protocol::parse_response(void)
 {
     char *line;
@@ -415,6 +480,7 @@ int redis_protocol::parse_response(void)
                 m_last_response.clear();
                 m_response_len = 0;
                 m_total_bulks_count = 0;
+                m_attribute = 0;
                 m_response_state = rs_read_line;
 
                 break;
@@ -429,7 +495,7 @@ int redis_protocol::parse_response(void)
                 // count CRLF
                 m_response_len += res_len + 2;
 
-                if (line[0] == '*') {
+                if (aggregate_type(line[0])) {
                     int count = strtol(line + 1, NULL, 10);
 
                     // in case of nested mbulk, the mbulk is one of the total bulks
@@ -440,6 +506,18 @@ int redis_protocol::parse_response(void)
                     // from bulks counter perspective every count < 0 is equal to 0, because it's not followed by bulks.
                     if (count < 0) {
                         count = 0;
+                    }
+
+                    if (line[0] == '|') {
+                        // Nested attribute?
+                        assert(!m_attribute);
+
+                        m_attribute = true;
+                    }
+
+                    // Map or Attribute contain key-value pair
+                    if (line[0] == '%' || line[0] == '|') {
+                        count *= 2;
                     }
 
                     if (m_keep_value) {
@@ -461,12 +539,12 @@ int redis_protocol::parse_response(void)
                     m_last_response.set_status(line);
                     m_total_bulks_count += count;
 
-                    if (m_total_bulks_count == 0) {
+                    if (response_ended()) {
                         m_last_response.set_total_len(m_response_len);
                         m_response_state = rs_initial;
                         return 1;
                     }
-                } else if (line[0] == '$') {
+                } else if (blob_type(line[0])) {
                     // if it's single bulk (not part of mbulk), we count it here
                     if (m_total_bulks_count == 0) {
                         m_total_bulks_count++;
@@ -474,6 +552,9 @@ int redis_protocol::parse_response(void)
 
                     m_bulk_len = strtol(line + 1, NULL, 10);
                     m_last_response.set_status(line);
+
+                    if (line[0] == '!')
+                        m_last_response.set_error();
 
                     /*
                      * only on negative bulk, the data ends right after the first CRLF ($-1\r\n), so
@@ -484,7 +565,7 @@ int redis_protocol::parse_response(void)
                     } else {
                         m_response_state = rs_read_bulk;
                     }
-                } else if (line[0] == '+' || line[0] == '-' || line[0] == ':') {
+                } else if (single_type(line[0])) {
                     // if it's single bulk (not part of mbulk), we count it here
                     if (m_total_bulks_count == 0) {
                         m_total_bulks_count++;
@@ -505,12 +586,12 @@ int redis_protocol::parse_response(void)
                     }
 
                     if (line[0] == '-')
-                        m_last_response.set_error(true);
+                        m_last_response.set_error();
 
                     m_last_response.set_status(line);
                     m_total_bulks_count--;
 
-                    if (m_total_bulks_count == 0) {
+                    if (response_ended()) {
                         m_last_response.set_total_len(m_response_len);
                         m_response_state = rs_initial;
                         return 1;
@@ -590,7 +671,7 @@ int redis_protocol::parse_response(void)
 
                 m_total_bulks_count--;
 
-                if (m_total_bulks_count == 0) {
+                if (response_ended()) {
                     m_last_response.set_total_len(m_response_len);
                     m_response_state = rs_initial;
                     return 1;
@@ -681,6 +762,7 @@ public:
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -701,6 +783,11 @@ int memcache_text_protocol::select_db(int db)
 }
 
 int memcache_text_protocol::authenticate(const char *credentials)
+{
+    assert(0);
+}
+
+int memcache_text_protocol::configure_protocol(enum PROTOCOL_CONFIGURATION conf)
 {
     assert(0);
 }
@@ -826,7 +913,7 @@ int memcache_text_protocol::parse_response(void)
                     m_response_state = rs_read_end;
                     break;
                 } else {
-                    m_last_response.set_error(true);
+                    m_last_response.set_error();
                     benchmark_debug_log("unknown response: %s\n", line);
                     return -1;
                 }
@@ -897,6 +984,7 @@ public:
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -950,6 +1038,10 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     evbuffer_add(m_write_buf, passwd, passwd_len);
 
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
+}
+
+int memcache_binary_protocol::configure_protocol(enum PROTOCOL_CONFIGURATION conf) {
+    assert(0);
 }
 
 int memcache_binary_protocol::write_command_cluster_slots()
@@ -1086,7 +1178,7 @@ int memcache_binary_protocol::parse_response(void)
                     status == PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND ||
                     status == PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED ||
                     status == PROTOCOL_BINARY_RESPONSE_EBUSY) {
-                    m_last_response.set_error(true);
+                    m_last_response.set_error();
                 }
 
                 if (ntohl(m_response_hdr.message.header.response.bodylen) > 0) {
