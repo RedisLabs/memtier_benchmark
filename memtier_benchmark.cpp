@@ -78,6 +78,18 @@ void benchmark_log(int level, const char *fmt, ...)
     va_end(args);
 }
 
+bool is_redis_protocol(enum PROTOCOL_TYPE type) {
+    return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3);
+}
+
+static const char * get_protocol_name(enum PROTOCOL_TYPE type) {
+    if (type == PROTOCOL_REDIS_DEFAULT) return "redis";
+    else if (type == PROTOCOL_RESP2) return "resp2";
+    else if (type == PROTOCOL_RESP3) return "resp3";
+    else if (type == PROTOCOL_MEMCACHE_TEXT) return "memcache_text";
+    else if (type == PROTOCOL_MEMCACHE_BINARY) return "memcache_binary";
+    else return "none";
+}
 
 static void config_print(FILE *file, struct benchmark_config *cfg)
 {
@@ -135,7 +147,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->server,
         cfg->port,
         cfg->unix_socket,
-        cfg->protocol,
+        get_protocol_name(cfg->protocol),
 #ifdef USE_TLS
         cfg->tls ? "yes" : "no",
         cfg->tls_cert,
@@ -191,7 +203,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
-    jsonhandler->write_obj("protocol"          ,"\"%s\"",      	cfg->protocol);
+    jsonhandler->write_obj("protocol"          ,"\"%s\"",      	get_protocol_name(cfg->protocol));
     jsonhandler->write_obj("out_file"          ,"\"%s\"",      	cfg->out_file);
 #ifdef USE_TLS
     jsonhandler->write_obj("tls"               ,"\"%s\"",      	cfg->tls ? "true" : "false");
@@ -245,8 +257,6 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->server = "localhost";
     if (!cfg->port && !cfg->unix_socket)
         cfg->port = 6379;
-    if (!cfg->protocol)
-        cfg->protocol = "redis";
     if (!cfg->run_count)
         cfg->run_count = 1;
     if (!cfg->clients)
@@ -307,7 +317,7 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     } else if (cfg->wait_ratio.is_defined()) {
         fprintf(stderr, "error: cluster mode dose not support wait-ratio option.\n");
         return false;
-    } else if (cfg->protocol && strcmp(cfg->protocol, "redis")) {
+    } else if (!is_redis_protocol(cfg->protocol)) {
         fprintf(stderr, "error: cluster mode supported only in redis protocol.\n");
         return false;
     } else if (cfg->unix_socket) {
@@ -352,7 +362,6 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     enum extended_options {
         o_test_time = 128,
         o_ratio,
-        o_resp,
         o_pipeline,
         o_data_size_range,
         o_data_size_list,
@@ -401,7 +410,6 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "port",                       1, 0, 'p' },
         { "unix-socket",                1, 0, 'S' },
         { "protocol",                   1, 0, 'P' },
-        { "resp",                       1, 0, o_resp },
 #ifdef USE_TLS
         { "tls",                        0, 0, o_tls },
         { "cert",                       1, 0, o_tls_cert },
@@ -494,13 +502,20 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     }
                     break;
                 case 'P':
-                    if (strcmp(optarg, "memcache_text") &&
-                        strcmp(optarg, "memcache_binary") &&
-                        strcmp(optarg, "redis")) {
-                                fprintf(stderr, "error: supported protocols are 'memcache_text', 'memcache_binary' and 'redis'.\n");
-                                return -1;
+                    if (strcmp(optarg, "redis") == 0) {
+                        cfg->protocol = PROTOCOL_REDIS_DEFAULT;
+                    } else if (strcmp(optarg, "resp2") == 0) {
+                        cfg->protocol = PROTOCOL_RESP2;
+                    } else if (strcmp(optarg, "resp3") == 0) {
+                        cfg->protocol = PROTOCOL_RESP3;
+                    } else if (strcmp(optarg, "memcache_text") == 0) {
+                        cfg->protocol = PROTOCOL_MEMCACHE_TEXT;
+                    } else if (strcmp(optarg, "memcache_binary") == 0) {
+                        cfg->protocol = PROTOCOL_MEMCACHE_BINARY;
+                    } else {
+                        fprintf(stderr, "error: supported protocols are 'memcache_text', 'memcache_binary', 'redis', 'resp2' and resp3'.\n");
+                        return -1;
                     }
-                    cfg->protocol = optarg;
                     break;
                 case 'o':
                     cfg->out_file = optarg;
@@ -590,14 +605,6 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->ratio = config_ratio(optarg);
                     if (!cfg->ratio.is_defined()) {
                         fprintf(stderr, "error: ratio must be expressed as [0-n]:[0-n].\n");
-                        return -1;
-                    }
-                    break;
-                case o_resp:
-                    endptr = NULL;
-                    cfg->resp = (unsigned int) strtoul(optarg, &endptr, 10);
-                    if (!cfg->resp || !endptr || *endptr != '\0' || cfg->resp < 2 || cfg->resp > 3) {
-                        fprintf(stderr, "error: resp must be either 2 or 3.\n");
                         return -1;
                     }
                     break;
@@ -867,10 +874,9 @@ void usage() {
             "  -s, --server=ADDR              Server address (default: localhost)\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
-            "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
-            "                                 supported protocols are memcache_text,\n"
-            "                                 memcache_binary.\n"
-            "      --resp                     RESP protocol version.\n"
+            "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).\n"
+            "                                 other supported protocols are resp2, resp3, memcache_text and memcache_binary.\n"
+            "                                 when using one of resp2 or resp3 the redis protocol version will be set via HELLO command.\n"
             "  -a, --authenticate=CREDENTIALS Authenticate using specified credentials.\n"
             "                                 A simple password is used for memcache_text\n"
             "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"
@@ -1421,12 +1427,11 @@ int main(int argc, char *argv[])
     }
 
     if (cfg.authenticate) {
-        if (strcmp(cfg.protocol, "redis") != 0  &&
-            strcmp(cfg.protocol, "memcache_binary") != 0) {
+        if (cfg.protocol == PROTOCOL_MEMCACHE_TEXT) {
                 fprintf(stderr, "error: authenticate can only be used with redis or memcache_binary.\n");
                 usage();
         }
-        if (strcmp(cfg.protocol, "memcache_binary") == 0 &&
+        if (cfg.protocol == PROTOCOL_MEMCACHE_BINARY &&
             strchr(cfg.authenticate, ':') == NULL) {
                 fprintf(stderr, "error: binary_memcache credentials must be in the form of USER:PASSWORD.\n");
                 usage();
@@ -1436,7 +1441,7 @@ int main(int argc, char *argv[])
         obj_gen->set_random_data(cfg.random_data);
     }
 
-    if (cfg.select_db > 0 && strcmp(cfg.protocol, "redis")) {
+    if (cfg.select_db > 0 && !is_redis_protocol(cfg.protocol)) {
         fprintf(stderr, "error: select-db can only be used with redis protocol.\n");
         usage();
     }
@@ -1445,7 +1450,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "error: data-offset too long\n");
             usage();
         }
-        if (cfg.expiry_range.min || cfg.expiry_range.max || strcmp(cfg.protocol, "redis")) {
+        if (cfg.expiry_range.min || cfg.expiry_range.max || !is_redis_protocol(cfg.protocol)) {
             fprintf(stderr, "error: data-offset can only be used with redis protocol, and cannot be used with expiry\n");
             usage();
         }

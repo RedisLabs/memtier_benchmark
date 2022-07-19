@@ -41,12 +41,20 @@ enum key_pattern_index {
     key_pattern_get       = 2
 };
 
+enum PROTOCOL_TYPE {
+    PROTOCOL_REDIS_DEFAULT,
+    PROTOCOL_RESP2,
+    PROTOCOL_RESP3,
+    PROTOCOL_MEMCACHE_TEXT,
+    PROTOCOL_MEMCACHE_BINARY,
+};
+
 struct benchmark_config {
     const char *server;
     unsigned short port;
     struct server_addr *server_addr;
     const char *unix_socket;
-    const char *protocol;
+    enum PROTOCOL_TYPE protocol;
     const char *out_file;
     const char *client_stats;
     unsigned int run_count;
@@ -83,7 +91,6 @@ struct benchmark_config {
     unsigned int reconnect_interval;
     int multi_key_get;
     const char *authenticate;
-    unsigned int resp;
     int select_db;
     bool no_expiry;
     bool resolve_on_connect;
@@ -110,5 +117,6 @@ struct benchmark_config {
 
 extern void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...);
 extern void benchmark_log(int level, const char *fmt, ...);
+bool is_redis_protocol(enum PROTOCOL_TYPE type);
 
 #endif /* _MEMTIER_BENCHMARK_H */

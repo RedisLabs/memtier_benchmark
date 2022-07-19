@@ -253,7 +253,7 @@ int shard_connection::connect(struct connect_info* addr) {
     // set required setup commands
     m_authentication = m_config->authenticate ? setup_none : setup_done;
     m_db_selection = m_config->select_db ? setup_none : setup_done;
-    m_hello = m_config->resp != 0 ? setup_none : setup_done;
+    m_hello = (m_config->protocol == PROTOCOL_RESP2 || m_config->protocol == PROTOCOL_RESP3) ? setup_none : setup_done;
 
     // setup socket
     int sockfd = setup_socket(addr);
@@ -363,7 +363,7 @@ void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
 
     if (m_hello == setup_none) {
         benchmark_debug_log("sending HELLO command.\n");
-        m_protocol->configure_protocol(m_config->resp == 3 ? PROTOCOL_CONF_RESP3 : PROTOCOL_CONF_RESP2);
+        m_protocol->configure_protocol(m_config->protocol);
         push_req(new request(rt_hello, 0, &timestamp, 0));
         m_hello = setup_sent;
     }

@@ -176,7 +176,7 @@ public:
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf);
+    virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -261,17 +261,17 @@ int redis_protocol::authenticate(const char *credentials)
     return size;
 }
 
-int redis_protocol::configure_protocol(enum PROTOCOL_CONFIGURATION conf) {
+int redis_protocol::configure_protocol(enum PROTOCOL_TYPE type) {
     int size = 0;
-    if (conf == PROTOCOL_CONF_RESP2 || conf == PROTOCOL_CONF_RESP3) {
-        m_resp3 = conf == PROTOCOL_CONF_RESP3;
+    if (type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3) {
+        m_resp3 = type == PROTOCOL_RESP3;
         size = evbuffer_add_printf(m_write_buf,
                                    "*2\r\n"
                                    "$5\r\n"
                                    "HELLO\r\n"
                                    "$1\r\n"
                                    "%d\r\n",
-                                   conf == PROTOCOL_CONF_RESP2 ? 2 : 3);
+                                   type == PROTOCOL_RESP2 ? 2 : 3);
     }
     return size;
 }
@@ -762,7 +762,7 @@ public:
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf);
+    virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -787,7 +787,7 @@ int memcache_text_protocol::authenticate(const char *credentials)
     assert(0);
 }
 
-int memcache_text_protocol::configure_protocol(enum PROTOCOL_CONFIGURATION conf)
+int memcache_text_protocol::configure_protocol(enum PROTOCOL_TYPE type)
 {
     assert(0);
 }
@@ -984,7 +984,7 @@ public:
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
-    virtual int configure_protocol(enum PROTOCOL_CONFIGURATION conf);
+    virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -1040,7 +1040,7 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
 }
 
-int memcache_binary_protocol::configure_protocol(enum PROTOCOL_CONFIGURATION conf) {
+int memcache_binary_protocol::configure_protocol(enum PROTOCOL_TYPE type) {
     assert(0);
 }
 
@@ -1246,18 +1246,16 @@ int memcache_binary_protocol::write_arbitrary_command(const char *val, int val_l
 
 /////////////////////////////////////////////////////////////////////////
 
-class abstract_protocol *protocol_factory(const char *proto_name)
+class abstract_protocol *protocol_factory(enum PROTOCOL_TYPE type)
 {
-    assert(proto_name != NULL);
-
-    if (strcmp(proto_name, "redis") == 0) {
+    if (is_redis_protocol(type)) {
         return new redis_protocol();
-    } else if (strcmp(proto_name, "memcache_text") == 0) {
+    } else if (type == PROTOCOL_MEMCACHE_TEXT) {
         return new memcache_text_protocol();
-    } else if (strcmp(proto_name, "memcache_binary") == 0) {
+    } else if (type == PROTOCOL_MEMCACHE_BINARY) {
         return new memcache_binary_protocol();
     } else {
-        benchmark_error_log("Error: unknown protocol '%s'.\n", proto_name);
+        benchmark_error_log("Error: unknown protocol type: %d.\n", type);
         return NULL;
     }
 }
