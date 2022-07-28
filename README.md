@@ -39,8 +39,8 @@ The following tools are required
 
 On a CentOS 6.x system, use the following to install prerequisites:
 ```
-# yum install autoconf automake make gcc-c++ 
-# yum install pcre-devel zlib-devel libmemcached-devel
+# yum install autoconf automake make gcc-c++
+# yum install pcre-devel zlib-devel libmemcached-devel libevent-devel openssl-devel
 ```
 
 CentOS 6.4 ships with older versions of libevent, which must be manually built
@@ -98,7 +98,7 @@ After downloading the source tree, use standard autoconf/automake commands:
 $ autoreconf -ivf
 $ ./configure
 $ make
-$ make install
+$ sudo make install
 ```
 
 #### Testing
