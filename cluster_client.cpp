@@ -342,7 +342,7 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
         }
 
         // in case connection is during cluster slots command, his slots mapping not relevant
-        if (m_connections[other_conn_id]->get_cluster_slots_state() != slots_done)
+        if (m_connections[other_conn_id]->get_cluster_slots_state() != setup_done)
             continue;
 
         // store key for other connection, if queue is not full
@@ -429,7 +429,7 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
     }
 
     // connection already issued 'cluster slots' command, wait for slots mapping to be updated
-    if (m_connections[conn_id]->get_cluster_slots_state() != slots_done)
+    if (m_connections[conn_id]->get_cluster_slots_state() != setup_done)
         return;
 
     // queue may stored uncorrected mapping indexes, empty them
