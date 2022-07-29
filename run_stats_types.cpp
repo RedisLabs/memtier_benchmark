@@ -35,8 +35,8 @@ one_sec_cmd_stats::one_sec_cmd_stats() :
     m_ask(0),
     m_total_latency(0),
     m_avg_latency(0.0),
-    m_max_latency(0.0),
-    m_min_latency(0.0) {
+    m_min_latency(0.0),
+    m_max_latency(0.0) {
 }
 
 

@@ -128,6 +128,7 @@ void run_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
     m_totals.setup_arbitrary_commands(n_arbitrary_commands);
     m_cur_stats.setup_arbitrary_commands(n_arbitrary_commands);
     m_ar_commands_latency_histograms.resize(n_arbitrary_commands);
+    inst_m_ar_commands_latency_histograms.resize(n_arbitrary_commands);
 }
 
 void run_stats::set_start_time(struct timeval* start_time)
