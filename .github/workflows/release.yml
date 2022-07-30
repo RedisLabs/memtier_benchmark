@@ -1,0 +1,164 @@
+name: Build and Publish to APT
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-source-package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dist: [jammy, focal, bionic, bookworm, bullseye, buster]
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: sources
+    - name: Install dependencies
+      run: |
+          sudo apt-get update && \
+          sudo apt-get install \
+            debhelper dput libevent-dev libpcre2-dev libssl-dev pkg-config
+    - name: Create changelog
+      env:
+        VERSION: ${{ github.event.release.tag_name }}
+        DIST: ${{ matrix.dist }}
+      run: |
+        mkdir -p sources/debian
+        (echo "memtier-benchmark ($VERSION~$DIST) $DIST; urgency=medium"
+         echo ""
+         echo "  * Release ${{ github.event.release.tag_name }}: ${{ github.event.release.html_url }}"
+         echo ""
+         echo " -- Redis Team <oss@redis.com>  $(date -R)") > sources/debian/changelog
+    - name: Build source package
+      run: |
+          cd sources && dpkg-buildpackage -S
+    - name: Upload source package artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: source-${{ matrix.dist }}
+        path: |
+            *.debian.tar.*
+            *.dsc
+            memtier-benchmark_*.tar.*
+
+  build-binary-package:
+    runs-on: ubuntu-latest
+    environment: build
+    strategy:
+      matrix:
+        dist: [jammy, focal, bionic, bookworm, bullseye, buster]
+        arch: [i386, amd64, arm64, armhf]
+        exclude:
+        - dist: focal
+          arch: i386
+        - dist: jammy
+          arch: i386
+    needs: build-source-package
+    steps:
+    - uses: actions/checkout@v2
+    - name: Determine build architecture
+      run: |
+          if [ ${{ matrix.arch }} = "i386" ]; then
+              BUILD_ARCH=i386
+          else
+              BUILD_ARCH=amd64
+          fi
+          echo "BUILD_ARCH=${BUILD_ARCH}" >> $GITHUB_ENV
+    - name: Setup APT Signing key
+      run: |
+          mkdir -m 0700 -p ~/.gnupg
+          echo "$APT_SIGNING_KEY" | gpg --import
+      env:
+        APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+    - name: Install dependencies
+      run: |
+          sudo apt-get update && \
+          sudo apt-get install \
+            sbuild debhelper
+          sudo sbuild-adduser $USER
+    - name: Prepare sbuild environment
+      run: sudo ./debian/setup_sbuild.sh ${{ matrix.dist }} ${{ env.BUILD_ARCH }}
+    - name: Get source package
+      uses: actions/download-artifact@v2
+      with:
+        name: source-${{ matrix.dist }}
+    - name: Build binary package
+      run: |
+          sudo sbuild \
+            --nolog \
+            --host ${{ matrix.arch }} \
+            --build ${{ env.BUILD_ARCH }} \
+            --dist ${{ matrix.dist }} *.dsc
+    - name: Upload binary package artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: binary-${{ matrix.dist }}-${{ matrix.arch }}
+        path: |
+          *.deb
+    - name: Upload as release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          *.deb
+
+  smoke-test-packages:
+    runs-on: ubuntu-latest
+    needs: build-binary-package
+    env:
+      ARCH: amd64
+    strategy:
+      matrix:
+        image: ["ubuntu:jammy", "ubuntu:focal", "ubuntu:bionic", "debian:bookworm", "debian:bullseye", "ubuntu:bionic"]
+    container: ${{ matrix.image }}
+    steps:
+    - name: Get binary packages
+      uses: actions/download-artifact@v2
+    - name: Install packages
+      run: |
+        apt-get update
+        cd binary-$(echo ${{ matrix.image }} | cut -d: -f2)-${{ env.ARCH }} && apt install --yes ./*.deb
+
+  publish-to-apt:
+    if: github.event.release.prerelease == false
+    env:
+      DEB_S3_VERSION: "0.11.3"
+    runs-on: ubuntu-latest
+    environment: build
+    needs: smoke-test-packages
+    steps:
+    - name: Setup APT Signing key
+      run: |
+          mkdir -m 0700 -p ~/.gnupg
+          echo "$APT_SIGNING_KEY" | gpg --import
+      env:
+        APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+    - name: Get binary packages
+      uses: actions/download-artifact@v2
+    - name: Setup ruby
+      uses: actions/setup-ruby@v1
+      with:
+          ruby-version: "2.7"
+    - name: Install deb-s3
+      run: |
+          curl -sLO https://github.com/deb-s3/deb-s3/releases/download/${{ env.DEB_S3_VERSION }}/deb-s3-${{ env.DEB_S3_VERSION }}.gem
+          gem install deb-s3-${{ env.DEB_S3_VERSION }}.gem
+    - name: Upload packages
+      run: |
+        # Quick hack to deal with duplicate _all packages
+        rm -f binary-*-i386/*_all.deb
+        for dir in binary-*; do \
+            dist=$(echo $dir | cut -d- -f 2) ; \
+            deb-s3 upload \
+                --bucket ${{ secrets.APT_S3_BUCKET }} \
+                --s3-region ${{ secrets.APT_S3_REGION }} \
+                --codename $dist \
+                --preserve-versions \
+                --fail-if-exists \
+                --sign \
+                --prefix deb \
+                $dir/*.deb ; \
+        done
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.APT_S3_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.APT_S3_SECRET_ACCESS_KEY }}

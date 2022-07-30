@@ -1,8 +1,8 @@
 Source: memtier-benchmark
 Section: admin
 Priority: optional
-Maintainer: Redis Labs <oss@redislabs.com>
-Build-Depends: debhelper-compat (= 12), dh-autoreconf, bash-completion, pkg-config, libpcre3-dev, libevent-dev, libssl-dev, zlib1g-dev
+Maintainer: Redis Ltd. <oss@redislabs.com>
+Build-Depends: debhelper-compat (= 10), dh-autoreconf, bash-completion, pkg-config, libpcre3-dev, libevent-dev, libssl-dev, zlib1g-dev
 Standards-Version: 4.4.1
 Homepage: https://github.com/RedisLabs/memtier_benchmark
 
