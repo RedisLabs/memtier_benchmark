@@ -409,7 +409,7 @@ void run_stats::save_csv_set_get_commands(FILE *f, bool cluster_mode) {
     percentiles = &iter.specifics.percentiles;
     while (hdr_iter_next(&iter)){
         double  value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-        fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+        fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
     }
     fprintf(f, "\n" "Full-Test SET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
@@ -417,7 +417,7 @@ void run_stats::save_csv_set_get_commands(FILE *f, bool cluster_mode) {
     percentiles = &iter.specifics.percentiles;
     while (hdr_iter_next(&iter)){
         double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-        fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+        fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
     }
 
     fprintf(f, "\n" "Full-Test WAIT Latency\n");
@@ -426,7 +426,7 @@ void run_stats::save_csv_set_get_commands(FILE *f, bool cluster_mode) {
     percentiles = &iter.specifics.percentiles;
     while (hdr_iter_next(&iter)){
         double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-        fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+        fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
     }
 
     // cluster mode data
@@ -494,7 +494,7 @@ void run_stats::save_csv_arbitrary_commands(FILE *f, arbitrary_command_list& com
         percentiles = &iter.specifics.percentiles;
         while (hdr_iter_next(&iter)){
             double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-            fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+            fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
         }
     }
 }
@@ -869,11 +869,11 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
 
 void histogram_print(FILE * out, json_handler * jsonhandler, const char * type, float msec, float percent)
 {
-    fprintf(out, "%-6s %8.3f %12.2f\n", type, msec, percent);
+    fprintf(out, "%-6s %8.3f %12.3f\n", type, msec, percent);
     if (jsonhandler != NULL){
         jsonhandler->open_nesting(NULL);
         jsonhandler->write_obj("<=msec","%.3f", msec);
-        jsonhandler->write_obj("percent","%.2f", percent);
+        jsonhandler->write_obj("percent","%.3f", percent);
         jsonhandler->close_nesting();
     }
 }
