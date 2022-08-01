@@ -931,7 +931,7 @@ void usage() {
             "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "\n"
             "Object Options:\n"
-            "  -d  --data-size=SIZE           Object data size (default: 32)\n"
+            "  -d  --data-size=SIZE           Object data size in bytes (default: 32)\n"
             "      --data-offset=OFFSET       Actual size of value will be data-size + data-offset\n"
             "                                 Will use SETRANGE / GETRANGE (default: 0)\n"
             "  -R  --random-data              Indicate that data should be randomized\n"
