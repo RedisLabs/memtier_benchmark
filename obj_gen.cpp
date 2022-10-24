@@ -440,7 +440,7 @@ const char* object_generator::get_value(unsigned long long key_index, unsigned i
 
     // modify object content in case of random data
     if (m_random_data) {
-        m_value_buffer[m_value_buffer_mutation_pos++]++;
+        m_value_buffer[m_value_buffer_mutation_pos++] += m_random.get_random();
         if (m_value_buffer_mutation_pos >= m_value_buffer_size)
             m_value_buffer_mutation_pos = 0;
     }
