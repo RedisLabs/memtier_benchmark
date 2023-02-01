@@ -1291,8 +1291,7 @@ int main(int argc, char *argv[])
         SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
 
         if (cfg.tls_cert) {
-            if (!SSL_CTX_use_certificate_file(cfg.openssl_ctx, cfg.tls_cert,
-                        SSL_FILETYPE_PEM)) {
+            if (!SSL_CTX_use_certificate_chain_file(cfg.openssl_ctx, cfg.tls_cert)) {
                 ERR_print_errors_fp(stderr);
                 fprintf(stderr, "Error: Failed to load certificate file.\n");
                 exit(1);
