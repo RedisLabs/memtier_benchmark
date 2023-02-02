@@ -53,14 +53,14 @@ jobs:
     - name: Test OSS-CLUSTER TCP
       timeout-minutes: 10
       run: |
-        OSS_STANDALONE=0 OSS_CLUSTER=1 \
+        OSS_STANDALONE=0 OSS_CLUSTER=1 VERBOSE=1 \
         ./tests/run_tests.sh
 
     - name: Test OSS-CLUSTER TCP TLS
       timeout-minutes: 10
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 \
+        OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 VERBOSE=1 \
         ./tests/run_tests.sh
 
   build-macos:

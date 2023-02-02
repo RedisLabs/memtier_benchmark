@@ -495,7 +495,6 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
 void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
                                 request *request, protocol_response *response) {
     // update stats
-    // update stats
     if (request->m_type == rt_get) {
         m_stats.update_ask_get_op(&timestamp,
                                     request->m_size + response->get_total_len(),
