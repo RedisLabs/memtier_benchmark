@@ -97,6 +97,7 @@ protected:
     totals m_totals;
 
     std::list<one_second_stats> m_stats;
+    std::vector<float> quantiles_list;
 
     // current second stats ( appended to m_stats and reset every second )
     one_second_stats m_cur_stats;
@@ -105,6 +106,12 @@ protected:
     safe_hdr_histogram m_set_latency_histogram;
     safe_hdr_histogram m_wait_latency_histogram;
     std::vector<safe_hdr_histogram> m_ar_commands_latency_histograms;
+
+    // instantaneous command stats ( used in the per second latencies )
+    safe_hdr_histogram inst_m_get_latency_histogram;
+    safe_hdr_histogram inst_m_set_latency_histogram;
+    safe_hdr_histogram inst_m_wait_latency_histogram;
+    std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
 
     void roll_cur_stats(struct timeval* ts);
 
@@ -171,7 +178,7 @@ public:
     void print_avg_latency_column(output_table &table);
     void print_quantile_latency_column(output_table &table, double quantile, char* label);
     void print_kb_sec_column(output_table &table);
-    void print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode, std::vector<float> quantile_list);
+    void print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode);
     void print_histogram(FILE *out, json_handler* jsonhandler, arbitrary_command_list& command_list);
     void print(FILE *file, benchmark_config *config,
                const char* header = NULL, json_handler* jsonhandler = NULL);

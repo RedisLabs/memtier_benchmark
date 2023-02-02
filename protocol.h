@@ -124,7 +124,7 @@ public:
     void set_status(const char *status);
     const char *get_status(void);
 
-    void set_error(bool error);
+    void set_error();
     bool is_error(void);
 
     void set_value(const char *value, unsigned int value_len);
@@ -184,6 +184,7 @@ public:
 
     virtual int select_db(int db) = 0;
     virtual int authenticate(const char *credentials) = 0;
+    virtual int configure_protocol(enum PROTOCOL_TYPE type) = 0;
     virtual int write_command_cluster_slots() = 0;
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset) = 0;
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;
@@ -199,6 +200,6 @@ public:
     struct protocol_response* get_response(void) { return &m_last_response; }
 };
 
-class abstract_protocol *protocol_factory(const char *proto_name);
+class abstract_protocol *protocol_factory(enum PROTOCOL_TYPE type);
 
 #endif  /* _PROTOCOL_H */

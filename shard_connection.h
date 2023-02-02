@@ -37,12 +37,9 @@ class abstract_protocol;
 class object_generator;
 
 enum connection_state { conn_disconnected, conn_in_progress, conn_connected };
+enum setup_state {setup_none, setup_sent, setup_done};
 
-enum authentication_state { auth_none, auth_sent, auth_done };
-enum select_db_state { select_none, select_sent, select_done };
-enum cluster_slots_state { slots_none, slots_sent, slots_done };
-
-enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots };
+enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots, rt_hello };
 struct request {
     request_type m_type;
     struct timeval m_sent_time;
@@ -106,19 +103,11 @@ public:
     int send_arbitrary_command(const command_arg *arg, const char *val, int val_len);
     void send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size);
 
-    void set_authentication() {
-        m_authentication = auth_none;
-    }
-
-    void set_select_db() {
-        m_db_selection = select_none;
-    }
-
     void set_cluster_slots() {
-        m_cluster_slots = slots_none;
+        m_cluster_slots = setup_none;
     }
 
-    enum cluster_slots_state get_cluster_slots_state() {
+    enum setup_state get_cluster_slots_state() {
         return m_cluster_slots;
     }
 
@@ -179,10 +168,10 @@ private:
 
     enum connection_state m_connection_state;
 
-    enum authentication_state m_authentication;
-    enum select_db_state m_db_selection;
-    enum cluster_slots_state m_cluster_slots;
-
+    enum setup_state m_hello;
+    enum setup_state m_authentication;
+    enum setup_state m_db_selection;
+    enum setup_state m_cluster_slots;
 };
 
 #endif //MEMTIER_BENCHMARK_SHARD_CONNECTION_H

@@ -82,10 +82,14 @@ public:
     unsigned int m_moved;
     unsigned int m_ask;
     unsigned long long int m_total_latency;
-    safe_hdr_histogram latency_histogram;
+    std::vector<double> summarized_quantile_values;
+    double m_avg_latency;
+    double m_min_latency;
+    double m_max_latency;
     one_sec_cmd_stats();
     void reset();
     void merge(const one_sec_cmd_stats& other);
+    void summarize_quantiles(safe_hdr_histogram histogram, std::vector<float> quantiles);
     void update_op(unsigned int bytes, unsigned int latency);
     void update_op(unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_moved_op(unsigned int bytes, unsigned int latency);

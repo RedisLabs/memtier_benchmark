@@ -332,6 +332,26 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
             return true;
         }
 
+        // handle key for other connection
+        unsigned int other_conn_id = m_slot_to_shard[hslot];
+
+        // in case we generated key for connection that is disconnected, 'slot to shard' map may need to be updated
+        if (m_connections[other_conn_id]->get_connection_state() == conn_disconnected) {
+            m_connections[conn_id]->set_cluster_slots();
+            return false;
+        }
+
+        // in case connection is during cluster slots command, his slots mapping not relevant
+        if (m_connections[other_conn_id]->get_cluster_slots_state() != setup_done)
+            continue;
+
+        // store key for other connection, if queue is not full
+        key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
+        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE) {
+            key_idx_pool->push(*key_index);
+            m_reqs_generated++;
+        }
+
         // don't exceed requests
         if (m_config->requests > 0 && m_reqs_generated >= m_config->requests)
             return false;
@@ -466,7 +486,7 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
     }
 
     // connection already issued 'cluster slots' command, wait for slots mapping to be updated
-    if (m_connections[conn_id]->get_cluster_slots_state() != slots_done)
+    if (m_connections[conn_id]->get_cluster_slots_state() != setup_done)
         return;
 
     // queue may stored uncorrected mapping indexes, empty them
