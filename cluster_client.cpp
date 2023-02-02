@@ -461,28 +461,22 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
 void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp,
                                   request *request, protocol_response *response) {
     // update stats
-    switch (request->m_type) {
-        case rt_get:
-            m_stats.update_moved_get_op(&timestamp,
+    if (request->m_type == rt_get) {
+        m_stats.update_moved_get_op(&timestamp,
                                     request->m_size + response->get_total_len(),
                                     ts_diff(request->m_sent_time, timestamp));
-            break;
-        case rt_set:
-            m_stats.update_moved_set_op(&timestamp,
+    } else if (request->m_type == rt_set) {
+        m_stats.update_moved_set_op(&timestamp,
                                     request->m_size + response->get_total_len(),
                                     ts_diff(request->m_sent_time, timestamp));
-            break;
-        case rt_arbitrary: {
-            arbitrary_request *ar = static_cast<arbitrary_request *>(request);
-            m_stats.update_moved_arbitrary_op(&timestamp,
-                                        request->m_size + response->get_total_len(),
-                                        ts_diff(request->m_sent_time, timestamp),
-                                        ar->index);
-            break;
-        }
-        default:
-            assert(0);
-            break;
+     } else if (request->m_type == rt_arbitrary) {
+        arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+        m_stats.update_moved_arbitrary_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp),
+                                    ar->index);
+    } else {
+        assert(0);
     }
 
     // connection already issued 'cluster slots' command, wait for slots mapping to be updated
@@ -501,28 +495,23 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
 void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
                                 request *request, protocol_response *response) {
     // update stats
-    switch (request->m_type) {
-        case rt_get:
-            m_stats.update_ask_get_op(&timestamp,
-                                      request->m_size + response->get_total_len(),
-                                      ts_diff(request->m_sent_time, timestamp));
-            break;
-        case rt_set:
-            m_stats.update_ask_set_op(&timestamp,
-                                      request->m_size + response->get_total_len(),
-                                      ts_diff(request->m_sent_time, timestamp));
-            break;
-        case rt_arbitrary: {
-            arbitrary_request *ar = static_cast<arbitrary_request *>(request);
-            m_stats.update_ask_arbitrary_op(&timestamp,
-                                              request->m_size + response->get_total_len(),
-                                              ts_diff(request->m_sent_time, timestamp),
-                                              ar->index);
-            break;
-        }
-        default:
-            assert(0);
-            break;
+    // update stats
+    if (request->m_type == rt_get) {
+        m_stats.update_ask_get_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp));
+    } else if (request->m_type == rt_set) {
+        m_stats.update_ask_set_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp));
+    } else if (request->m_type == rt_arbitrary) {
+        arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+        m_stats.update_ask_arbitrary_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp),
+                                    ar->index);
+    } else {
+        assert(0);
     }
 }
 
