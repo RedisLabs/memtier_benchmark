@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 AUTOMAKE_OPTIONS = foreign 1.9 subdir-objects
+CODE_COVERAGE_IGNORE_PATTERN='*/deps/hdr_histogram/*'
 
 EXTRA_DIST = README.md COPYING
 
