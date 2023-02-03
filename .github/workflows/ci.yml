@@ -74,8 +74,7 @@ jobs:
       if: matrix.platform == 'ubuntu-latest'
       run: |
         make code-coverage-capture
-        echo -e "ignore:\n  - 'deps'\n" >> codecov.yml
-        bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports"
+        bash <(curl -s https://codecov.io/bash) -f memtier_benchmark-*-coverage.info || echo "Codecov did not collect coverage reports"
 
   build-macos:
     strategy:
