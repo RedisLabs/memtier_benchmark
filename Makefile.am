@@ -24,6 +24,7 @@ completionsdir=$(BASH_COMPLETION_DIR)
 completions_DATA=bash-completion/memtier_benchmark
 
 memtier_benchmark_CPPFLAGS = \
+	$(CODE_COVERAGE_CFLAGS) \
 	$(LIBEVENT_CFLAGS) \
 	$(LIBEVENT_OPENSSL_CFLAGS) \
 	$(LIBCRYPTO_CFLAGS) \
@@ -42,10 +43,15 @@ memtier_benchmark_SOURCES = \
 	file_io.cpp file_io.h \
 	config_types.cpp config_types.h
 memtier_benchmark_LDADD = \
+	$(CODE_COVERAGE_LIBS) \
 	$(LIBEVENT_LIBS) \
 	$(LIBEVENT_OPENSSL_LIBS) \
 	$(LIBCRYPTO_LIBS) \
 	$(LIBSSL_LIBS)
+
+
+@CODE_COVERAGE_RULES@
+memtier_benchmark_LDFLAGS = $(CODE_COVERAGE_LDFLAGS)
 
 dist_man1_MANS = memtier_benchmark.1
 

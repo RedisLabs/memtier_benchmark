@@ -19,3 +19,20 @@ config.log
 config.status
 libtool
 stamp-h1
+*.DS_Store
+.vscode/*
+.idea/*
+
+# tls helper related files
+tests/tls/*
+
+# memtier outputs
+*.hgrm
+*.txt
+!/tests/test_requirements.txt
+__pycache__
+
+# Code coverage with lcov/gcov
+*.gcno
+*.gcda
+*.info
