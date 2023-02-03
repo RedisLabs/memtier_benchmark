@@ -13,7 +13,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -qq update
-        sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
 
     - name: Build
       run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
