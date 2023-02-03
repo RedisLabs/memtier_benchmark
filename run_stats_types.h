@@ -19,7 +19,59 @@
 #ifndef MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 #define MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 
+#define LATENCY_HDR_MIN_VALUE 10
+#define LATENCY_HDR_MAX_VALUE 60000000 ## LL
+#define LATENCY_HDR_SIGDIGTS 3
+#define LATENCY_HDR_SEC_MIN_VALUE 10
+#define LATENCY_HDR_SEC_MAX_VALUE 1000000 ## LL
+#define LATENCY_HDR_SEC_SIGDIGTS 2
+#define LATENCY_HDR_RESULTS_MULTIPLIER 1000
+#define LATENCY_HDR_GRANULARITY 10
+
+#include "deps/hdr_histogram/hdr_histogram.h"
 #include "memtier_benchmark.h"
+
+// A wrapper around hdr_histogram that handles allocation, deallocation
+// and deep copy.
+//
+// TODO: In the future we may want to consider extending this wrapper
+// further to expose all hdr functions as native methods and avoid the
+// casting operator completely.
+class safe_hdr_histogram {
+    hdr_histogram *m_hdr;
+public:
+    safe_hdr_histogram() {
+        hdr_init(
+            LATENCY_HDR_MIN_VALUE,          // Minimum value
+            LATENCY_HDR_SEC_MAX_VALUE,      // Maximum value
+            LATENCY_HDR_SEC_SIGDIGTS,       // Number of significant figures
+            &m_hdr);
+    }
+
+    virtual ~safe_hdr_histogram() {
+        hdr_close(m_hdr);
+    }
+
+    safe_hdr_histogram(const safe_hdr_histogram& other) {
+        hdr_init(
+            LATENCY_HDR_MIN_VALUE,          // Minimum value
+            LATENCY_HDR_SEC_MAX_VALUE,      // Maximum value
+            LATENCY_HDR_SEC_SIGDIGTS,       // Number of significant figures
+            &m_hdr);
+        hdr_add(m_hdr, other.m_hdr);
+    }
+
+    safe_hdr_histogram& operator=(const safe_hdr_histogram& other) {
+        if (this != &other) {
+            hdr_reset(m_hdr);
+            hdr_add(m_hdr, other.m_hdr);
+        }
+        return *this;
+    }
+
+    // Cast safe_hdr_historgram to hdr_histogram to make it transparent
+    operator hdr_histogram* () const { return m_hdr; }
+};
 
 class one_sec_cmd_stats {
 public:
@@ -30,15 +82,21 @@ public:
     unsigned int m_moved;
     unsigned int m_ask;
     unsigned long long int m_total_latency;
+    std::vector<double> summarized_quantile_values;
+    double m_avg_latency;
+    double m_min_latency;
+    double m_max_latency;
+    one_sec_cmd_stats();
     void reset();
     void merge(const one_sec_cmd_stats& other);
+    void summarize_quantiles(safe_hdr_histogram histogram, std::vector<float> quantiles);
     void update_op(unsigned int bytes, unsigned int latency);
     void update_op(unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_moved_op(unsigned int bytes, unsigned int latency);
     void update_ask_op(unsigned int bytes, unsigned int latency);
 };
 
-class one_second_stats; // forward deceleration
+class one_second_stats; // forward declaration
 
 class ar_one_sec_cmd_stats {
 public:
@@ -67,7 +125,6 @@ public:
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
-
     one_second_stats(unsigned int second);
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
@@ -113,19 +170,20 @@ public:
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
     ar_totals_cmd m_ar_commands;
+    safe_hdr_histogram latency_histogram;
     double m_ops_sec;
     double m_bytes_sec;
     double m_hits_sec;
     double m_misses_sec;
     double m_moved_sec;
     double m_ask_sec;
-    double m_latency;
+    unsigned long long int m_latency;
     unsigned long int m_bytes;
     unsigned long int m_ops;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
-    void update_op(unsigned long int bytes, double latency);
+    void update_op(unsigned long int bytes, unsigned int latency);
 };
 
 

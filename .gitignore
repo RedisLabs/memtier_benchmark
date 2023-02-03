@@ -2,9 +2,11 @@ aclocal.m4
 autom4te.cache
 config.guess
 config.h.in
+config.h.in~
 config.h
 config.sub
 configure
+compile
 depcomp
 install-sh
 ltmain.sh

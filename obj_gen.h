@@ -51,7 +51,7 @@ private:
 };
 
 class data_object {
-protected:    
+protected:
     const char *m_key;
     unsigned int m_key_len;
     const char *m_value;
@@ -67,7 +67,7 @@ public:
     void set_value(const char* value, unsigned int value_len);
     const char* get_value(unsigned int* value_len);
     void set_expiry(unsigned int expiry);
-    unsigned int get_expiry(void);    
+    unsigned int get_expiry(void);
 };
 
 #define OBJECT_GENERATOR_KEY_ITERATORS  2 /* number of iterators */
@@ -109,11 +109,11 @@ protected:
     gaussian_noise m_random;
     unsigned int m_value_buffer_size;
     unsigned int m_value_buffer_mutation_pos;
-    
+
     void alloc_value_buffer(void);
     void alloc_value_buffer(const char* copy_from);
     void random_init(void);
-public:    
+public:
     object_generator(size_t n_key_iterators = OBJECT_GENERATOR_KEY_ITERATORS);
     object_generator(const object_generator& copy);
     virtual ~object_generator();
@@ -128,7 +128,7 @@ public:
     void set_data_size_list(config_weight_list* data_size_list);
     void set_data_size_pattern(const char* pattern);
     void set_expiry_range(unsigned int expiry_min, unsigned int expiry_max);
-    void set_key_prefix(const char *key_prefix);    
+    void set_key_prefix(const char *key_prefix);
     void set_key_range(unsigned long long key_min, unsigned long long key_max);
     void set_key_distribution(double key_stddev, double key_median);
     void set_random_seed(int seed);

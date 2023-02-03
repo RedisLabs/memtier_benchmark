@@ -34,6 +34,8 @@
 #include <sys/resource.h>
 
 #ifdef USE_TLS
+#include <openssl/crypto.h>
+#include <openssl/conf.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
@@ -76,6 +78,18 @@ void benchmark_log(int level, const char *fmt, ...)
     va_end(args);
 }
 
+bool is_redis_protocol(enum PROTOCOL_TYPE type) {
+    return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3);
+}
+
+static const char * get_protocol_name(enum PROTOCOL_TYPE type) {
+    if (type == PROTOCOL_REDIS_DEFAULT) return "redis";
+    else if (type == PROTOCOL_RESP2) return "resp2";
+    else if (type == PROTOCOL_RESP3) return "resp3";
+    else if (type == PROTOCOL_MEMCACHE_TEXT) return "memcache_text";
+    else if (type == PROTOCOL_MEMCACHE_BINARY) return "memcache_binary";
+    else return "none";
+}
 
 static void config_print(FILE *file, struct benchmark_config *cfg)
 {
@@ -92,6 +106,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key = %s\n"
         "cacert = %s\n"
         "tls_skip_verify = %s\n"
+        "sni = %s\n"
 #endif
         "out_file = %s\n"
         "client_stats = %s\n"
@@ -132,13 +147,14 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->server,
         cfg->port,
         cfg->unix_socket,
-        cfg->protocol,
+        get_protocol_name(cfg->protocol),
 #ifdef USE_TLS
         cfg->tls ? "yes" : "no",
         cfg->tls_cert,
         cfg->tls_key,
         cfg->tls_cacert,
         cfg->tls_skip_verify ? "yes" : "no",
+        cfg->tls_sni,
 #endif
         cfg->out_file,
         cfg->client_stats,
@@ -187,7 +203,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
-    jsonhandler->write_obj("protocol"          ,"\"%s\"",      	cfg->protocol);
+    jsonhandler->write_obj("protocol"          ,"\"%s\"",      	get_protocol_name(cfg->protocol));
     jsonhandler->write_obj("out_file"          ,"\"%s\"",      	cfg->out_file);
 #ifdef USE_TLS
     jsonhandler->write_obj("tls"               ,"\"%s\"",      	cfg->tls ? "true" : "false");
@@ -195,6 +211,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key"               ,"\"%s\"",      	cfg->tls_key);
     jsonhandler->write_obj("cacert"            ,"\"%s\"",      	cfg->tls_cacert);
     jsonhandler->write_obj("tls_skip_verify"   ,"\"%s\"",      	cfg->tls_skip_verify ? "true" : "false");
+    jsonhandler->write_obj("sni"               ,"\"%s\"",       cfg->tls_sni);
 #endif
     jsonhandler->write_obj("client_stats"      ,"\"%s\"",      	cfg->client_stats);
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
@@ -240,8 +257,6 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->server = "localhost";
     if (!cfg->port && !cfg->unix_socket)
         cfg->port = 6379;
-    if (!cfg->protocol)
-        cfg->protocol = "redis";
     if (!cfg->run_count)
         cfg->run_count = 1;
     if (!cfg->clients)
@@ -272,6 +287,10 @@ static void config_init_defaults(struct benchmark_config *cfg)
     }
     if (!cfg->requests && !cfg->test_time)
         cfg->requests = 10000;
+    if (!cfg->hdr_prefix)
+        cfg->hdr_prefix = "";
+    if (!cfg->print_percentiles.is_defined())
+        cfg->print_percentiles = config_quantiles("50,99,99.9");
 }
 
 static int generate_random_seed()
@@ -298,7 +317,7 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     } else if (cfg->wait_ratio.is_defined()) {
         fprintf(stderr, "error: cluster mode dose not support wait-ratio option.\n");
         return false;
-    } else if (cfg->protocol && strcmp(cfg->protocol, "redis")) {
+    } else if (!is_redis_protocol(cfg->protocol)) {
         fprintf(stderr, "error: cluster mode supported only in redis protocol.\n");
         return false;
     } else if (cfg->unix_socket) {
@@ -360,6 +379,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_key_median,
         o_show_config,
         o_hide_histogram,
+        o_print_percentiles,
         o_distinct_client_seed,
         o_randomize,
         o_client_stats,
@@ -380,7 +400,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_cert,
         o_tls_key,
         o_tls_cacert,
-        o_tls_skip_verify
+        o_tls_skip_verify,
+        o_tls_sni,
+        o_hdr_file_prefix
     };
 
     static struct option long_options[] = {
@@ -394,13 +416,16 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key",                        1, 0, o_tls_key },
         { "cacert",                     1, 0, o_tls_cacert },
         { "tls-skip-verify",            0, 0, o_tls_skip_verify },
+        { "sni",                        1, 0, o_tls_sni },
 #endif
         { "out-file",                   1, 0, 'o' },
+        { "hdr-file-prefix",            1, 0, o_hdr_file_prefix },
         { "client-stats",               1, 0, o_client_stats },
         { "run-count",                  1, 0, 'x' },
         { "debug",                      0, 0, 'D' },
         { "show-config",                0, 0, o_show_config },
         { "hide-histogram",             0, 0, o_hide_histogram },
+        { "print-percentiles",          1, 0, o_print_percentiles },
         { "distinct-client-seed",       0, 0, o_distinct_client_seed },
         { "randomize",                  0, 0, o_randomize },
         { "requests",                   1, 0, 'n' },
@@ -448,7 +473,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     int c;
     char *endptr;
     while ((c = getopt_long(argc, argv,
-                "s:S:p:P:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
+                "vs:S:p:P:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
     {
         switch (c) {
                 case 'h':
@@ -456,8 +481,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case 'v':
                     puts(PACKAGE_STRING);
-                // FIXME!!
-                    puts("Copyright (C) 2011-2017 Redis Labs Ltd.");
+                    puts("Copyright (C) 2011-2022 Redis Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
@@ -477,16 +501,26 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     }
                     break;
                 case 'P':
-                    if (strcmp(optarg, "memcache_text") &&
-                        strcmp(optarg, "memcache_binary") &&
-                        strcmp(optarg, "redis")) {
-                                fprintf(stderr, "error: supported protocols are 'memcache_text', 'memcache_binary' and 'redis'.\n");
-                                return -1;
+                    if (strcmp(optarg, "redis") == 0) {
+                        cfg->protocol = PROTOCOL_REDIS_DEFAULT;
+                    } else if (strcmp(optarg, "resp2") == 0) {
+                        cfg->protocol = PROTOCOL_RESP2;
+                    } else if (strcmp(optarg, "resp3") == 0) {
+                        cfg->protocol = PROTOCOL_RESP3;
+                    } else if (strcmp(optarg, "memcache_text") == 0) {
+                        cfg->protocol = PROTOCOL_MEMCACHE_TEXT;
+                    } else if (strcmp(optarg, "memcache_binary") == 0) {
+                        cfg->protocol = PROTOCOL_MEMCACHE_BINARY;
+                    } else {
+                        fprintf(stderr, "error: supported protocols are 'memcache_text', 'memcache_binary', 'redis', 'resp2' and resp3'.\n");
+                        return -1;
                     }
-                    cfg->protocol = optarg;
                     break;
                 case 'o':
                     cfg->out_file = optarg;
+                    break;
+                case o_hdr_file_prefix:
+                    cfg->hdr_prefix = optarg;
                     break;
                 case o_client_stats:
                     cfg->client_stats = optarg;
@@ -507,6 +541,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_hide_histogram:
                     cfg->hide_histogram++;
+                    break;
+                case o_print_percentiles:
+                    cfg->print_percentiles = config_quantiles(optarg);
+                    if (!cfg->print_percentiles.is_defined()) {
+                        fprintf(stderr, "error: quantiles must be expressed as [0.0-100.0],[0.0-100.0](,...) .\n");
+                        return -1;
+                    }
                     break;
                 case o_distinct_client_seed:
                     cfg->distinct_client_seed++;
@@ -806,6 +847,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_tls_skip_verify:
                     cfg->tls_skip_verify = true;
                     break;
+                case o_tls_sni:
+                    cfg->tls_sni = optarg;
+                    break;
 #endif
             default:
                     return -1;
@@ -829,28 +873,34 @@ void usage() {
             "  -s, --server=ADDR              Server address (default: localhost)\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
-            "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).  Other\n"
-            "                                 supported protocols are memcache_text,\n"
-            "                                 memcache_binary.\n"
-            "  -a, --authenticate=CREDENTIALS Authenticate to redis using CREDENTIALS, which depending\n"
+            "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).\n"
+            "                                 other supported protocols are resp2, resp3, memcache_text and memcache_binary.\n"
+            "                                 when using one of resp2 or resp3 the redis protocol version will be set via HELLO command.\n"
+            "  -a, --authenticate=CREDENTIALS Authenticate using specified credentials.\n"
+            "                                 A simple password is used for memcache_text\n"
+            "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"
+            "                                 specified for memcache_binary or Redis 6.x\n"
+            "                                 or newer with ACL user support.\n"
 #ifdef USE_TLS
             "      --tls                      Enable SSL/TLS transport security\n"
             "      --cert=FILE                Use specified client certificate for TLS\n"
             "      --key=FILE                 Use specified private key for TLS\n"
             "      --cacert=FILE              Use specified CA certs bundle for TLS\n"
             "      --tls-skip-verify          Skip verification of server certificate\n"
+            "      --sni=STRING               Add an SNI header\n"
 #endif
-            "                                 on the protocol can be PASSWORD or USER:PASSWORD.\n"
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
             "  -D, --debug                    Print debug output\n"
             "      --client-stats=FILE        Produce per-client stats file\n"
-            "      --out-file=FILE            Name of output file (default: stdout)\n"
+            "  -o, --out-file=FILE            Name of output file (default: stdout)\n"
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
+            "      --hdr-file-prefix=FILE     Prefix of HDR Latency Histogram output files, if not set, will not save latency histogram files\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
+            "      --print-percentiles        Specify which percentiles info to print on the results table (by default prints percentiles: 50,99,99.9)\n"
             "      --cluster-mode             Run client in cluster mode\n"
-            "      --help                     Display this help\n"
-            "      --version                  Display version information\n"
+            "  -h, --help                     Display this help\n"
+            "  -v, --version                  Display version information\n"
             "\n"
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
@@ -881,7 +931,7 @@ void usage() {
             "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "\n"
             "Object Options:\n"
-            "  -d  --data-size=SIZE           Object data size (default: 32)\n"
+            "  -d  --data-size=SIZE           Object data size in bytes (default: 32)\n"
             "      --data-offset=OFFSET       Actual size of value will be data-size + data-offset\n"
             "                                 Will use SETRANGE / GETRANGE (default: 0)\n"
             "  -R  --random-data              Indicate that data should be randomized\n"
@@ -1018,13 +1068,6 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         threads.push_back(t);
     }
 
-    // if user configure arbitrary commands, we use one of the thread's protocol to format and prepare it
-    for (unsigned int i=0; i<cfg->arbitrary_commands->size(); i++) {
-        if (!threads.front()->m_protocol->format_arbitrary_command(cfg->arbitrary_commands->at(i))) {
-            exit(1);
-        }
-    }
-
     // launch threads
     fprintf(stderr, "[RUN #%u] Launching threads now...\n", run_id);
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
@@ -1133,6 +1176,55 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 }
 
 #ifdef USE_TLS
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+static pthread_mutex_t *__openssl_locks;
+
+static void __openssl_locking_callback(int mode, int type, const char *file, int line)
+{
+    if (mode & CRYPTO_LOCK) {
+        pthread_mutex_lock(&(__openssl_locks[type]));
+    } else {
+        pthread_mutex_unlock(&(__openssl_locks[type]));
+    }
+}
+
+static unsigned long __openssl_thread_id(void)
+{
+    unsigned long id;
+
+    id = (unsigned long) pthread_self();
+    return id;
+}
+#pragma GCC diagnostic pop
+
+static void init_openssl_threads(void)
+{
+    int i;
+
+    __openssl_locks = (pthread_mutex_t *) malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    assert(__openssl_locks != NULL);
+
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        pthread_mutex_init(&(__openssl_locks[i]), NULL);
+    }
+
+    CRYPTO_set_id_callback(__openssl_thread_id);
+    CRYPTO_set_locking_callback(__openssl_locking_callback);
+}
+
+static void cleanup_openssl_threads(void)
+{
+    int i;
+
+    CRYPTO_set_locking_callback(NULL);
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        pthread_mutex_destroy(&(__openssl_locks[i]));
+    }
+    OPENSSL_free(__openssl_locks);
+}
+
 static void init_openssl(void)
 {
     SSL_library_init();
@@ -1141,14 +1233,28 @@ static void init_openssl(void)
         fprintf(stderr, "Failed to initialize OpenSSL random entropy.\n");
         exit(1);
     }
+
+    //Enable memtier benchmark to load an OpenSSL config file.
+    #if OPENSSL_VERSION_NUMBER < 0x10100000L
+    OPENSSL_config(NULL);
+    #else
+    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
+    #endif
+
+
+    init_openssl_threads();
 }
+
+static void cleanup_openssl(void)
+{
+    cleanup_openssl_threads();
+}
+
 #endif
 
 int main(int argc, char *argv[])
 {
-    struct benchmark_config cfg;
-
-    memset(&cfg, 0, sizeof(struct benchmark_config));
+    benchmark_config cfg = benchmark_config();
     cfg.arbitrary_commands = new arbitrary_command_list();
 
     if (config_parse_args(argc, argv, &cfg) < 0) {
@@ -1163,15 +1269,29 @@ int main(int argc, char *argv[])
         fprintf(stderr, "===================================================\n");
     }
 
+    // if user configure arbitrary commands, format and prepare it
+    for (unsigned int i=0; i<cfg.arbitrary_commands->size(); i++) {
+        abstract_protocol* tmp_protocol = protocol_factory(cfg.protocol);
+        assert(tmp_protocol != NULL);
+
+        if (!tmp_protocol->format_arbitrary_command(cfg.arbitrary_commands->at(i))) {
+            exit(1);
+        }
+
+        delete tmp_protocol;
+    }
+
+
 #ifdef USE_TLS
     // Initialize OpenSSL only if we're really going to use it.
     if (cfg.tls) {
         init_openssl();
 
-        cfg.openssl_ctx = SSL_CTX_new(TLS_client_method());
+        cfg.openssl_ctx = SSL_CTX_new(SSLv23_client_method());
+        SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+
         if (cfg.tls_cert) {
-            if (!SSL_CTX_use_certificate_file(cfg.openssl_ctx, cfg.tls_cert,
-                        SSL_FILETYPE_PEM)) {
+            if (!SSL_CTX_use_certificate_chain_file(cfg.openssl_ctx, cfg.tls_cert)) {
                 ERR_print_errors_fp(stderr);
                 fprintf(stderr, "Error: Failed to load certificate file.\n");
                 exit(1);
@@ -1305,12 +1425,11 @@ int main(int argc, char *argv[])
     }
 
     if (cfg.authenticate) {
-        if (strcmp(cfg.protocol, "redis") != 0  &&
-            strcmp(cfg.protocol, "memcache_binary") != 0) {
+        if (cfg.protocol == PROTOCOL_MEMCACHE_TEXT) {
                 fprintf(stderr, "error: authenticate can only be used with redis or memcache_binary.\n");
                 usage();
         }
-        if (strcmp(cfg.protocol, "memcache_binary") == 0 &&
+        if (cfg.protocol == PROTOCOL_MEMCACHE_BINARY &&
             strchr(cfg.authenticate, ':') == NULL) {
                 fprintf(stderr, "error: binary_memcache credentials must be in the form of USER:PASSWORD.\n");
                 usage();
@@ -1320,7 +1439,7 @@ int main(int argc, char *argv[])
         obj_gen->set_random_data(cfg.random_data);
     }
 
-    if (cfg.select_db > 0 && strcmp(cfg.protocol, "redis")) {
+    if (cfg.select_db > 0 && !is_redis_protocol(cfg.protocol)) {
         fprintf(stderr, "error: select-db can only be used with redis protocol.\n");
         usage();
     }
@@ -1329,7 +1448,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "error: data-offset too long\n");
             usage();
         }
-        if (cfg.expiry_range.min || cfg.expiry_range.max || strcmp(cfg.protocol, "redis")) {
+        if (cfg.expiry_range.min || cfg.expiry_range.max || !is_redis_protocol(cfg.protocol)) {
             fprintf(stderr, "error: data-offset can only be used with redis protocol, and cannot be used with expiry\n");
             usage();
         }
@@ -1380,6 +1499,7 @@ int main(int argc, char *argv[])
             perror(cfg.out_file);
         }
     } else {
+        fprintf(stderr, "Writing results to stdout\n");
         outfile = stdout;
     }
 
@@ -1393,6 +1513,10 @@ int main(int argc, char *argv[])
 
             run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
             all_stats.push_back(stats);
+            stats.save_hdr_full_run( &cfg,run_id );
+            stats.save_hdr_get_command( &cfg,run_id );
+            stats.save_hdr_set_command( &cfg,run_id );
+            stats.save_hdr_arbitrary_commands( &cfg,run_id );
         }
         //
         // Print some run information
@@ -1410,7 +1534,7 @@ int main(int argc, char *argv[])
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
             jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%llu",
                                    cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
-
+            jsonhandler->write_obj("Format version","%d",2);
             jsonhandler->close_nesting();
         }
 
@@ -1502,9 +1626,13 @@ int main(int argc, char *argv[])
     }
 
 #ifdef USE_TLS
-    if (cfg.openssl_ctx) {
-        SSL_CTX_free(cfg.openssl_ctx);
-        cfg.openssl_ctx = NULL;
+    if(cfg.tls) {
+        if (cfg.openssl_ctx) {
+            SSL_CTX_free(cfg.openssl_ctx);
+            cfg.openssl_ctx = NULL;
+        }
+
+        cleanup_openssl();
     }
 #endif
 }

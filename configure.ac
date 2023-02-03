@@ -16,7 +16,7 @@ dnl You should have received a copy of the GNU General Public License
 dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 AC_PREREQ(2.59)
-AC_INIT(memtier_benchmark,1.2.17,yossigo@gmail.com)
+AC_INIT(memtier_benchmark,1.4.0,oss@redis.com)
 AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
@@ -86,7 +86,7 @@ PKG_CHECK_MODULES(LIBEVENT,
 # bash completion
 PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
     [BASH_COMPLETION_DIR="`pkg-config --variable=completionsdir bash-completion`"],
-    [BASH_COMPLETION_DIR="$datadir/bash-completion/completionsss"])
+    [BASH_COMPLETION_DIR="$datadir/bash-completion/completions"])
 AC_SUBST([BASH_COMPLETION_DIR])
 
 AC_CONFIG_FILES([

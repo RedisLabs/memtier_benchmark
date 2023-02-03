@@ -1,0 +1,3 @@
+redis>=3.0.0
+rltest==0.4.2
+git+https://github.com/RedisLabs/mbdirector.git@master

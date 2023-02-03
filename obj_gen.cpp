@@ -45,7 +45,7 @@ void random_generator::set_seed(int seed)
 #ifdef HAVE_RANDOM_R
     memset(&m_data_blob, 0, sizeof(m_data_blob));
     memset(m_state_array, 0, sizeof(m_state_array));
-    
+
     int ret = initstate_r(seed, m_state_array, sizeof(m_state_array), &m_data_blob);
     assert(ret == 0);
 #elif (defined HAVE_DRAND48)
@@ -82,7 +82,7 @@ unsigned long long random_generator::get_random()
 
     rn = jrand48(m_data_blob);
     llrn |= rn & 0xffffffff; // reset the sign extension bits of negative numbers
-    llrn &= 0x8000000000000000; // avoid any trouble from sign mismatch and negative numbers
+    llrn &= 0x7FFFFFFFFFFFFFFF; // avoid any trouble from sign mismatch and negative numbers
 #else
     #error no random function
 #endif
@@ -106,7 +106,7 @@ double gaussian_noise::gaussian_distribution(const double &stddev)
         m_hasSpare = false;
         return stddev * m_spare;
     }
- 
+
     m_hasSpare = true;
     double u, v, s;
     do {
@@ -114,7 +114,7 @@ double gaussian_noise::gaussian_distribution(const double &stddev)
         v = (get_random() / ((double) get_random_max())) * 2 - 1;
         s = u * u + v * v;
     } while(s >= 1 || s == 0);
- 
+
     s = sqrt(-2.0 * log(s) / s);
     m_spare = v * s;
     return stddev * u * s;
@@ -160,7 +160,7 @@ object_generator::object_generator(size_t n_key_iterators/*= OBJECT_GENERATOR_KE
     m_data_size.size_list = NULL;
 }
 
-object_generator::object_generator(const object_generator& copy) :        
+object_generator::object_generator(const object_generator& copy) :
     m_data_size_type(copy.m_data_size_type),
     m_data_size(copy.m_data_size),
     m_data_size_pattern(copy.m_data_size_pattern),
@@ -213,11 +213,11 @@ void object_generator::set_random_seed(int seed)
 void object_generator::alloc_value_buffer(void)
 {
     unsigned int size = 0;
-    
+
     if (m_value_buffer != NULL)
         free(m_value_buffer), m_value_buffer = NULL;
 
-    if (m_data_size_type == data_size_fixed) 
+    if (m_data_size_type == data_size_fixed)
         size = m_data_size.size_fixed;
     else if (m_data_size_type == data_size_range)
         size = m_data_size.size_range.size_max;
@@ -237,27 +237,27 @@ void object_generator::alloc_value_buffer(void)
                 assert(m_random_fd != -1);
             }
 
-            char buf1[64];
-            char buf2[64];
-            int buf1_idx = sizeof(buf1);
-            int buf2_idx = sizeof(buf2);
+            char buf1[64] = { 0 };
+            char buf2[64] = { 0 };
+            unsigned int buf1_idx = sizeof(buf1);
+            unsigned int buf2_idx = sizeof(buf2);
             char *d = m_value_buffer;
             int ret;
             int iter = 0;
-            
             while (d - m_value_buffer < size) {
                 if (buf1_idx == sizeof(buf1)) {
                     buf1_idx = 0;
-                    buf2_idx++;                    
-                    if (buf2_idx == sizeof(buf2)) {
-                        iter++;
-                        if (iter == 20) {                        
+                    buf2_idx++;
+
+                    if (buf2_idx >= sizeof(buf2)) {
+                        if (iter % 20 == 0) {
                             ret = read(m_random_fd, buf1, sizeof(buf1));
                             assert(ret > -1);
                             ret = read(m_random_fd, buf2, sizeof(buf2));
                             assert(ret > -1);
-                            buf1_idx = buf2_idx = iter = 0;
                         }
+                        buf2_idx = 0;
+                        iter++;
                     }
                 }
                 *d = buf1[buf1_idx] ^ buf2[buf2_idx] ^ iter;
@@ -410,8 +410,8 @@ data_object* object_generator::get_object(int iter)
     // set object
     m_object.set_key(m_key_buffer, strlen(m_key_buffer));
     m_object.set_value(m_value_buffer, new_size);
-    m_object.set_expiry(expiry);    
-    
+    m_object.set_expiry(expiry);
+
     return &m_object;
 }
 
@@ -473,7 +473,7 @@ data_object::~data_object()
     clear();
 }
 
-void data_object::clear(void) 
+void data_object::clear(void)
 {
     m_key = NULL;
     m_key_len = 0;
@@ -492,7 +492,7 @@ const char* data_object::get_key(unsigned int* key_len)
 {
     assert(key_len != NULL);
     *key_len = m_key_len;
-    
+
     return m_key;
 }
 
@@ -523,7 +523,7 @@ unsigned int data_object::get_expiry(void)
 ///////////////////////////////////////////////////////////////////////////
 
 imported_keylist::imported_keylist(const char *filename)
-    : m_filename(filename)    
+    : m_filename(filename)
 {
 }
 
@@ -634,7 +634,7 @@ const char* import_object_generator::get_key(int iter, unsigned int *len)
 }
 
 data_object* import_object_generator::get_object(int iter)
-{    
+{
     memcache_item *i = m_reader.read_item();
 
     if (i == NULL && m_reader.is_eof()) {
@@ -647,7 +647,7 @@ data_object* import_object_generator::get_object(int iter)
         delete m_cur_item;
     }
     m_cur_item = i;
-    
+
     m_object.set_value(m_cur_item->get_data(), m_cur_item->get_nbytes() - 2);
     if (m_keys != NULL) {
         m_object.set_key(m_cur_item->get_key(), m_cur_item->get_nkey());
@@ -656,7 +656,7 @@ data_object* import_object_generator::get_object(int iter)
         const char *tmpkey = object_generator::get_key(iter, &tmplen);
         m_object.set_key(tmpkey, tmplen);
     }
-    
+
     // compute expiry
     int expiry = 0;
     if (!m_no_expiry) {

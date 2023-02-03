@@ -209,6 +209,7 @@ bool cluster_client::connect_shard_connection(shard_connection* sc, char* addres
     memcpy(ci.addr_buf, addr_info->ai_addr, addr_info->ai_addrlen);
     ci.ci_addr = (struct sockaddr *) ci.addr_buf;
     ci.ci_addrlen = addr_info->ai_addrlen;
+    freeaddrinfo(addr_info);
 
     // call connect
     res = sc->connect(&ci);
@@ -240,7 +241,7 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
 
         // port
         bulk_el* mbulk_port_el = shard->mbulks_elements[2]->as_mbulk_size()->mbulks_elements[1]->as_bulk();
-        char* port = (char*) malloc(mbulk_port_el->value_len);
+        char* port = (char*) malloc(mbulk_port_el->value_len + 1);
         memcpy(port, mbulk_port_el->value + 1, mbulk_port_el->value_len);
         port[mbulk_port_el->value_len] = '\0';
 
@@ -341,7 +342,7 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
         }
 
         // in case connection is during cluster slots command, his slots mapping not relevant
-        if (m_connections[other_conn_id]->get_cluster_slots_state() != slots_done)
+        if (m_connections[other_conn_id]->get_cluster_slots_state() != setup_done)
             continue;
 
         // store key for other connection, if queue is not full
@@ -428,7 +429,7 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
     }
 
     // connection already issued 'cluster slots' command, wait for slots mapping to be updated
-    if (m_connections[conn_id]->get_cluster_slots_state() != slots_done)
+    if (m_connections[conn_id]->get_cluster_slots_state() != setup_done)
         return;
 
     // queue may stored uncorrected mapping indexes, empty them

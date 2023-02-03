@@ -46,12 +46,21 @@ struct config_ratio {
     bool is_defined(void) { return (a > 0 || b > 0); }
 };
 
+struct config_quantiles {
+    std::vector<float> quantile_list;
+    config_quantiles();
+    config_quantiles(const char *ratio_str);
+    bool is_defined(void);
+    inline std::vector<float>::iterator begin()  { return quantile_list.begin(); }
+    inline std::vector<float>::iterator end()  { return quantile_list.end(); }
+};
+
 struct config_weight_list {
     struct weight_item {
         unsigned int size;
         unsigned int weight;
     };
-    
+
     std::vector<weight_item> item_list;
     std::vector<weight_item>::iterator next_size_iter;
     unsigned int next_size_weight;
@@ -60,7 +69,7 @@ struct config_weight_list {
     config_weight_list(const char* str);
     config_weight_list(const config_weight_list& copy);
     config_weight_list& operator=(const config_weight_list& rhs);
-    
+
     bool is_defined(void);
     unsigned int largest(void);
     const char *print(char *buf, int buf_len);
@@ -73,7 +82,7 @@ struct connect_info {
     int ci_protocol;
     socklen_t ci_addrlen;
     struct sockaddr *ci_addr;
-    char addr_buf[sizeof(struct sockaddr_in)];
+    char addr_buf[sizeof(struct sockaddr_storage)];
 };
 
 struct server_addr {

@@ -16,6 +16,10 @@
  * along with memtier_benchmark.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,12 +38,12 @@ json_handler::json_handler(const char * jsonfilename) : m_json_file(NULL)
     m_json_file = fopen(jsonfilename, "w");
     if (!m_json_file) {
         perror(jsonfilename);
-    }                  
+    }
     // opening the JSON
     fprintf(stderr, "Json file %s created...\n", jsonfilename);
-    fprintf(m_json_file,"{"); 
+    fprintf(m_json_file,"{");
     m_nest_closer_types.push_back(NESTED_GENERAL);
-    beutify();    
+    beutify();
 }
 
 /**
@@ -57,7 +61,7 @@ json_handler::~json_handler()
     }
 }
 
-/** 
+/**
  * Write singel object named objectname to the JSON with values stated in ...
  * based on the format defined
  * basically uses fprintf with the same parameters.
@@ -73,7 +77,7 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
     fprintf(m_json_file, ",");
 }
 
-/** 
+/**
  * Starts a nesting with a title as defined in objectname
  * in case objectname == NULL it will not add the title and just start nesting
  * The type defines the kind of charecters that will be used
@@ -90,9 +94,9 @@ void json_handler::open_nesting(const char * objectname,eJSON_NESTED_TYPE type /
     beutify(false);
 }
 
-/** 
+/**
  * Ends the nesting
- * Closes the nesting based on the nesting list 
+ * Closes the nesting based on the nesting list
  * Returns = the nested levels left after the closing
  */
 int json_handler::close_nesting()
@@ -115,7 +119,7 @@ int json_handler::close_nesting()
     return m_nest_closer_types.size();
 }
 
-/** 
+/**
  * Add tabls and new line (if only_tabs==true will only add tabs)
  */
 void json_handler::beutify(bool only_tabs)
@@ -129,5 +133,5 @@ void json_handler::beutify(bool only_tabs)
     {
         fprintf(m_json_file, "\t");
     }
-    
+
 }

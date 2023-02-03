@@ -35,6 +35,7 @@
 #include <netdb.h>
 
 #include <string>
+#include <iostream>
 #include <stdexcept>
 #include <climits>
 #include <algorithm>
@@ -84,8 +85,36 @@ config_ratio::config_ratio(const char *ratio_str) :
     if (!q || *q != '\0') {
         a = b = 0;
         return;
-    }    
+    }
 }
+
+config_quantiles::config_quantiles(){
+
+}
+
+config_quantiles::config_quantiles(const char *str)
+{
+    assert(str != NULL);
+
+    do {
+        float quantile;
+        char *p = NULL;
+        quantile = strtof(str, &p);
+        if (!p || (*p != ',' && *p != '\0')) {
+            quantile_list.clear();
+            return;
+        }
+        str = p;
+        if (*str) str++;
+        quantile_list.push_back(quantile);
+    } while (*str);
+}
+
+bool config_quantiles::is_defined(void)
+{
+    return quantile_list.size() > 0;
+}
+
 
 config_weight_list::config_weight_list() :
     next_size_weight(0)
@@ -98,7 +127,7 @@ config_weight_list::config_weight_list(const config_weight_list& copy) :
     for (std::vector<weight_item>::const_iterator i = copy.item_list.begin(); i != copy.item_list.end(); i++) {
         const weight_item wi = *i;
         item_list.push_back(wi);
-    }    
+    }
     next_size_iter = item_list.begin();
 }
 
@@ -111,7 +140,7 @@ config_weight_list& config_weight_list::operator=(const config_weight_list& rhs)
     for (std::vector<weight_item>::const_iterator i = rhs.item_list.begin(); i != rhs.item_list.end(); i++) {
         const weight_item wi = *i;
         item_list.push_back(wi);
-    }    
+    }
     next_size_iter = item_list.begin();
     return *this;
 }
@@ -184,7 +213,7 @@ const char* config_weight_list::print(char *buf, int buf_len)
 
     *buf = '\0';
     for (std::vector<weight_item>::iterator i = item_list.begin(); i != item_list.end(); i++) {
-        int n = snprintf(buf, buf_len, "%s%u:%u", 
+        int n = snprintf(buf, buf_len, "%s%u:%u",
                 i != item_list.begin() ? "," : "", i->size, i->weight);
         buf += n;
         buf_len -= n;
@@ -225,7 +254,7 @@ int server_addr::resolve(void)
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
+    hints.ai_family = PF_UNSPEC;
 
     snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
     m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);

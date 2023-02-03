@@ -1,0 +1,76 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build-ubuntu:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, ubuntu-18.04]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+
+    - name: Build
+      run: autoreconf -ivf && ./configure && make -j
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
+
+    - name: Install Python dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
+      run: |
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Generate TLS test certificates
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+          ./tests/gen-test-certs.sh
+
+    - name: Test OSS TCP
+      timeout-minutes: 10
+      run: |
+        ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS
+      if: matrix.platform == 'ubuntu-latest'
+      timeout-minutes: 10
+      run: |
+        TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS-CLUSTER TCP
+      timeout-minutes: 10
+      run: |
+        OSS_STANDALONE=0 OSS_CLUSTER=1 \
+        ./tests/run_tests.sh
+
+    - name: Test OSS-CLUSTER TCP TLS
+      timeout-minutes: 10
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+        OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 \
+        ./tests/run_tests.sh
+
+  build-macos:
+    strategy:
+      matrix:
+        platform: [macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install dependencies
+      run: brew install autoconf automake libtool libevent pkg-config openssl@1.1
+    - name: Build
+      run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure && make
