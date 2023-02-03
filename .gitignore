@@ -36,5 +36,6 @@ __pycache__
 
 # Code coverage with lcov/gcov
 *.gcno
+*.gcov
 *.gcda
 *.info
