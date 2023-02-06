@@ -346,8 +346,10 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
             continue;
 
         // store key for other connection, if queue is not full
+        // and the total number of requests is larger than m_key_index_pools.size() * KEY_INDEX_QUEUE_MAX_SIZE
         key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
-        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE) {
+        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE &&
+            (m_config->requests == 0 || (m_key_index_pools.size() * KEY_INDEX_QUEUE_MAX_SIZE) < m_config->requests)) {
             key_idx_pool->push(*key_index);
             m_reqs_generated++;
         }
