@@ -7,18 +7,21 @@ TLS_KEY = os.environ.get("TLS_KEY", "")
 TLS_CACERT = os.environ.get("TLS_CACERT", "")
 
 
-def assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
+def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count):
-    # assert correct exit code
-    env.assertTrue(memtier_ok == True)
-    # assert we have all outputs
-    env.assertTrue(os.path.isfile('{0}/mb.stdout'.format(config.results_dir)))
-    env.assertTrue(os.path.isfile('{0}/mb.stderr'.format(config.results_dir)))
-    env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
-
-    # assert we have the expected request count
-    env.assertEqual(overall_expected_request_count, overall_request_count)
-
+    failed_asserts = env.getNumberOfFailedAssertion()
+    try:
+        # assert correct exit code
+        env.assertTrue(memtier_ok == True)
+        # assert we have all outputs
+        env.assertTrue(os.path.isfile('{0}/mb.stdout'.format(config.results_dir)))
+        env.assertTrue(os.path.isfile('{0}/mb.stderr'.format(config.results_dir)))
+        env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
+        # assert we have the expected request count
+        env.assertEqual(overall_expected_request_count, overall_request_count)
+    finally:
+        if env.getNumberOfFailedAssertion() > failed_asserts:
+            debugPrintMemtierOnError(config, env)
 
 def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
     # check if environment is cluster
@@ -33,38 +36,38 @@ def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
         config['redis_process_port'] = master_nodes_list[0]['port']
 
 
-def debugPrintMemtierOnError(config, env, memtier_ok):
-    if not memtier_ok:
-        with open('{0}/mb.stderr'.format(config.results_dir)) as stderr:
-            env.debugPrint("### PRINTING STDERR OUTPUT OF MEMTIER ON FAILURE ###", True)
-            env.debugPrint("### mb.stderr file location: {0}".format('{0}/mb.stderr'.format(config.results_dir)), True)
-            for line in stderr:
-                env.debugPrint(line.rstrip(), True)
+def debugPrintMemtierOnError(config, env):
+    with open('{0}/mb.stderr'.format(config.results_dir)) as stderr:
+        env.debugPrint("### PRINTING STDERR OUTPUT OF MEMTIER ON FAILURE ###", True)
+        env.debugPrint("### mb.stderr file location: {0}".format('{0}/mb.stderr'.format(config.results_dir)), True)
+        for line in stderr:
+            env.debugPrint(line.rstrip(), True)
+    with open('{0}/mb.stdout'.format(config.results_dir)) as stderr:
+        env.debugPrint("### PRINTING STDOUT OUTPUT OF MEMTIER ON FAILURE ###", True)
+        env.debugPrint("### mb.stdout file location: {0}".format('{0}/mb.stdout'.format(config.results_dir)), True)
+        for line in stderr:
+            env.debugPrint(line.rstrip(), True)
 
-        with open('{0}/mb.stdout'.format(config.results_dir)) as stderr:
-            env.debugPrint("### PRINTING STDERR OUTPUT OF MEMTIER ON FAILURE ###", True)
-            env.debugPrint("### mb.stderr file location: {0}".format('{0}/mb.stdout'.format(config.results_dir)), True)
-            for line in stderr:
-                env.debugPrint(line.rstrip(), True)
-
-        if not env.isCluster():
-            if env.envRunner is not None:
-                log_file = os.path.join(env.envRunner.dbDirPath, env.envRunner._getFileName('master', '.log'))
-                with open(log_file) as redislog:
-                    env.debugPrint("### REDIS LOG ###", True)
-                    env.debugPrint(
-                        "### log_file file location: {0}".format(log_file), True)
-                    for line in redislog:
-                        env.debugPrint(line.rstrip(), True)
+    if not env.isCluster():
+        if env.envRunner is not None:
+            log_file = os.path.join(env.envRunner.dbDirPath, env.envRunner._getFileName('master', '.log'))
+            with open(log_file) as redislog:
+                env.debugPrint("### REDIS LOG ###", True)
+                env.debugPrint(
+                    "### log_file file location: {0}".format(log_file), True)
+                for line in redislog:
+                    env.debugPrint(line.rstrip(), True)
 
 
-def get_expected_request_count(config):
+def get_expected_request_count(config, key_minimum=0, key_maximum=1000000):
     result = -1
     if 'memtier_benchmark' in config:
         mt = config['memtier_benchmark']
         if 'threads' in mt and 'clients' in mt and 'requests' in mt:
-            result = config['memtier_benchmark']['threads'] * config['memtier_benchmark']['clients'] * \
-                     config['memtier_benchmark']['requests']
+            if mt['requests'] != 'allkeys':
+                result = mt['threads'] * mt['clients'] * mt['requests']
+            else:
+                result = key_maximum - key_minimum + 1
     return result
 
 
@@ -111,3 +114,21 @@ def ensure_clean_benchmark_folder(dirname):
         os.removedirs(dirname)
     os.makedirs(dirname)
 
+
+def assert_keyspace_range(env, key_max, key_min, master_nodes_connections):
+    expected_keyspace_range = key_max - key_min + 1
+    overall_keyspace_range = agg_keyspace_range(master_nodes_connections)
+    # assert we have the expected keyspace range
+    env.assertEqual(expected_keyspace_range, overall_keyspace_range)
+
+
+def agg_keyspace_range(master_nodes_connections):
+    overall_keyspace_range = 0
+    for master_connection in master_nodes_connections:
+        shard_reply = master_connection.execute_command("INFO", "KEYSPACE")
+        shard_count = 0
+        if 'db0' in shard_reply:
+            if 'keys' in shard_reply['db0']:
+                shard_count = int(shard_reply['db0']['keys'])
+        overall_keyspace_range = overall_keyspace_range + shard_count
+    return overall_keyspace_range
