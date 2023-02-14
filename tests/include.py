@@ -59,13 +59,15 @@ def debugPrintMemtierOnError(config, env):
                     env.debugPrint(line.rstrip(), True)
 
 
-def get_expected_request_count(config):
+def get_expected_request_count(config, key_minimum=0, key_maximum=1000000):
     result = -1
     if 'memtier_benchmark' in config:
         mt = config['memtier_benchmark']
         if 'threads' in mt and 'clients' in mt and 'requests' in mt:
-            result = config['memtier_benchmark']['threads'] * config['memtier_benchmark']['clients'] * \
-                     config['memtier_benchmark']['requests']
+            if mt['requests'] != 'allkeys':
+                result = mt['threads'] * mt['clients'] * mt['requests']
+            else:
+                result = key_maximum - key_minimum + 1
     return result
 
 
@@ -112,3 +114,21 @@ def ensure_clean_benchmark_folder(dirname):
         os.removedirs(dirname)
     os.makedirs(dirname)
 
+
+def assert_keyspace_range(env, key_max, key_min, master_nodes_connections):
+    expected_keyspace_range = key_max - key_min + 1
+    overall_keyspace_range = agg_keyspace_range(master_nodes_connections)
+    # assert we have the expected keyspace range
+    env.assertEqual(expected_keyspace_range, overall_keyspace_range)
+
+
+def agg_keyspace_range(master_nodes_connections):
+    overall_keyspace_range = 0
+    for master_connection in master_nodes_connections:
+        shard_reply = master_connection.execute_command("INFO", "KEYSPACE")
+        shard_count = 0
+        if 'db0' in shard_reply:
+            if 'keys' in shard_reply['db0']:
+                shard_count = int(shard_reply['db0']['keys'])
+        overall_keyspace_range = overall_keyspace_range + shard_count
+    return overall_keyspace_range
