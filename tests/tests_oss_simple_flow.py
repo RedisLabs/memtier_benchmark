@@ -329,7 +329,7 @@ def test_default_arbitrary_command_hset(env):
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
-    assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
 
 def test_default_arbitrary_command_hset_multi_data_placeholders(env):
@@ -356,5 +356,5 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
-    assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
