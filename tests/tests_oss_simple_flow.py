@@ -325,6 +325,7 @@ def test_default_arbitrary_command_hset(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
@@ -351,7 +352,7 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env, memtier_ok)
+    debugPrintMemtierOnError(config, env)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
