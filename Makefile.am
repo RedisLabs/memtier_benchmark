@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 AUTOMAKE_OPTIONS = foreign 1.9 subdir-objects
+CODE_COVERAGE_IGNORE_PATTERN='*/deps/hdr_histogram/*'
 
 EXTRA_DIST = README.md COPYING
 
@@ -24,6 +25,7 @@ completionsdir=$(BASH_COMPLETION_DIR)
 completions_DATA=bash-completion/memtier_benchmark
 
 memtier_benchmark_CPPFLAGS = \
+	$(CODE_COVERAGE_CFLAGS) \
 	$(LIBEVENT_CFLAGS) \
 	$(LIBEVENT_OPENSSL_CFLAGS) \
 	$(LIBCRYPTO_CFLAGS) \
@@ -46,10 +48,15 @@ memtier_benchmark_SOURCES = \
 	deps/hdr_histogram/hdr_time.c deps/hdr_histogram/hdr_time.h deps/hdr_histogram/hdr_encoding.c deps/hdr_histogram/hdr_encoding.h
 
 memtier_benchmark_LDADD = \
+	$(CODE_COVERAGE_LIBS) \
 	$(LIBEVENT_LIBS) \
 	$(LIBEVENT_OPENSSL_LIBS) \
 	$(LIBCRYPTO_LIBS) \
 	$(LIBSSL_LIBS)
+
+
+@CODE_COVERAGE_RULES@
+memtier_benchmark_LDFLAGS = $(CODE_COVERAGE_LDFLAGS)
 
 dist_man1_MANS = memtier_benchmark.1
 

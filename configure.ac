@@ -21,12 +21,16 @@ AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
 AM_SILENT_RULES([yes])
+AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
 
 CXXFLAGS="-O2 -g -Wall"
 
 # Checks for programs.
 AC_PROG_CXX
+
+# Coverage
+AX_CODE_COVERAGE
 
 # Checks for header files.
 AC_HEADER_STDC

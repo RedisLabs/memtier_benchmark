@@ -33,3 +33,9 @@ tests/tls/*
 *.txt
 !/tests/test_requirements.txt
 __pycache__
+
+# Code coverage with lcov/gcov
+*.gcno
+*.gcov
+*.gcda
+*.info
