@@ -694,7 +694,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_stddev:
                     endptr = NULL;
-                    cfg->key_stddev = (unsigned int) strtof(optarg, &endptr);
+                    cfg->key_stddev = strtod(optarg, &endptr);
                     if (cfg->key_stddev<= 0 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: key-stddev must be greater than zero.\n");
                         return -1;
@@ -702,7 +702,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_median:
                     endptr = NULL;
-                    cfg->key_median = (unsigned int) strtof(optarg, &endptr);
+                    cfg->key_median = strtod(optarg, &endptr);
                     if (cfg->key_median<= 0 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: key-median must be greater than zero.\n");
                         return -1;
