@@ -194,7 +194,7 @@ bool cluster_client::connect_shard_connection(shard_connection* sc, char* addres
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_UNSPEC;
 
     int res = getaddrinfo(address, port, &hints, &addr_info);
     if (res != 0) {
