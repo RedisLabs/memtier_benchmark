@@ -6,7 +6,7 @@ jobs:
   build-ubuntu:
     strategy:
       matrix:
-        platform: [ubuntu-latest, ubuntu-18.04]
+        platform: [ubuntu-latest, ubuntu-20.04]
     runs-on: ${{ matrix.platform }}
     steps:
     - uses: actions/checkout@v2
