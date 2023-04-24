@@ -99,7 +99,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "server = %s\n"
         "port = %u\n"
         "unix socket = %s\n"
-        "resolution %s\n"
+        "address family = %s\n"
         "protocol = %s\n"
 #ifdef USE_TLS
         "tls = %s\n"
@@ -205,7 +205,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
-    jsonhandler->write_obj("resolution"        ,"\"%s\"",      	cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6");
+    jsonhandler->write_obj("address family"    ,"\"%s\"",      	cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6");
     jsonhandler->write_obj("protocol"          ,"\"%s\"",      	get_protocol_name(cfg->protocol));
     jsonhandler->write_obj("out_file"          ,"\"%s\"",      	cfg->out_file);
 #ifdef USE_TLS
