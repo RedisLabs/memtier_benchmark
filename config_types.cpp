@@ -225,8 +225,8 @@ const char* config_weight_list::print(char *buf, int buf_len)
 }
 
 
-server_addr::server_addr(const char *hostname, int port) :
-    m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_last_error(0)
+server_addr::server_addr(const char *hostname, int port, int resolution) :
+    m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution), m_last_error(0)
 {
     int error = resolve();
 
@@ -254,7 +254,7 @@ int server_addr::resolve(void)
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = PF_UNSPEC;
+    hints.ai_family = m_resolution;
 
     snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
     m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);
