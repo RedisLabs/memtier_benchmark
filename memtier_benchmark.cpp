@@ -664,7 +664,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_expiry_range:
                     cfg->expiry_range = config_range(optarg);
                     if (!cfg->expiry_range.is_defined()) {
-                        fprintf(stderr, "error: data-size-range must be expressed as [0-n]-[1-n].\n");
+                        fprintf(stderr, "error: expiry-range must be expressed as [0-n]-[1-n].\n");
                         return -1;
                     }
                     break;
