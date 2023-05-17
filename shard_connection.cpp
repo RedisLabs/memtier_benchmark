@@ -472,14 +472,6 @@ void shard_connection::process_response(void)
 
     fill_pipeline();
 
-    // update events
-    if (m_bev != NULL) {
-        // no pending response (nothing to read) and output buffer empty (nothing to write)
-        if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
-            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-        }
-    }
-
     if (m_conns_manager->finished()) {
         m_conns_manager->set_end_time();
     }
@@ -507,6 +499,14 @@ void shard_connection::fill_pipeline(void)
 
         // client manage requests logic
         m_conns_manager->create_request(now, m_id);
+    }
+
+    // update events
+    if (m_bev != NULL) {
+        // no pending response (nothing to read) and output buffer empty (nothing to write)
+        if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
+            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+        }
     }
 }
 
