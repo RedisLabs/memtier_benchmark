@@ -99,6 +99,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "server = %s\n"
         "port = %u\n"
         "unix socket = %s\n"
+        "address family = %s\n"
         "protocol = %s\n"
 #ifdef USE_TLS
         "tls = %s\n"
@@ -147,6 +148,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->server,
         cfg->port,
         cfg->unix_socket,
+        cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6",
         get_protocol_name(cfg->protocol),
 #ifdef USE_TLS
         cfg->tls ? "yes" : "no",
@@ -203,6 +205,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
+    jsonhandler->write_obj("address family"    ,"\"%s\"",      	cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6");
     jsonhandler->write_obj("protocol"          ,"\"%s\"",      	get_protocol_name(cfg->protocol));
     jsonhandler->write_obj("out_file"          ,"\"%s\"",      	cfg->out_file);
 #ifdef USE_TLS
@@ -257,6 +260,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->server = "localhost";
     if (!cfg->port && !cfg->unix_socket)
         cfg->port = 6379;
+    if (!cfg->resolution)
+        cfg->resolution = AF_UNSPEC;
     if (!cfg->run_count)
         cfg->run_count = 1;
     if (!cfg->clients)
@@ -406,6 +411,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "server",                     1, 0, 's' },
         { "port",                       1, 0, 'p' },
         { "unix-socket",                1, 0, 'S' },
+        { "ipv4",                       0, 0, '4' },
+        { "ipv6",                       0, 0, '6' },
         { "protocol",                   1, 0, 'P' },
 #ifdef USE_TLS
         { "tls",                        0, 0, o_tls },
@@ -470,7 +477,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     int c;
     char *endptr;
     while ((c = getopt_long(argc, argv,
-                "vs:S:p:P:o:x:DRn:c:t:d:a:h", long_options, &option_index)) != -1)
+                "vs:S:p:P:o:x:DRn:c:t:d:a:h:46", long_options, &option_index)) != -1)
     {
         switch (c) {
                 case 'h':
@@ -496,6 +503,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         fprintf(stderr, "error: port must be a number in the range [1-65535].\n");
                         return -1;
                     }
+                    break;
+                case '4':
+                    cfg->resolution = AF_INET;
+                    break;
+                case '6':
+                    cfg->resolution = AF_INET6;
                     break;
                 case 'P':
                     if (strcmp(optarg, "redis") == 0) {
@@ -648,7 +661,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_expiry_range:
                     cfg->expiry_range = config_range(optarg);
                     if (!cfg->expiry_range.is_defined()) {
-                        fprintf(stderr, "error: data-size-range must be expressed as [0-n]-[1-n].\n");
+                        fprintf(stderr, "error: expiry-range must be expressed as [0-n]-[1-n].\n");
                         return -1;
                     }
                     break;
@@ -691,7 +704,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_stddev:
                     endptr = NULL;
-                    cfg->key_stddev = (unsigned int) strtof(optarg, &endptr);
+                    cfg->key_stddev = strtod(optarg, &endptr);
                     if (cfg->key_stddev<= 0 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: key-stddev must be greater than zero.\n");
                         return -1;
@@ -699,7 +712,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_key_median:
                     endptr = NULL;
-                    cfg->key_median = (unsigned int) strtof(optarg, &endptr);
+                    cfg->key_median = strtod(optarg, &endptr);
                     if (cfg->key_median<= 0 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: key-median must be greater than zero.\n");
                         return -1;
@@ -870,6 +883,8 @@ void usage() {
             "  -s, --server=ADDR              Server address (default: localhost)\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
+            "  -4, --ipv4                     Force IPv4 address resolution.\n"
+            "  -6  --ipv6                     Force IPv6 address resolution.\n"
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).\n"
             "                                 other supported protocols are resp2, resp3, memcache_text and memcache_binary.\n"
             "                                 when using one of resp2 or resp3 the redis protocol version will be set via HELLO command.\n"
@@ -1337,7 +1352,7 @@ int main(int argc, char *argv[])
 
     if (cfg.server != NULL && cfg.port > 0) {
         try {
-            cfg.server_addr = new server_addr(cfg.server, cfg.port);
+            cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.resolution);
         } catch (std::runtime_error& e) {
             benchmark_error_log("%s:%u: error: %s\n",
                     cfg.server, cfg.port, e.what());

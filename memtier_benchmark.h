@@ -54,6 +54,7 @@ struct benchmark_config {
     unsigned short port;
     struct server_addr *server_addr;
     const char *unix_socket;
+    int resolution;
     enum PROTOCOL_TYPE protocol;
     const char *out_file;
     const char *client_stats;

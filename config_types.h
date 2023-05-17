@@ -86,7 +86,7 @@ struct connect_info {
 };
 
 struct server_addr {
-    server_addr(const char *hostname, int port);
+    server_addr(const char *hostname, int port, int resolution);
     virtual ~server_addr();
 
     int get_connect_info(struct connect_info *ci);
@@ -99,6 +99,7 @@ protected:
     int m_port;
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
+    int m_resolution;
     int m_last_error;
 };
 
