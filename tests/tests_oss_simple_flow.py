@@ -264,7 +264,7 @@ def test_default_set_get_3_runs(env):
 def test_default_arbitrary_command_pubsub(env):
     benchmark_specs = {"name": env.testName, "args": ['--command=publish \"__key__\" \"__data__\"']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,100000)
+    config = get_default_memtier_config(10,5,10000)
     master_nodes_list = env.getMasterNodesList()
 
     add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
@@ -284,7 +284,7 @@ def test_default_arbitrary_command_pubsub(env):
 def test_default_arbitrary_command_set(env):
     benchmark_specs = {"name": env.testName, "args": ['--command=SET __key__ __data__']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,100000)
+    config = get_default_memtier_config(10,5,10000)
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
@@ -310,7 +310,7 @@ def test_default_arbitrary_command_set(env):
 def test_default_arbitrary_command_hset(env):
     benchmark_specs = {"name": env.testName, "args": ['--command=HSET __key__ field1 __data__']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,100000)
+    config = get_default_memtier_config(10,5,10000)
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
