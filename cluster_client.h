@@ -22,15 +22,20 @@
 #include <set>
 #include "client.h"
 
-typedef std::queue<unsigned long long> key_index_pool;
+#define MAX_SLOTS 16384
 
-// forward decleration
+// forward declaration
 class shard_connection;
 
 class cluster_client : public client {
 protected:
-    std::vector<key_index_pool*> m_key_index_pools;
-    unsigned int m_slot_to_shard[16384];
+    /*
+     * Stores the first slot owned by the indexed connection.
+     * Since we connect only to primaries we can have at most 16K distinct connections...
+     */
+    uint16_t m_conn_to_init_slot[MAX_SLOTS];
+    // An index-linked array used to store circular lists of slots, one for each shard returned by the SLOTS command.
+    uint16_t m_slot_lists[MAX_SLOTS];
 
     char m_key_buffer[250];
     int m_key_len;

@@ -48,15 +48,13 @@
 #include "memtier_benchmark.h"
 #include "obj_gen.h"
 #include "shard_connection.h"
-
-#define KEY_INDEX_QUEUE_MAX_SIZE 1000000
+#include "crc16_slottable.h"
 
 #define MOVED_MSG_PREFIX "-MOVED"
 #define MOVED_MSG_PREFIX_LEN 6
 #define ASK_MSG_PREFIX "-ASK"
 #define ASK_MSG_PREFIX_LEN 4
 
-#define MAX_CLUSTER_HSLOT 16383
 static const uint16_t crc16tab[256]= {
         0x0000,0x1021,0x2042,0x3063,0x4084,0x50a5,0x60c6,0x70e7,
         0x8108,0x9129,0xa14a,0xb16b,0xc18c,0xd1ad,0xe1ce,0xf1ef,
@@ -100,12 +98,6 @@ static inline uint16_t crc16(const char *buf, size_t len) {
     return crc;
 }
 
-static uint32_t calc_hslot_crc16_cluster(const char *str, size_t length)
-{
-    uint32_t rv = (uint32_t) crc16(str, length) & MAX_CLUSTER_HSLOT;
-    return rv;
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 cluster_client::cluster_client(client_group* group) : client(group)
@@ -113,11 +105,6 @@ cluster_client::cluster_client(client_group* group) : client(group)
 }
 
 cluster_client::~cluster_client() {
-    for (unsigned int i = 0; i < m_key_index_pools.size(); i++) {
-        key_index_pool* key_idx_pool = m_key_index_pools[i];
-        delete key_idx_pool;
-    }
-    m_key_index_pools.clear();
 }
 
 int cluster_client::connect(void) {
@@ -127,11 +114,6 @@ int cluster_client::connect(void) {
 
     // set main connection to send 'CLUSTER SLOTS' command
     sc->set_cluster_slots();
-
-    // create key index pool for main connection
-    key_index_pool* key_idx_pool = new key_index_pool;
-    m_key_index_pools.push_back(key_idx_pool);
-    assert(m_connections.size() == m_key_index_pools.size());
 
     // continue with base class
     client::connect();
@@ -166,22 +148,10 @@ shard_connection* cluster_client::create_shard_connection(abstract_protocol* abs
 
     m_connections.push_back(sc);
 
-    // create key index pool
-    key_index_pool* key_idx_pool = new key_index_pool;
-    assert(key_idx_pool != NULL);
-
-    m_key_index_pools.push_back(key_idx_pool);
-    assert(m_connections.size() == m_key_index_pools.size());
-
     return sc;
 }
 
 bool cluster_client::connect_shard_connection(shard_connection* sc, char* address, char* port) {
-    // empty key index queue
-    if (m_key_index_pools[sc->get_id()]->size()) {
-        key_index_pool empty_queue;
-        std::swap(*m_key_index_pools[sc->get_id()], empty_queue);
-    }
 
     // save address and port
     sc->set_address_port(address, port);
@@ -224,9 +194,12 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
      */
     unsigned long prev_connections_size = m_connections.size();
     std::vector<bool> close_sc(prev_connections_size, true);
+    for (unsigned int i = 0; i < MAX_SLOTS; i++) {
+        m_conn_to_init_slot[i] = UINT16_MAX;
+    }
 
     // run over response and create connections
-    for (unsigned int i=0; i<r->get_mbulk_value()->mbulks_elements.size(); i++) {
+    for (unsigned int i = 0; i < r->get_mbulk_value()->mbulks_elements.size(); i++) {
         // create connection
         mbulk_size_el* shard = r->get_mbulk_value()->mbulks_elements[i]->as_mbulk_size();
 
@@ -273,9 +246,18 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
             connect_shard_connection(sc, addr, port);
         }
 
-        // update range
+        unsigned int sc_id = sc->get_id();
+        // Set the initial slot for this shard connection
+        if (m_conn_to_init_slot[sc_id] == UINT16_MAX) {
+            m_conn_to_init_slot[sc_id] = min_slot;
+        }
         for (int j = min_slot; j <= max_slot; j++) {
-            m_slot_to_shard[j] = sc->get_id();
+            if (j < max_slot) {
+                m_slot_lists[j] = j+1;
+            } else {
+                // Close the loop - point the last index to the first one owned by the shard connection
+                m_slot_lists[j] = m_conn_to_init_slot[sc_id];
+            }
         }
 
         free(addr);
@@ -283,7 +265,7 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
     }
 
     // check if some connections left with no slots, and need to be closed
-    for (unsigned int i=0; i < prev_connections_size; i++) {
+    for (unsigned int i = 0; i < prev_connections_size; i++) {
         if ((close_sc[i] == true) &&
             (m_connections[i]->get_connection_state() != conn_disconnected)) {
 
@@ -299,8 +281,7 @@ bool cluster_client::hold_pipeline(unsigned int conn_id) {
 
     // don't exceed requests
     if (m_config->requests) {
-        if (m_key_index_pools[conn_id]->empty() &&
-            m_reqs_generated >= m_config->requests) {
+        if (m_reqs_generated >= m_config->requests) {
             return true;
         }
     }
@@ -309,53 +290,13 @@ bool cluster_client::hold_pipeline(unsigned int conn_id) {
 }
 
 bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index) {
-    // first check if we already have key in pool
-    if (!m_key_index_pools[conn_id]->empty()) {
-        *key_index = m_key_index_pools[conn_id]->front();
-        m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
 
-        m_key_index_pools[conn_id]->pop();
-        return true;
-    }
-
-    // keep generate key till it match for this connection, or requests reached
-    while (true) {
-        // generate key
-        *key_index = m_obj_gen->get_key_index(iter);
-        m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
-
-        unsigned int hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
-
-        // check if the key match for this connection
-        if (m_slot_to_shard[hslot] == conn_id) {
-            m_reqs_generated++;
-            return true;
-        }
-
-        // handle key for other connection
-        unsigned int other_conn_id = m_slot_to_shard[hslot];
-
-        // in case we generated key for connection that is disconnected, 'slot to shard' map may need to be updated
-        if (m_connections[other_conn_id]->get_connection_state() == conn_disconnected) {
-            m_connections[conn_id]->set_cluster_slots();
-            return false;
-        }
-
-        // in case connection is during cluster slots command, his slots mapping not relevant
-        if (m_connections[other_conn_id]->get_cluster_slots_state() != setup_done)
-            continue;
-
-        // store key for other connection, if queue is not full
-        key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
-        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE) {
-            key_idx_pool->push(*key_index);
-            m_reqs_generated++;
-        }
-
-        // don't exceed requests
-        if (m_config->requests > 0 && m_reqs_generated >= m_config->requests)
-            return false;
-    }
+    *key_index = m_obj_gen->get_key_index(iter);
+    m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s{%s}%llu",
+                         m_obj_gen->get_key_prefix(), crc16_slot_table[m_conn_to_init_slot[conn_id]], *key_index);
+    m_conn_to_init_slot[conn_id] = m_slot_lists[m_conn_to_init_slot[conn_id]];
+    m_reqs_generated++;
+    return true;
 }
 
 // This function could use some urgent TLC -- but we need to do it without altering the behavior
@@ -431,10 +372,6 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
     // connection already issued 'cluster slots' command, wait for slots mapping to be updated
     if (m_connections[conn_id]->get_cluster_slots_state() != setup_done)
         return;
-
-    // queue may stored uncorrected mapping indexes, empty them
-    key_index_pool empty_queue;
-    std::swap(*m_key_index_pools[conn_id], empty_queue);
 
     // set connection to send 'CLUSTER SLOTS' command
     m_connections[conn_id]->set_cluster_slots();
