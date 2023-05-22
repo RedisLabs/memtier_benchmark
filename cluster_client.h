@@ -40,7 +40,7 @@ protected:
 
     shard_connection* create_shard_connection(abstract_protocol* abs_protocol);
     bool connect_shard_connection(shard_connection* sc, char* address, char* port);
-    bool get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index);
+    bool get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index, bool is_arbitrary_req);
     void handle_moved(unsigned int conn_id, struct timeval timestamp,
                       request *request, protocol_response *response);
     void handle_ask(unsigned int conn_id, struct timeval timestamp,

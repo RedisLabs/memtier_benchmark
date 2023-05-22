@@ -308,7 +308,7 @@ bool cluster_client::hold_pipeline(unsigned int conn_id) {
     return false;
 }
 
-bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index) {
+bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index, bool is_arbitrary_req) {
     // first check if we already have key in pool
     if (!m_key_index_pools[conn_id]->empty()) {
         *key_index = m_key_index_pools[conn_id]->front();
@@ -346,9 +346,9 @@ bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned l
             continue;
 
         // store key for other connection, if queue is not full
+        // and we're not issuing an arbitrary request
         key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
-        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE &&
-            (m_config->requests == 0 || (m_key_index_pools.size() * KEY_INDEX_QUEUE_MAX_SIZE) < m_config->requests)) {
+        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE && !is_arbitrary_req) {
             key_idx_pool->push(*key_index);
             m_reqs_generated++;
         }
@@ -374,7 +374,7 @@ void cluster_client::create_arbitrary_request(const arbitrary_command* cmd, stru
             unsigned long long key_index;
 
             // get key
-            if (!get_key_for_conn(conn_id,  get_arbitrary_obj_iter_type(cmd, m_executed_command_index), &key_index)) {
+            if (!get_key_for_conn(conn_id,  get_arbitrary_obj_iter_type(cmd, m_executed_command_index), &key_index, true)) {
                 return;
             }
 
@@ -428,7 +428,7 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
         unsigned long long key_index;
 
         // get key
-        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 0), &key_index)) {
+        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 0), &key_index, false)) {
             return;
         }
 
@@ -446,7 +446,7 @@ void cluster_client::create_request(struct timeval timestamp, unsigned int conn_
         unsigned long long key_index;
 
         // get key
-        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 2), &key_index)) {
+        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 2), &key_index, false)) {
             return;
         }
 
