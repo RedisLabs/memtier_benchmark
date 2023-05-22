@@ -234,7 +234,6 @@ def test_default_set_get_1_1(env):
 
 # run each test on different env
 def test_default_set_get_3_runs(env):
-    env.skipOnCluster()
     run_count = 3
     benchmark_specs = {"name": env.testName, "args": ['--run-count={}'.format(run_count)]}
     addTLSArgs(benchmark_specs, env)
@@ -262,7 +261,6 @@ def test_default_set_get_3_runs(env):
 
 
 def test_default_arbitrary_command_pubsub(env):
-    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--command=publish \"__key__\" \"__data__\"']}
     addTLSArgs(benchmark_specs, env)
     config = get_default_memtier_config()
@@ -283,7 +281,6 @@ def test_default_arbitrary_command_pubsub(env):
 
 
 def test_default_arbitrary_command_set(env):
-    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--command=SET __key__ __data__']}
     addTLSArgs(benchmark_specs, env)
     config = get_default_memtier_config()
@@ -310,7 +307,6 @@ def test_default_arbitrary_command_set(env):
 
 
 def test_default_arbitrary_command_hset(env):
-    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--command=HSET __key__ field1 __data__']}
     addTLSArgs(benchmark_specs, env)
     config = get_default_memtier_config()
