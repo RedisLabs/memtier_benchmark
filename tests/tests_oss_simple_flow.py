@@ -262,9 +262,10 @@ def test_default_set_get_3_runs(env):
 
 
 def test_default_arbitrary_command_pubsub(env):
+    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--command=publish \"__key__\" \"__data__\"']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,10000)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
 
     add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
@@ -282,9 +283,10 @@ def test_default_arbitrary_command_pubsub(env):
 
 
 def test_default_arbitrary_command_set(env):
+    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--command=SET __key__ __data__']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,10000)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
@@ -308,9 +310,10 @@ def test_default_arbitrary_command_set(env):
 
 
 def test_default_arbitrary_command_hset(env):
+    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--command=HSET __key__ field1 __data__']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,10000)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
@@ -326,17 +329,17 @@ def test_default_arbitrary_command_hset(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)
 
+
 def test_default_arbitrary_command_hset_multi_data_placeholders(env):
     benchmark_specs = {"name": env.testName, "args": ['--command=HSET __key__ field1 __data__ field2 __data__ field3 __data__']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(10,5,100000)
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
