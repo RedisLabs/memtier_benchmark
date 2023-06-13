@@ -130,6 +130,7 @@ struct arbitrary_command {
     std::string command;
     std::string command_name;
     char key_pattern;
+    unsigned int keys_count;
     unsigned int ratio;
 };
 
@@ -161,23 +162,6 @@ public:
 
     bool is_defined() const {
         return !commands_list.empty();
-    }
-
-    const arbitrary_command* get_next_executed_command(unsigned int& ratio_count, unsigned int& executed_command_index) const {
-        while(true) {
-            const arbitrary_command* executed_command = &commands_list[executed_command_index];
-
-            if (ratio_count < executed_command->ratio) {
-                ratio_count++;
-                return executed_command;
-            } else {
-                ratio_count = 0;
-                executed_command_index++;
-                if (executed_command_index == size()) {
-                    executed_command_index = 0;
-                }
-            }
-        }
     }
 
     unsigned int get_max_command_name_length() const {

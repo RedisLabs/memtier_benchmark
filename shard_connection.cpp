@@ -505,6 +505,7 @@ void shard_connection::fill_pipeline(void)
     if (m_bev != NULL) {
         // no pending response (nothing to read) and output buffer empty (nothing to write)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
+            benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
             bufferevent_disable(m_bev, EV_WRITE|EV_READ);
         }
     }
@@ -638,9 +639,9 @@ int shard_connection::send_arbitrary_command(const command_arg *arg, const char 
     int cmd_size = 0;
 
     if (arg->type == key_type) {
-        benchmark_debug_log("key: value[%.*s]\n",  val_len, val);
+        benchmark_debug_log("key=[%.*s]\n",  val_len, val);
     } else {
-        benchmark_debug_log("data: value_len=%u\n",  val_len);
+        benchmark_debug_log("value_len=%u\n",  val_len);
     }
 
     cmd_size = m_protocol->write_arbitrary_command(val, val_len);
