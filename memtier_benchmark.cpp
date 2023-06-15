@@ -407,11 +407,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_cacert,
         o_tls_skip_verify,
         o_tls_sni,
-        o_hdr_file_prefix
+        o_hdr_file_prefix,
+        o_help
     };
 
     static struct option long_options[] = {
         { "server",                     1, 0, 's' },
+        { "host",                       1, 0, 'h' },
         { "port",                       1, 0, 'p' },
         { "unix-socket",                1, 0, 'S' },
         { "ipv4",                       0, 0, '4' },
@@ -468,7 +470,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
         { "cluster-mode",               0, 0, o_cluster_mode },
-        { "help",                       0, 0, 'h' },
+        { "help",                       0, 0, o_help },
         { "version",                    0, 0, 'v' },
         { "command",                    1, 0, o_command },
         { "command-key-pattern",        1, 0, o_command_key_pattern },
@@ -483,7 +485,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 "vs:S:p:P:o:x:DRn:c:t:d:a:h:46", long_options, &option_index)) != -1)
     {
         switch (c) {
-                case 'h':
+                case o_help:
                     return -1;
                     break;
                 case 'v':
@@ -494,6 +496,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     puts("There is NO WARRANTY, to the extent permitted by law.");
                     exit(0);
                 case 's':
+                case 'h':
                     cfg->server = optarg;
                     break;
                 case 'S':
@@ -883,7 +886,8 @@ void usage() {
             "A memcache/redis NoSQL traffic generator and performance benchmarking tool.\n"
             "\n"
             "Connection and General Options:\n"
-            "  -s, --server=ADDR              Server address (default: localhost)\n"
+            "  -h, --host=ADDR                Server address (default: localhost)\n"
+            "  -s, --server=ADDR              Same as --host\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
             "  -4, --ipv4                     Force IPv4 address resolution.\n"
