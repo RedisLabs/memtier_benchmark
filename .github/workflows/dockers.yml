@@ -30,19 +30,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: tell me
-        run: |
-          set
-          echo Ref ${{github.ref}}
-          echo Event ${{github.event_name}}
-          echo Tag ${{github.event.release.tag_name}}
-
       - name: build and push in master
         uses: docker/build-push-action@v4
         if: ${{ github.event.release.tag_name == '' }}
         with:
           push: true
-          tags: redislabs/memtier-benchmark:edge
+          tags: ${{ vars.DOCKERHUB_REPO }}:edge
           context: .
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
@@ -51,6 +44,6 @@ jobs:
         if: ${{ github.event.release.tag_name != '' }}
         with:
           push: true
-          tags: redislabs/memtier-benchmark:${{ github.event.release.tag_name }}
+          tags: ${{ vars.DOCKERHUB_REPO }}:${{ github.event.release.tag_name }}
           context: .
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
