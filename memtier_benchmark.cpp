@@ -1291,7 +1291,7 @@ int main(int argc, char *argv[])
         }
 
         // Cluster mode supports only a single key commands
-        if (cfg.cluster_mode && cfg.arbitrary_commands->at(i).keys_count != 1) {
+        if (cfg.cluster_mode && cfg.arbitrary_commands->at(i).keys_count > 1) {
             benchmark_error_log("error: Cluster mode supports only a single key commands\n");
             exit(1);
         }

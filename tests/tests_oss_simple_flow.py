@@ -280,6 +280,26 @@ def test_default_arbitrary_command_pubsub(env):
         debugPrintMemtierOnError(config, env)
 
 
+def test_default_arbitrary_command_keyless(env):
+    benchmark_specs = {"name": env.testName, "args": ['--command=PING']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    if not benchmark.run():
+        debugPrintMemtierOnError(config, env)
+
+
 def test_default_arbitrary_command_set(env):
     benchmark_specs = {"name": env.testName, "args": ['--command=SET __key__ __data__']}
     addTLSArgs(benchmark_specs, env)
