@@ -268,16 +268,15 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
 
     benchmark_debug_log("%s: %s:\n", m_connections[conn_id]->get_readable_id(), cmd.command.c_str());
 
-    unsigned long long key_index;
-    get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
-    /* If key not available for this connection, we have a bug of sending partial request */
-    assert(res == available_for_conn);
-
     for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
         const command_arg* arg = &cmd.command_args[i];
         if (arg->type == const_type) {
             cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
         } else if (arg->type == key_type) {
+            unsigned long long key_index;
+            get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
+            /* If key not available for this connection, we have a bug of sending partial request */
+            assert(res == available_for_conn);
             cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_key_buffer, m_key_len);
         } else if (arg->type == data_type) {
             unsigned int value_len;

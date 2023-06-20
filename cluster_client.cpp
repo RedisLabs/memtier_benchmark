@@ -355,9 +355,15 @@ get_key_response cluster_client::get_key_for_conn(unsigned int command_index, un
 }
 
 bool cluster_client::create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id) {
-    /* In arbitrary request, where we send the command arg by arg, we need to check if the
-     * generated key belongs to this connection before starting to send it */
+    /* In arbitrary request, where we send the command arg by arg, we need to check for a key command,
+     * if the generated key belongs to this connection before starting to send it */
     assert(m_key_index_pools[conn_id]->empty());
+
+    /* keyless command can be used by any connection */
+    if (get_arbitrary_command(command_index).keys_count == 0) {
+        client::create_arbitrary_request(command_index, timestamp, conn_id);
+        return true;
+    }
 
     unsigned long long key_index;
     get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
