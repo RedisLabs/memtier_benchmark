@@ -15,6 +15,7 @@ jobs:
   docker:
     name: Build dockers
     runs-on: ubuntu-latest
+    if: (github.repository == 'redislabs/memtier_benchmark')
 
     steps:
       - uses: actions/checkout@v3
