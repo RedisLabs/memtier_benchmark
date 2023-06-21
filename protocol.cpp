@@ -716,7 +716,7 @@ bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
                 benchmark_error_log("error: key placeholder can't combined with other data\n");
                 return false;
             }
-
+            cmd.keys_count++;
             current_arg->type = key_type;
         } else if (current_arg->data.find(DATA_PLACEHOLDER) != std::string::npos) {
             if (current_arg->data.length() != strlen(DATA_PLACEHOLDER)) {

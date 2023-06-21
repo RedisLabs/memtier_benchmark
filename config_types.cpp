@@ -308,7 +308,7 @@ static int hex_digit_to_int(char c) {
     }
 }
 
-arbitrary_command::arbitrary_command(const char* cmd) : command(cmd), key_pattern('R'), ratio(1) {
+arbitrary_command::arbitrary_command(const char* cmd) : command(cmd), key_pattern('R'), keys_count(0), ratio(1) {
     // command name is the first word in the command
     size_t pos = command.find(" ");
     if (pos == std::string::npos) {

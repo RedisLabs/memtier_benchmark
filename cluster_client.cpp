@@ -297,7 +297,7 @@ bool cluster_client::hold_pipeline(unsigned int conn_id) {
         return true;
     }
 
-    // don't exceed requests
+    /* Don't exceed requests. */
     if (m_config->requests) {
         if (m_key_index_pools[conn_id]->empty() &&
             m_reqs_generated >= m_config->requests) {
@@ -308,108 +308,103 @@ bool cluster_client::hold_pipeline(unsigned int conn_id) {
     return false;
 }
 
-bool cluster_client::get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index) {
-    // first check if we already have key in pool
+get_key_response cluster_client::get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index) {
+    // first check if we already have a key in the pool
     if (!m_key_index_pools[conn_id]->empty()) {
         *key_index = m_key_index_pools[conn_id]->front();
         m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
 
         m_key_index_pools[conn_id]->pop();
+        return available_for_conn;
+    }
+
+    // generate key
+    client::get_key_for_conn(command_index, conn_id, key_index);
+
+    unsigned int hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
+
+    // check if the key match for this connection
+    if (m_slot_to_shard[hslot] == conn_id) {
+        benchmark_debug_log("%s generated key=[%.*s] for itself\n", m_connections[conn_id]->get_readable_id(), m_key_len, m_key_buffer);
+        return available_for_conn;
+    }
+
+    // handle key for other connection
+    unsigned int other_conn_id = m_slot_to_shard[hslot];
+
+    // in case we generated key for connection that is disconnected, 'slot to shard' map may need to be updated
+    if (m_connections[other_conn_id]->get_connection_state() == conn_disconnected) {
+        m_connections[conn_id]->set_cluster_slots();
+        return not_available;
+    }
+
+    // in case connection is during cluster slots command, his slots mapping not relevant
+    if (m_connections[other_conn_id]->get_cluster_slots_state() != setup_done)
+        return not_available;
+
+    key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
+    if (key_idx_pool->size() >= KEY_INDEX_QUEUE_MAX_SIZE)
+        return not_available;
+
+    // store command and key for the other connection
+    benchmark_debug_log("%s generated key=[%.*s] for %s\n", m_connections[conn_id]->get_readable_id(), m_key_len, m_key_buffer, m_connections[other_conn_id]->get_readable_id());
+
+    key_idx_pool->push(command_index);
+    key_idx_pool->push(*key_index);
+    return available_for_other_conn;
+}
+
+bool cluster_client::create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id) {
+    /* In arbitrary request, where we send the command arg by arg, we need to check for a key command,
+     * if the generated key belongs to this connection before starting to send it */
+    assert(m_key_index_pools[conn_id]->empty());
+
+    /* keyless command can be used by any connection */
+    if (get_arbitrary_command(command_index).keys_count == 0) {
+        client::create_arbitrary_request(command_index, timestamp, conn_id);
         return true;
     }
 
-    // keep generate key till it match for this connection, or requests reached
-    while (true) {
-        // generate key
-        *key_index = m_obj_gen->get_key_index(iter);
-        m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
+    unsigned long long key_index;
+    get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
 
-        unsigned int hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
+    if (res == not_available)
+        return false;
 
-        // check if the key match for this connection
-        if (m_slot_to_shard[hslot] == conn_id) {
-            m_reqs_generated++;
-            return true;
-        }
+    /* If we generated a key for a different connection, we will use it later */
+    if (res == available_for_other_conn)
+        return true;
 
-        // handle key for other connection
-        unsigned int other_conn_id = m_slot_to_shard[hslot];
+    /* We got a key for this connection, put it back into the pool and
+     * use it inside client::create_arbitrary_request() */
+    m_key_index_pools[conn_id]->push(key_index);
+    client::create_arbitrary_request(command_index, timestamp, conn_id);
 
-        // in case we generated key for connection that is disconnected, 'slot to shard' map may need to be updated
-        if (m_connections[other_conn_id]->get_connection_state() == conn_disconnected) {
-            m_connections[conn_id]->set_cluster_slots();
-            return false;
-        }
-
-        // in case connection is during cluster slots command, his slots mapping not relevant
-        if (m_connections[other_conn_id]->get_cluster_slots_state() != setup_done)
-            continue;
-
-        // store key for other connection, if queue is not full
-        key_index_pool* key_idx_pool = m_key_index_pools[other_conn_id];
-        if (key_idx_pool->size() < KEY_INDEX_QUEUE_MAX_SIZE) {
-            key_idx_pool->push(*key_index);
-            m_reqs_generated++;
-        }
-
-        // don't exceed requests
-        if (m_config->requests > 0 && m_reqs_generated >= m_config->requests)
-            return false;
-    }
+    return true;
 }
 
-// This function could use some urgent TLC -- but we need to do it without altering the behavior
-void cluster_client::create_request(struct timeval timestamp, unsigned int conn_id)
-{
-    // If the Set:Wait ratio is not 0, start off with WAITs
-    if (m_config->wait_ratio.b &&
-        (m_tot_wait_ops == 0 ||
-         (m_tot_set_ops/m_tot_wait_ops > m_config->wait_ratio.a/m_config->wait_ratio.b))) {
-
-        m_tot_wait_ops++;
-
-        unsigned int num_slaves = m_obj_gen->random_range(m_config->num_slaves.min, m_config->num_slaves.max);
-        unsigned int timeout = m_obj_gen->normal_distribution(m_config->wait_timeout.min,
-                                                              m_config->wait_timeout.max, 0,
-                                                              ((m_config->wait_timeout.max - m_config->wait_timeout.min)/2.0) + m_config->wait_timeout.min);
-
-        m_connections[conn_id]->send_wait_command(&timestamp, num_slaves, timeout);
-        m_reqs_generated++;
+void cluster_client::create_request(struct timeval timestamp, unsigned int conn_id) {
+    /* If pool is empty continue with base class */
+    if (m_key_index_pools[conn_id]->empty()) {
+        client::create_request(timestamp, conn_id);
+        return;
     }
-    // are we set or get? this depends on the ratio
-    else if (m_set_ratio_count < m_config->ratio.a) {
-        // set command
-        unsigned long long key_index;
 
-        // get key
-        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 0), &key_index)) {
-            return;
-        }
+    unsigned int pool_size = m_key_index_pools[conn_id]->size();
+    unsigned int command_index = m_key_index_pools[conn_id]->front();
+    m_key_index_pools[conn_id]->pop();
 
-        // get value
-        unsigned int value_len;
-        const char *value = m_obj_gen->get_value(key_index, &value_len);
+    if (m_config->arbitrary_commands->is_defined())
+        client::create_arbitrary_request(command_index, timestamp, conn_id);
+    else if (command_index == SET_CMD_IDX)
+        create_set_request(timestamp, conn_id);
+    else if (command_index == GET_CMD_IDX)
+        create_get_request(timestamp, conn_id);
+    else
+        assert("Unexpected command index");
 
-        m_connections[conn_id]->send_set_command(&timestamp, m_key_buffer, m_key_len,
-                                                 value, value_len, m_obj_gen->get_expiry(),
-                                                 m_config->data_offset);
-        m_set_ratio_count++;
-        m_tot_set_ops++;
-    } else if (m_get_ratio_count < m_config->ratio.b) {
-        // get command
-        unsigned long long key_index;
-
-        // get key
-        if (!get_key_for_conn(conn_id, obj_iter_type(m_config, 2), &key_index)) {
-            return;
-        }
-
-        m_connections[conn_id]->send_get_command(&timestamp, m_key_buffer, m_key_len, m_config->data_offset);
-        m_get_ratio_count++;
-    } else {
-        // overlap counters
-        m_get_ratio_count = m_set_ratio_count = 0;
-    }
+    /* Make sure we used pair of command and key index */
+    assert(m_key_index_pools[conn_id]->size() == pool_size - 2);
 }
 
 // In case of -MOVED response, we sends CLUSTER SLOTS command to get the new topology
@@ -424,6 +419,12 @@ void cluster_client::handle_moved(unsigned int conn_id, struct timeval timestamp
         m_stats.update_moved_set_op(&timestamp,
                                     request->m_size + response->get_total_len(),
                                     ts_diff(request->m_sent_time, timestamp));
+     } else if (request->m_type == rt_arbitrary) {
+        arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+        m_stats.update_moved_arbitrary_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp),
+                                    ar->index);
     } else {
         assert(0);
     }
@@ -452,6 +453,12 @@ void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
         m_stats.update_ask_set_op(&timestamp,
                                     request->m_size + response->get_total_len(),
                                     ts_diff(request->m_sent_time, timestamp));
+    } else if (request->m_type == rt_arbitrary) {
+        arbitrary_request *ar = static_cast<arbitrary_request *>(request);
+        m_stats.update_ask_arbitrary_op(&timestamp,
+                                    request->m_size + response->get_total_len(),
+                                    ts_diff(request->m_sent_time, timestamp),
+                                    ar->index);
     } else {
         assert(0);
     }

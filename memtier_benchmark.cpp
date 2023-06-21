@@ -328,9 +328,6 @@ static bool verify_cluster_option(struct benchmark_config *cfg) {
     } else if (cfg->unix_socket) {
         fprintf(stderr, "error: cluster mode dose not support unix-socket option.\n");
         return false;
-    } else if (cfg->arbitrary_commands->is_defined()) {
-        fprintf(stderr, "error: cluster mode dose not support arbitrary command option.\n");
-        return false;
     }
 
     return true;
@@ -1297,6 +1294,11 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
+        // Cluster mode supports only a single key commands
+        if (cfg.cluster_mode && cfg.arbitrary_commands->at(i).keys_count > 1) {
+            benchmark_error_log("error: Cluster mode supports only a single key commands\n");
+            exit(1);
+        }
         delete tmp_protocol;
     }
 

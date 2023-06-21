@@ -72,6 +72,10 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     else if (config->distinct_client_seed)
         m_obj_gen->set_random_seed(config->next_client_idx);
 
+    // Setup first arbitrary command
+    if (config->arbitrary_commands->is_defined())
+        advance_arbitrary_command_index();
+
     // Parallel key-pattern determined according to the first command
     if ((config->arbitrary_commands->is_defined() && config->arbitrary_commands->at(0).key_pattern == 'P') ||
         (config->key_pattern[key_pattern_set]=='P')) {
@@ -244,25 +248,36 @@ bool client::hold_pipeline(unsigned int conn_id) {
     return false;
 }
 
-void client::create_arbitrary_request(const arbitrary_command* cmd, struct timeval& timestamp, unsigned int conn_id) {
+get_key_response client::get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index) {
+    int iter;
+    if (m_config->arbitrary_commands->is_defined())
+        iter = arbitrary_obj_iter_type(command_index);
+    else
+        iter = obj_iter_type(m_config, command_index);
+
+    *key_index = m_obj_gen->get_key_index(iter);
+    m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
+
+    return available_for_conn;
+}
+
+bool client::create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id) {
     int cmd_size = 0;
 
-    benchmark_debug_log("%s [%s]:\n", cmd->command_name.c_str(), cmd->command.c_str());
+    const arbitrary_command& cmd = get_arbitrary_command(command_index);
 
-    for (unsigned int i = 0; i < cmd->command_args.size(); i++) {
-        const command_arg* arg = &cmd->command_args[i];
+    benchmark_debug_log("%s: %s:\n", m_connections[conn_id]->get_readable_id(), cmd.command.c_str());
 
+    for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
+        const command_arg* arg = &cmd.command_args[i];
         if (arg->type == const_type) {
             cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
         } else if (arg->type == key_type) {
-            int iter = get_arbitrary_obj_iter_type(cmd, m_executed_command_index);
-            unsigned int key_len;
-            const char *key = m_obj_gen->get_key(iter, &key_len);
-
-            assert(key != NULL);
-            assert(key_len > 0);
-
-            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, key, key_len);
+            unsigned long long key_index;
+            get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
+            /* If key not available for this connection, we have a bug of sending partial request */
+            assert(res == available_for_conn);
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_key_buffer, m_key_len);
         } else if (arg->type == data_type) {
             unsigned int value_len;
             const char *value = m_obj_gen->get_value(0, &value_len);
@@ -274,8 +289,68 @@ void client::create_arbitrary_request(const arbitrary_command* cmd, struct timev
         }
     }
 
-    m_connections[conn_id]->send_arbitrary_command_end(m_executed_command_index, &timestamp, cmd_size);
-    m_reqs_generated++;
+    m_connections[conn_id]->send_arbitrary_command_end(command_index, &timestamp, cmd_size);
+    return true;
+}
+
+bool client::create_wait_request(struct timeval& timestamp, unsigned int conn_id) {
+    unsigned int num_slaves = m_obj_gen->random_range(m_config->num_slaves.min, m_config->num_slaves.max);
+    unsigned int timeout = m_obj_gen->normal_distribution(m_config->wait_timeout.min,
+                                                          m_config->wait_timeout.max, 0,
+                                                          ((m_config->wait_timeout.max - m_config->wait_timeout.min)/2.0) + m_config->wait_timeout.min);
+
+    m_connections[conn_id]->send_wait_command(&timestamp, num_slaves, timeout);
+    return true;
+}
+
+bool client::create_set_request(struct timeval& timestamp, unsigned int conn_id) {
+    unsigned long long key_index;
+    get_key_response res = get_key_for_conn(SET_CMD_IDX, conn_id, &key_index);
+    if (res == not_available)
+        return false;
+
+    if (res == available_for_conn) {
+        unsigned int value_len;
+        const char *value = m_obj_gen->get_value(key_index, &value_len);
+
+        m_connections[conn_id]->send_set_command(&timestamp, m_key_buffer, m_key_len,
+                                                 value, value_len, m_obj_gen->get_expiry(),
+                                                 m_config->data_offset);
+    }
+
+    return true;
+}
+
+bool client::create_get_request(struct timeval& timestamp, unsigned int conn_id) {
+    unsigned long long key_index;
+    get_key_response res = get_key_for_conn(GET_CMD_IDX, conn_id, &key_index);
+    if (res == not_available)
+        return false;
+
+    if (res == available_for_conn) {
+        m_connections[conn_id]->send_get_command(&timestamp, m_key_buffer, m_key_len, m_config->data_offset);
+    }
+
+    return true;
+}
+
+bool client::create_mget_request(struct timeval& timestamp, unsigned int conn_id) {
+    unsigned long long key_index;
+    unsigned int keys_count = m_config->ratio.b - m_get_ratio_count;
+    if ((int)keys_count > m_config->multi_key_get)
+        keys_count = m_config->multi_key_get;
+
+    m_keylist->clear();
+    for (unsigned int i = 0; i < keys_count; i++) {
+        get_key_response res = get_key_for_conn(GET_CMD_IDX, conn_id, &key_index);
+        /* Not supported in cluster mode */
+        assert(res == available_for_conn);
+
+        m_keylist->add_key(m_key_buffer, m_key_len);
+    }
+
+    m_connections[conn_id]->send_mget_command(&timestamp, m_keylist);
+    return true;
 }
 
 // This function could use some urgent TLC -- but we need to do it without altering the behavior
@@ -283,10 +358,10 @@ void client::create_request(struct timeval timestamp, unsigned int conn_id)
 {
     // are we using arbitrary command?
     if (m_config->arbitrary_commands->is_defined()) {
-        const arbitrary_command* executed_command = m_config->arbitrary_commands->get_next_executed_command(m_arbitrary_command_ratio_count,
-                                                                                                      m_executed_command_index);
-        create_arbitrary_request(executed_command, timestamp, conn_id);
-
+        if (create_arbitrary_request(m_executed_command_index, timestamp, conn_id)) {
+            advance_arbitrary_command_index();
+            m_reqs_generated++;
+        }
         return;
     }
 
@@ -294,67 +369,38 @@ void client::create_request(struct timeval timestamp, unsigned int conn_id)
     if (m_config->wait_ratio.b &&
         (m_tot_wait_ops == 0 ||
          (m_tot_set_ops/m_tot_wait_ops > m_config->wait_ratio.a/m_config->wait_ratio.b))) {
+        if (!create_wait_request(timestamp, conn_id))
+            return;
 
-        m_tot_wait_ops++;
-
-        unsigned int num_slaves = m_obj_gen->random_range(m_config->num_slaves.min, m_config->num_slaves.max);
-        unsigned int timeout = m_obj_gen->normal_distribution(m_config->wait_timeout.min,
-                                  m_config->wait_timeout.max, 0,
-                                  ((m_config->wait_timeout.max - m_config->wait_timeout.min)/2.0) + m_config->wait_timeout.min);
-
-        m_connections[conn_id]->send_wait_command(&timestamp, num_slaves, timeout);
         m_reqs_generated++;
+        m_tot_wait_ops++;
     }
+
     // are we set or get? this depends on the ratio
     else if (m_set_ratio_count < m_config->ratio.a) {
-        // set command
-        data_object *obj = m_obj_gen->get_object(obj_iter_type(m_config, 0));
-        unsigned int key_len;
-        const char *key = obj->get_key(&key_len);
-        unsigned int value_len;
-        const char *value = obj->get_value(&value_len);
+        if (!create_set_request(timestamp, conn_id))
+            return;
 
-        m_connections[conn_id]->send_set_command(&timestamp, key, key_len,
-                                                 value, value_len, obj->get_expiry(),
-                                                 m_config->data_offset);
-        m_reqs_generated++;
         m_set_ratio_count++;
+        m_reqs_generated++;
         m_tot_set_ops++;
     } else if (m_get_ratio_count < m_config->ratio.b) {
-        // get command
-        int iter = obj_iter_type(m_config, 2);
+        // GET command
+        if (!m_config->multi_key_get) {
+            if (!create_get_request(timestamp, conn_id))
+                return;
 
-        if (m_config->multi_key_get > 0) {
-            unsigned int keys_count;
-
-            keys_count = m_config->ratio.b - m_get_ratio_count;
-            if ((int)keys_count > m_config->multi_key_get)
-                keys_count = m_config->multi_key_get;
-
-            m_keylist->clear();
-            while (m_keylist->get_keys_count() < keys_count) {
-                unsigned int keylen;
-                const char *key = m_obj_gen->get_key(iter, &keylen);
-
-                assert(key != NULL);
-                assert(keylen > 0);
-
-                m_keylist->add_key(key, keylen);
-            }
-
-            m_connections[conn_id]->send_mget_command(&timestamp, m_keylist);
-            m_reqs_generated++;
-            m_get_ratio_count += keys_count;
-        } else {
-            unsigned int keylen;
-            const char *key = m_obj_gen->get_key(iter, &keylen);
-            assert(key != NULL);
-            assert(keylen > 0);
-
-            m_connections[conn_id]->send_get_command(&timestamp, key, keylen, m_config->data_offset);
-            m_reqs_generated++;
             m_get_ratio_count++;
+            m_reqs_generated++;
+            return;
         }
+
+        // MGET command
+        if (!create_mget_request(timestamp, conn_id))
+            return;
+
+        m_get_ratio_count += m_config->multi_key_get;
+        m_reqs_generated++;
     } else {
         // overlap counters
         m_get_ratio_count = m_set_ratio_count = 0;
