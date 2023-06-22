@@ -132,7 +132,7 @@ jobs:
     - name: Get binary packages
       uses: actions/download-artifact@v2
     - name: Setup ruby
-      uses: actions/setup-ruby@v1
+      uses: ruby/setup-ruby@v1
       with:
           ruby-version: "2.7"
     - name: Install deb-s3
