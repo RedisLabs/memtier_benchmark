@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dist: [jammy, focal, bionic, bookworm, bullseye, buster]
+        dist: ${{ fromJSON(vars.BUILD_DISTS) }}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -47,13 +47,9 @@ jobs:
     environment: build
     strategy:
       matrix:
-        dist: [jammy, focal, bionic, bookworm, bullseye, buster]
-        arch: [i386, amd64, arm64, armhf]
-        exclude:
-        - dist: focal
-          arch: i386
-        - dist: jammy
-          arch: i386
+        dist: ${{ fromJSON(vars.BUILD_DISTS) }}
+        arch: ${{ fromJSON(vars.BUILD_ARCHS) }}
+        exclude: ${{ fromJSON(vars.BUILD_EXCLUDE) }}
     needs: build-source-package
     steps:
     - uses: actions/checkout@v2
@@ -109,7 +105,7 @@ jobs:
       ARCH: amd64
     strategy:
       matrix:
-        image: ["ubuntu:jammy", "ubuntu:focal", "ubuntu:bionic", "debian:bookworm", "debian:bullseye", "ubuntu:bionic"]
+        image: ${{ fromJSON(vars.SMOKE_TEST_IMAGES) }}
     container: ${{ matrix.image }}
     steps:
     - name: Get binary packages
