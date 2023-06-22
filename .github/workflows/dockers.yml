@@ -9,6 +9,12 @@ on:
       - master
 
   workflow_dispatch:
+    inputs:
+      release_tag_name:
+        description: "Release tag to use for manual build"
+
+  release:
+    types: [published]
 
 jobs:
 
@@ -46,5 +52,14 @@ jobs:
         with:
           push: true
           tags: ${{ vars.DOCKERHUB_REPO }}:${{ github.event.release.tag_name }}
+          context: .
+          platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
+
+      - name: build and push a manual release
+        uses: docker/build-push-action@v4
+        if: ${{ github.event.inputs.release_tag_name != '' }}
+        with:
+          push: true
+          tags: ${{ vars.DOCKERHUB_REPO }}:${{ github.event.inputs.release_tag_name }}
           context: .
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
