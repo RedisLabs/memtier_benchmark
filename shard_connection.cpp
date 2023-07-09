@@ -289,6 +289,10 @@ void shard_connection::disconnect() {
     }
     m_bev = NULL;
 
+    // empty pipeline
+    while (m_pending_resp)
+        delete pop_req();
+
     m_connection_state = conn_disconnected;
 
     // by default no need to send any setup request
