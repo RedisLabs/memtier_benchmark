@@ -92,6 +92,7 @@ config_quantiles::config_quantiles(){
 
 }
 
+
 config_quantiles::config_quantiles(const char *str)
 {
     assert(str != NULL);
