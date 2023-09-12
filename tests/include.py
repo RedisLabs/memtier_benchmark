@@ -10,7 +10,7 @@ TLS_PROTOCOLS = os.environ.get("TLS_PROTOCOLS", "")
 
 def ensure_tls_protocols(master_nodes_connections):
     if TLS_PROTOCOLS != "":
-        # ensure if we run again on a different key pattern the dataset doesn't grow
+        # if we've specified the TLS_PROTOCOLS env variable ensure the server enforces thos protocol versions
         for master_connection in master_nodes_connections:
             master_connection.execute_command("CONFIG", "SET", "tls-protocols", TLS_PROTOCOLS)
 
