@@ -50,6 +50,18 @@ jobs:
       run: |
         TLS=1 ./tests/run_tests.sh
 
+    - name: Test OSS TCP TLS v1.2
+      if: matrix.platform == 'ubuntu-latest'
+      timeout-minutes: 10
+      run: |
+        TLS_PROTOCOLS="tlsv1.2" TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS v1.3
+      if: matrix.platform == 'ubuntu-latest'
+      timeout-minutes: 10
+      run: |
+        TLS_PROTOCOLS="tlsv1.3" TLS=1 ./tests/run_tests.sh
+
     - name: Test OSS-CLUSTER TCP
       timeout-minutes: 10
       run: |
