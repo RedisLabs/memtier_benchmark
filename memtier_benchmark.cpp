@@ -884,7 +884,6 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 {
                     const char tls_delimiter = ',';
                     char* tls_token = strtok(optarg, &tls_delimiter);
-                    // Loop through the tokens and print them
                     while (tls_token != nullptr) {
                         if (!strcasecmp(tls_token, "tlsv1"))
                             cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1;
