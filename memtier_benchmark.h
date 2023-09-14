@@ -111,6 +111,7 @@ struct benchmark_config {
     const char *tls_cacert;
     bool tls_skip_verify;
     const char *tls_sni;
+    int tls_protocols;
     SSL_CTX *openssl_ctx;
 #endif
 };

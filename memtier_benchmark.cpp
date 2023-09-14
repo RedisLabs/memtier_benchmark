@@ -39,6 +39,19 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+
+#define REDIS_TLS_PROTO_TLSv1       (1<<0)
+#define REDIS_TLS_PROTO_TLSv1_1     (1<<1)
+#define REDIS_TLS_PROTO_TLSv1_2     (1<<2)
+#define REDIS_TLS_PROTO_TLSv1_3     (1<<3)
+
+/* Use safe defaults */
+#ifdef TLS1_3_VERSION
+#define REDIS_TLS_PROTO_DEFAULT     (REDIS_TLS_PROTO_TLSv1_2|REDIS_TLS_PROTO_TLSv1_3)
+#else
+#define REDIS_TLS_PROTO_DEFAULT     (REDIS_TLS_PROTO_TLSv1_2)
+#endif
+
 #endif
 
 #include <stdexcept>
@@ -296,6 +309,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined())
         cfg->print_percentiles = config_quantiles("50,99,99.9");
+    if (!cfg->tls_protocols)
+        cfg->tls_protocols = REDIS_TLS_PROTO_DEFAULT;
 }
 
 static int generate_random_seed()
@@ -404,6 +419,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_cacert,
         o_tls_skip_verify,
         o_tls_sni,
+        o_tls_protocols,
         o_hdr_file_prefix,
         o_help
     };
@@ -423,6 +439,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "cacert",                     1, 0, o_tls_cacert },
         { "tls-skip-verify",            0, 0, o_tls_skip_verify },
         { "sni",                        1, 0, o_tls_sni },
+        { "tls-protocols",              1, 0, o_tls_protocols },
 #endif
         { "out-file",                   1, 0, 'o' },
         { "hdr-file-prefix",            1, 0, o_hdr_file_prefix },
@@ -863,6 +880,34 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_tls_sni:
                     cfg->tls_sni = optarg;
                     break;
+                case o_tls_protocols:
+                {
+                    const char tls_delimiter = ',';
+                    char* tls_token = strtok(optarg, &tls_delimiter);
+                    while (tls_token != nullptr) {
+                        if (!strcasecmp(tls_token, "tlsv1"))
+                            cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1;
+                        else if (!strcasecmp(tls_token, "tlsv1.1"))
+                            cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1_1;
+                        else if (!strcasecmp(tls_token, "tlsv1.2"))
+                            cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1_2;
+                        else if (!strcasecmp(tls_token, "tlsv1.3")) {
+    #ifdef TLS1_3_VERSION
+                            cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1_3;
+    #else
+                            fprintf(stderr, "TLSv1.3 is specified in tls-protocols but not supported by OpenSSL.");
+                            return -1;
+    #endif
+                        } else {
+                            fprintf(stderr, "Invalid tls-protocols specified. "
+                                    "Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.");
+                            return -1;
+                            break;
+                        }
+                        tls_token = strtok(nullptr, &tls_delimiter);
+                    }
+                    break;
+                }
 #endif
             default:
                     return -1;
@@ -903,6 +948,7 @@ void usage() {
             "      --key=FILE                 Use specified private key for TLS\n"
             "      --cacert=FILE              Use specified CA certs bundle for TLS\n"
             "      --tls-skip-verify          Skip verification of server certificate\n"
+            "      --tls-protocols            Specify the tls protocol version to use, comma delemited. Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'"
             "      --sni=STRING               Add an SNI header\n"
 #endif
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
@@ -1310,6 +1356,15 @@ int main(int argc, char *argv[])
 
         cfg.openssl_ctx = SSL_CTX_new(SSLv23_client_method());
         SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+
+        if (!(cfg.tls_protocols & REDIS_TLS_PROTO_TLSv1))
+            SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1);
+        if (!(cfg.tls_protocols & REDIS_TLS_PROTO_TLSv1_1))
+            SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1_1);
+        if (!(cfg.tls_protocols & REDIS_TLS_PROTO_TLSv1_2))
+            SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1_2);
+        if (!(cfg.tls_protocols & REDIS_TLS_PROTO_TLSv1_3))
+            SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1_3);
 
         if (cfg.tls_cert) {
             if (!SSL_CTX_use_certificate_chain_file(cfg.openssl_ctx, cfg.tls_cert)) {

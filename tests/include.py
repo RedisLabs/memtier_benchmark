@@ -5,6 +5,14 @@ MEMTIER_BINARY = os.environ.get("MEMTIER_BINARY", "memtier_benchmark")
 TLS_CERT = os.environ.get("TLS_CERT", "")
 TLS_KEY = os.environ.get("TLS_KEY", "")
 TLS_CACERT = os.environ.get("TLS_CACERT", "")
+TLS_PROTOCOLS = os.environ.get("TLS_PROTOCOLS", "")
+
+
+def ensure_tls_protocols(master_nodes_connections):
+    if TLS_PROTOCOLS != "":
+        # if we've specified the TLS_PROTOCOLS env variable ensure the server enforces thos protocol versions
+        for master_connection in master_nodes_connections:
+            master_connection.execute_command("CONFIG", "SET", "tls-protocols", TLS_PROTOCOLS)
 
 
 def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
@@ -24,6 +32,10 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
             debugPrintMemtierOnError(config, env)
 
 def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
+    # if we've specified TLS_PROTOCOLS ensure we configure it on redis
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    ensure_tls_protocols(master_nodes_connections)
+
     # check if environment is cluster
     if env.isCluster():
         benchmark_specs["args"].append("--cluster-mode")
@@ -91,6 +103,8 @@ def addTLSArgs(benchmark_specs, env):
             benchmark_specs['args'].append('--key={}'.format(TLS_KEY))
         else:
             benchmark_specs['args'].append('--tls-skip-verify')
+        if TLS_PROTOCOLS != "":
+            benchmark_specs['args'].append('--tls-protocols={}'.format(TLS_PROTOCOLS))
             
 
 
