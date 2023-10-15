@@ -76,6 +76,7 @@ struct verify_request : public request {
 };
 
 class shard_connection {
+    friend void cluster_client_timer_handler(evutil_socket_t fd, short what, void *ctx);
     friend void cluster_client_read_handler(bufferevent *bev, void *ctx);
     friend void cluster_client_event_handler(bufferevent *bev, short events, void *ctx);
 
@@ -148,6 +149,7 @@ private:
     void fill_pipeline(void);
 
     void handle_event(short evtype);
+    void handle_timer_event();
 
     unsigned int m_id;
     connections_manager* m_conns_manager;
@@ -160,9 +162,11 @@ private:
     struct sockaddr_un* m_unix_sockaddr;
     struct bufferevent *m_bev;
     struct event_base* m_event_base;
+    struct event* m_event_timer;
 
     abstract_protocol* m_protocol;
     std::queue<request *>* m_pipeline;
+    unsigned int m_request_per_cur_interval;    // number requests to send during the current interval
 
     int m_pending_resp;
 

@@ -127,6 +127,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "run_count = %u\n"
         "debug = %u\n"
         "requests = %llu\n"
+        "rate_limit = %u\n"
         "clients = %u\n"
         "threads = %u\n"
         "test_time = %u\n"
@@ -176,6 +177,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->run_count,
         cfg->debug,
         cfg->requests,
+        cfg->request_rate,
         cfg->clients,
         cfg->threads,
         cfg->test_time,
@@ -233,6 +235,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
     jsonhandler->write_obj("debug"             ,"%u",          	cfg->debug);
     jsonhandler->write_obj("requests"          ,"%llu",        	cfg->requests);
+    jsonhandler->write_obj("rate_limit"        ,"%u",         	cfg->request_rate);
     jsonhandler->write_obj("clients"           ,"%u",          	cfg->clients);
     jsonhandler->write_obj("threads"           ,"%u",          	cfg->threads);
     jsonhandler->write_obj("test_time"         ,"%u",          	cfg->test_time);
@@ -421,6 +424,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_sni,
         o_tls_protocols,
         o_hdr_file_prefix,
+        o_rate_limiting,
         o_help
     };
 
@@ -489,6 +493,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "command",                    1, 0, o_command },
         { "command-key-pattern",        1, 0, o_command_key_pattern },
         { "command-ratio",              1, 0, o_command_ratio },
+        { "rate-limiting",              1, 0, o_rate_limiting },
         { NULL,                         0, 0, 0 }
     };
 
@@ -861,6 +866,15 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     }
                     break;
                 }
+                case o_rate_limiting: {
+                    endptr = NULL;
+                    cfg->request_rate = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!cfg->request_rate || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: rate must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                }
 #ifdef USE_TLS
                 case o_tls:
                     cfg->tls = true;
@@ -967,6 +981,7 @@ void usage() {
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
             "                                 use 'allkeys' to run on the entire key-range\n"
+            "      --rate-limiting=NUMBER     Number of requests per second\n"
             "  -c, --clients=NUMBER           Number of clients per thread (default: 50)\n"
             "  -t, --threads=NUMBER           Number of threads (default: 4)\n"
             "      --test-time=SECS           Number of seconds to run the test\n"
@@ -1348,6 +1363,16 @@ int main(int argc, char *argv[])
         delete tmp_protocol;
     }
 
+    // if user configured rate limiting, do some calculations
+    if (cfg.request_rate) {
+        /* Our event resolution is (at least) 50 events per second (event every >= 20 ml).
+         * When we calculate the number of request per interval, we are taking
+         * the upper bound and adjust the interval accordingly to get more accuracy */
+        cfg.request_per_interval = (cfg.request_rate + 50 - 1) / 50;
+        unsigned int events_per_second = cfg.request_rate / cfg.request_per_interval;
+        cfg.request_interval_microsecond = 1000000 / events_per_second;
+        benchmark_debug_log("Rate limiting configured to send %u requests per %u millisecond\n", cfg.request_per_interval, cfg.request_interval_microsecond / 1000);
+    }
 
 #ifdef USE_TLS
     // Initialize OpenSSL only if we're really going to use it.
