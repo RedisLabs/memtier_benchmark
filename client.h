@@ -45,7 +45,6 @@ class client;
 class client_group;
 struct benchmark_config;
 class object_generator;
-class data_object;
 
 #define SET_CMD_IDX 0
 #define GET_CMD_IDX 2
@@ -60,10 +59,6 @@ protected:
     struct event_base* m_event_base;
     bool m_initialized;
     bool m_end_set;
-
-    // key buffer
-    char m_key_buffer[250];
-    int m_key_len;
 
     // test related
     benchmark_config* m_config;
@@ -93,10 +88,10 @@ public:
 
     virtual get_key_response get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index);
     virtual bool create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id);
-    bool create_wait_request(struct timeval& timestamp, unsigned int conn_id);
-    bool create_set_request(struct timeval& timestamp, unsigned int conn_id);
-    bool create_get_request(struct timeval& timestamp, unsigned int conn_id);
-    bool create_mget_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_wait_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_set_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_get_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_mget_request(struct timeval& timestamp, unsigned int conn_id);
 
     // client manager api's
     unsigned long long get_reqs_processed() {
@@ -185,7 +180,10 @@ protected:
     unsigned long long int m_errors;
 
     virtual bool finished(void);
-    virtual void create_request(struct timeval timestamp, unsigned int conn_id);
+    virtual bool create_wait_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_set_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_get_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_mget_request(struct timeval& timestamp, unsigned int conn_id);
     virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
                                  request *request, protocol_response *response);
 public:

@@ -611,11 +611,10 @@ void shard_connection::send_mget_command(struct timeval* sent_time, const keylis
 }
 
 void shard_connection::send_verify_get_command(struct timeval* sent_time, const char *key, int key_len,
-                                               const char *value, int value_len, int expiry, unsigned int offset) {
+                                               const char *value, int value_len, unsigned int offset) {
     int cmd_size = 0;
 
-    benchmark_debug_log("GET key=[%.*s] value_len=%u expiry=%u\n",
-                        key_len, key, value_len, expiry);
+    benchmark_debug_log("Verify GET key=[%.*s] value_len=%u\n", key_len, key, value_len);
 
     cmd_size = m_protocol->write_command_get(key, key_len, offset);
     push_req(new verify_request(rt_get, cmd_size, sent_time, 1, key, key_len, value, value_len));
