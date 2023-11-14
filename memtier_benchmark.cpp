@@ -962,7 +962,7 @@ void usage() {
             "      --key=FILE                 Use specified private key for TLS\n"
             "      --cacert=FILE              Use specified CA certs bundle for TLS\n"
             "      --tls-skip-verify          Skip verification of server certificate\n"
-            "      --tls-protocols            Specify the tls protocol version to use, comma delemited. Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'"
+            "      --tls-protocols            Specify the tls protocol version to use, comma delemited. Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.\n"
             "      --sni=STRING               Add an SNI header\n"
 #endif
             "  -x, --run-count=NUMBER         Number of full-test iterations to perform\n"
@@ -981,7 +981,8 @@ void usage() {
             "Test Options:\n"
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
             "                                 use 'allkeys' to run on the entire key-range\n"
-            "      --rate-limiting=NUMBER     Number of requests per second\n"
+            "      --rate-limiting=NUMBER     The max number of requests to make per second from an individual connection (default is unlimited rate).\n"
+            "                                 If you use --rate-limiting and a very large rate is entered which cannot be met, memtier will do as many requests as possible per second.\n"
             "  -c, --clients=NUMBER           Number of clients per thread (default: 50)\n"
             "  -t, --threads=NUMBER           Number of threads (default: 4)\n"
             "      --test-time=SECS           Number of seconds to run the test\n"
