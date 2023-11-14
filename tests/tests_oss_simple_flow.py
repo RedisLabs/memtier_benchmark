@@ -380,18 +380,19 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
                                     overall_request_count)
 
 def test_default_set_get_rate_limited(env):
+    master_nodes_list = env.getMasterNodesList()
     for client_count in [1,2,4]:
         for thread_count in [1,2]:
             rps_per_client = 100
             test_time_secs = 5
-            overall_expected_request_count = test_time_secs * rps_per_client * client_count * thread_count
+            overall_expected_rps = rps_per_client * client_count * thread_count * len(master_nodes_list)
+            overall_expected_request_count = test_time_secs * overall_expected_rps
             # we give a 1 sec margin
-            request_delta = rps_per_client * client_count * thread_count * 1
+            request_delta = overall_expected_rps
             # we will specify rate limit and the test time, which should help us get an approximate request count
             benchmark_specs = {"name": env.testName, "args": ['--rate-limiting={}'.format(rps_per_client)]}
             addTLSArgs(benchmark_specs, env)
             config = get_default_memtier_config(thread_count,client_count,None,test_time_secs)
-            master_nodes_list = env.getMasterNodesList()
 
             master_nodes_connections = env.getOSSMasterNodesConnectionList()
 
