@@ -79,12 +79,12 @@ cd $ROOT/tests
 
 E=0
 [[ $OSS_STANDALONE == 1 ]] && {
-	(TLS_KEY=$TLS_KEY TLS_CERT=$TLS_CERT TLS_CACERT=$TLS_CACERT MEMTIER_BINARY=$MEMTIER_BINARY RLTEST_ARGS="${RLTEST_ARGS}" run_tests "tests on OSS standalone")
+	(ROOT_FOLDER=$ROOT TLS_KEY=$TLS_KEY TLS_CERT=$TLS_CERT TLS_CACERT=$TLS_CACERT MEMTIER_BINARY=$MEMTIER_BINARY RLTEST_ARGS="${RLTEST_ARGS}" run_tests "tests on OSS standalone")
 	((E |= $?))
 } || true
 
 [[ $OSS_CLUSTER == 1 ]] && {
-	(TLS_KEY=$TLS_KEY TLS_CERT=$TLS_CERT TLS_CACERT=$TLS_CACERT MEMTIER_BINARY=$MEMTIER_BINARY RLTEST_ARGS="${RLTEST_ARGS} --env oss-cluster --shards-count $SHARDS" run_tests "tests on OSS cluster")
+	(ROOT_FOLDER=$ROOT TLS_KEY=$TLS_KEY TLS_CERT=$TLS_CERT TLS_CACERT=$TLS_CACERT MEMTIER_BINARY=$MEMTIER_BINARY RLTEST_ARGS="${RLTEST_ARGS} --env oss-cluster --shards-count $SHARDS" run_tests "tests on OSS cluster")
 	((E |= $?))
 } || true
 
