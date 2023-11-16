@@ -16,7 +16,7 @@ def ensure_tls_protocols(master_nodes_connections):
 
 
 def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
-                                    overall_request_count):
+                                    overall_request_count, overall_request_delta=None):
     failed_asserts = env.getNumberOfFailedAssertion()
     try:
         # assert correct exit code
@@ -25,8 +25,11 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
         env.assertTrue(os.path.isfile('{0}/mb.stdout'.format(config.results_dir)))
         env.assertTrue(os.path.isfile('{0}/mb.stderr'.format(config.results_dir)))
         env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
-        # assert we have the expected request count
-        env.assertEqual(overall_expected_request_count, overall_request_count)
+        if overall_request_delta is None:
+            # assert we have the expected request count
+            env.assertEqual(overall_expected_request_count, overall_request_count)
+        else:
+            env.assertAlmostEqual(overall_expected_request_count, overall_request_count,overall_request_delta)
     finally:
         if env.getNumberOfFailedAssertion() > failed_asserts:
             debugPrintMemtierOnError(config, env)
@@ -108,13 +111,14 @@ def addTLSArgs(benchmark_specs, env):
             
 
 
-def get_default_memtier_config(threads=10, clients=5, requests=1000):
+def get_default_memtier_config(threads=10, clients=5, requests=1000, test_time=None):
     config = {
         "memtier_benchmark": {
             "binary": MEMTIER_BINARY,
             "threads": threads,
             "clients": clients,
-            "requests": requests
+            "requests": requests,
+            "test_time": test_time
         },
     }
     return config

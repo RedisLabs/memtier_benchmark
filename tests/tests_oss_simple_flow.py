@@ -378,3 +378,42 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
+
+def test_default_set_get_rate_limited(env):
+    master_nodes_list = env.getMasterNodesList()
+    for client_count in [1,2,4]:
+        for thread_count in [1,2]:
+            rps_per_client = 100
+            test_time_secs = 5
+            overall_expected_rps = rps_per_client * client_count * thread_count * len(master_nodes_list)
+            overall_expected_request_count = test_time_secs * overall_expected_rps
+            # we give a 1 sec margin
+            request_delta = overall_expected_rps
+            # we will specify rate limit and the test time, which should help us get an approximate request count
+            benchmark_specs = {"name": env.testName, "args": ['--rate-limiting={}'.format(rps_per_client)]}
+            addTLSArgs(benchmark_specs, env)
+            config = get_default_memtier_config(thread_count,client_count,None,test_time_secs)
+
+            master_nodes_connections = env.getOSSMasterNodesConnectionList()
+
+            # reset the commandstats
+            for master_connection in master_nodes_connections:
+                master_connection.execute_command("CONFIG", "RESETSTAT")
+
+            add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+            # Create a temporary directory
+            test_dir = tempfile.mkdtemp()
+
+            config = RunConfig(test_dir, env.testName, config, {})
+            ensure_clean_benchmark_folder(config.results_dir)
+
+            benchmark = Benchmark.from_json(config, benchmark_specs)
+
+            # benchmark.run() returns True if the return code of memtier_benchmark was 0
+            memtier_ok = benchmark.run()
+
+            master_nodes_connections = env.getOSSMasterNodesConnectionList()
+            merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
+            overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+            assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count, request_delta)
