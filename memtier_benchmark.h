@@ -104,6 +104,9 @@ struct benchmark_config {
     bool cluster_mode;
     struct arbitrary_command_list* arbitrary_commands;
     const char *hdr_prefix;
+    unsigned int request_rate;
+    unsigned int request_per_interval;
+    unsigned int request_interval_microsecond;
 #ifdef USE_TLS
     bool tls;
     const char *tls_cert;

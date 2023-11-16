@@ -56,6 +56,13 @@
 #include "event2/bufferevent_ssl.h"
 #endif
 
+void cluster_client_timer_handler(evutil_socket_t fd, short what, void *ctx)
+{
+    shard_connection *sc = (shard_connection *) ctx;
+    assert(sc != NULL);
+    sc->handle_timer_event();
+}
+
 void cluster_client_read_handler(bufferevent *bev, void *ctx)
 {
     shard_connection *sc = (shard_connection *) ctx;
@@ -66,7 +73,6 @@ void cluster_client_read_handler(bufferevent *bev, void *ctx)
 void cluster_client_event_handler(bufferevent *bev, short events, void *ctx)
 {
     shard_connection *sc = (shard_connection *) ctx;
-
     assert(sc != NULL);
     sc->handle_event(events);
 }
@@ -123,7 +129,7 @@ verify_request::~verify_request(void)
 shard_connection::shard_connection(unsigned int id, connections_manager* conns_man, benchmark_config* config,
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
-        m_bev(NULL), m_pending_resp(0), m_connection_state(conn_disconnected),
+        m_bev(NULL), m_request_per_cur_interval(0), m_pending_resp(0), m_connection_state(conn_disconnected),
         m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done) {
     m_id = id;
     m_conns_manager = conns_man;
@@ -341,6 +347,10 @@ request* shard_connection::pop_req() {
 void shard_connection::push_req(request* req) {
     m_pipeline->push(req);
     m_pending_resp++;
+    if (m_config->request_rate) {
+        assert(m_request_per_cur_interval > 0);
+        m_request_per_cur_interval--;
+    }
 }
 
 bool shard_connection::is_conn_setup_done() {
@@ -486,19 +496,26 @@ void shard_connection::process_first_request() {
     fill_pipeline();
 }
 
-
 void shard_connection::fill_pipeline(void)
 {
     struct timeval now;
     gettimeofday(&now, NULL);
+
     while (!m_conns_manager->finished() && m_pipeline->size() < m_config->pipeline) {
         if (!is_conn_setup_done()) {
             send_conn_setup_commands(now);
             return;
         }
+
         // don't exceed requests
         if (m_conns_manager->hold_pipeline(m_id)) {
             break;
+        }
+
+        // that's enough, we reached the rate limit
+        if (m_config->request_rate && m_request_per_cur_interval == 0) {
+            // return and skip on update events
+            return;
         }
 
         // client manage requests logic
@@ -511,6 +528,9 @@ void shard_connection::fill_pipeline(void)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
             bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+            if (m_config->request_rate) {
+                event_del(m_event_timer);
+            }
         }
     }
 }
@@ -526,6 +546,14 @@ void shard_connection::handle_event(short events)
         bufferevent_enable(m_bev, EV_READ|EV_WRITE);
 
         if (!m_conns_manager->get_reqs_processed()) {
+            /* Set timer for request rate */
+            if (m_config->request_rate) {
+                struct timeval interval = { 0, (long int)m_config->request_interval_microsecond };
+                m_request_per_cur_interval = m_config->request_per_interval;
+                m_event_timer = event_new(m_event_base, -1, EV_PERSIST, cluster_client_timer_handler, (void *)this);
+                event_add(m_event_timer, &interval);
+            }
+
             process_first_request();
         } else {
             benchmark_debug_log("reconnection complete, proceeding with test\n");
@@ -559,6 +587,11 @@ void shard_connection::handle_event(short events)
 
         return;
     }
+}
+
+void shard_connection::handle_timer_event() {
+    m_request_per_cur_interval = m_config->request_per_interval;
+    fill_pipeline();
 }
 
 void shard_connection::send_wait_command(struct timeval* sent_time,
