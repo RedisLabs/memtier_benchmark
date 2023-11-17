@@ -420,6 +420,7 @@ def test_default_set_get_rate_limited(env):
             assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count, request_delta)
 
 def test_data_import(env):
+    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": [f"--data-import={ROOT_FOLDER}/tests/data-import-2-keys.txt",'--ratio=1:1']}
     addTLSArgs(benchmark_specs, env)
     config = get_default_memtier_config()
@@ -451,6 +452,7 @@ def test_data_import(env):
 
 
 def test_data_import_setex(env):
+    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": [f"--data-import={ROOT_FOLDER}/tests/data-import-2-keys-expiration.txt",'--ratio=1:1']}
     addTLSArgs(benchmark_specs, env)
     config = get_default_memtier_config()
