@@ -1,11 +1,13 @@
 import glob
 import os
+import logging
 
 MEMTIER_BINARY = os.environ.get("MEMTIER_BINARY", "memtier_benchmark")
 TLS_CERT = os.environ.get("TLS_CERT", "")
 TLS_KEY = os.environ.get("TLS_KEY", "")
 TLS_CACERT = os.environ.get("TLS_CACERT", "")
 TLS_PROTOCOLS = os.environ.get("TLS_PROTOCOLS", "")
+VERBOSE = bool(int(os.environ.get("VERBOSE","0")))
 
 
 def ensure_tls_protocols(master_nodes_connections):
@@ -35,6 +37,9 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
             debugPrintMemtierOnError(config, env)
 
 def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
+    if VERBOSE:
+        logging.basicConfig(level=logging.DEBUG)
+
     # if we've specified TLS_PROTOCOLS ensure we configure it on redis
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     ensure_tls_protocols(master_nodes_connections)
