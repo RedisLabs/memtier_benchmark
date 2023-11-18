@@ -913,8 +913,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                             return -1;
     #endif
                         } else {
-                            fprintf(stderr, "Invalid tls-protocols specified. "
-                                    "Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.");
+                            fprintf(stderr, "Invalid tls-protocols specified %s."
+                                    "Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.", tls_token);
                             return -1;
                             break;
                         }
