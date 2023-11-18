@@ -365,7 +365,7 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
     addTLSArgs(benchmark_specs, env)
     # on arbitrary command args should be the last one
     benchmark_specs["args"].append('--command=HSET __key__ field1 __data__ field2 __data__ field3 __data__')
-    memtier_config = get_default_memtier_config()
+    config = get_default_memtier_config()
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config)
 
