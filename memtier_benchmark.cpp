@@ -54,6 +54,7 @@
 
 #endif
 
+#include <cstring>
 #include <stdexcept>
 
 #include "client.h"
@@ -896,8 +897,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_tls_protocols:
                 {
-                    char* tls_token = strtok(optarg, ", \n\t");
-                    while (tls_token != 0) {
+                    const char* tls_delimiter = ",";
+                    char* tls_token = std::strtok(optarg, tls_delimiter);
+                    while (tls_token != NULL) {
                         if (!strcasecmp(tls_token, "tlsv1"))
                             cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1;
                         else if (!strcasecmp(tls_token, "tlsv1.1"))
@@ -917,7 +919,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                             return -1;
                             break;
                         }
-                        tls_token = strtok(0, ", \n\t");
+                        tls_token = std::strtok(NULL, tls_delimiter);
                     }
                     break;
                 }
