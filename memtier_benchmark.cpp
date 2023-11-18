@@ -896,8 +896,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_tls_protocols:
                 {
-                    const char tls_delimiter = ',';
-                    char* tls_token = strtok(optarg, &tls_delimiter);
+                    char* tls_token = strtok(optarg, ", \n\t");
                     while (tls_token != 0) {
                         if (!strcasecmp(tls_token, "tlsv1"))
                             cfg->tls_protocols |= REDIS_TLS_PROTO_TLSv1;
@@ -913,12 +912,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                             return -1;
     #endif
                         } else {
-                            fprintf(stderr, "Invalid tls-protocols specified %s."
+                            fprintf(stderr, "Invalid tls-protocols specified %s. "
                                     "Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.", tls_token);
                             return -1;
                             break;
                         }
-                        tls_token = strtok(0, &tls_delimiter);
+                        tls_token = strtok(0, ", \n\t");
                     }
                     break;
                 }
