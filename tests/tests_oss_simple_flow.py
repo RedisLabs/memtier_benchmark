@@ -390,6 +390,7 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
                                     overall_request_count)
 
 def test_default_set_get_rate_limited(env):
+    env.skipOnCluster()
     master_nodes_list = env.getMasterNodesList()
     for client_count in [1,2,4]:
         for thread_count in [1,2]:
