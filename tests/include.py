@@ -40,7 +40,6 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
 
 def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
     if VERBOSE:
-        import logging
         logging.basicConfig(level=logging.DEBUG)
 
     # if we've specified TLS_PROTOCOLS ensure we configure it on redis
