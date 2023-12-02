@@ -428,3 +428,67 @@ def test_default_set_get_rate_limited(env):
             merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
             overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
             assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count, request_delta)
+
+
+def test_data_import(env):
+    env.skipOnCluster()
+    benchmark_specs = {"name": env.testName, "args": [f"--data-import={ROOT_FOLDER}/tests/data-import-2-keys.txt",'--ratio=1:1']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
+    master_nodes_list = env.getMasterNodesList()
+    overall_expected_request_count = get_expected_request_count(config,1, 2)
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    # reset the commandstats
+    for master_connection in master_nodes_connections:
+        master_connection.execute_command("CONFIG", "RESETSTAT")
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+
+    assert_keyspace_range(env, 2, 1, master_nodes_connections)
+
+    merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
+    overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)
+
+
+def test_data_import_setex(env):
+    env.skipOnCluster()
+    benchmark_specs = {"name": env.testName, "args": [f"--data-import={ROOT_FOLDER}/tests/data-import-2-keys-expiration.txt",'--ratio=1:1']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
+    master_nodes_list = env.getMasterNodesList()
+    overall_expected_request_count = get_expected_request_count(config,1, 2)
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    # reset the commandstats
+    for master_connection in master_nodes_connections:
+        master_connection.execute_command("CONFIG", "RESETSTAT")
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+
+    assert_keyspace_range(env, 2, 1, master_nodes_connections)
+
+    merged_command_stats = {'cmdstat_setex': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
+    overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)

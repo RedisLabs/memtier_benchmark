@@ -50,26 +50,6 @@ private:
 	double m_spare;
 };
 
-class data_object {
-protected:
-    const char *m_key;
-    unsigned int m_key_len;
-    const char *m_value;
-    unsigned int m_value_len;
-    unsigned int m_expiry;
-public:
-    data_object();
-    ~data_object();
-
-    void clear(void);
-    void set_key(const char* key, unsigned int key_len);
-    const char* get_key(unsigned int* key_len);
-    void set_value(const char* value, unsigned int value_len);
-    const char* get_value(unsigned int* value_len);
-    void set_expiry(unsigned int expiry);
-    unsigned int get_expiry(void);
-};
-
 #define OBJECT_GENERATOR_KEY_ITERATORS  2 /* number of iterators */
 #define OBJECT_GENERATOR_KEY_SET_ITER   1
 #define OBJECT_GENERATOR_KEY_GET_ITER   0
@@ -98,12 +78,13 @@ protected:
     unsigned long long m_key_max;
     double m_key_stddev;
     double m_key_median;
-    data_object m_object;
 
     std::vector<unsigned long long> m_next_key;
 
     unsigned long long m_key_index;
     char m_key_buffer[250];
+    const char *m_key;
+    int m_key_len;
     char *m_value_buffer;
     int m_random_fd;
     gaussian_noise m_random;
@@ -132,14 +113,14 @@ public:
     void set_key_range(unsigned long long key_min, unsigned long long key_max);
     void set_key_distribution(double key_stddev, double key_median);
     void set_random_seed(int seed);
-
     unsigned long long get_key_index(int iter);
-    virtual const char* get_key(int iter, unsigned int *len);
-    virtual data_object* get_object(int iter);
+    void generate_key(unsigned long long key_index);
+    const char * get_key() { return m_key; }
+    int get_key_len() { return m_key_len; }
 
     const char * get_key_prefix();
-    const char* get_value(unsigned long long key_index, unsigned int *len);
-    unsigned int get_expiry();
+    virtual const char* get_value(unsigned long long key_index, unsigned int *len);
+    virtual unsigned int get_expiry();
 };
 
 class imported_keylist;
@@ -175,8 +156,11 @@ public:
     virtual ~import_object_generator();
     virtual import_object_generator* clone(void);
 
-    virtual const char* get_key(int iter, unsigned int *len);
-    virtual data_object* get_object(int iter);
+    void read_next_item(void);
+    void read_next_key(unsigned long long key_index);
+
+    virtual const char* get_value(unsigned long long key_index, unsigned int *len);
+    virtual unsigned int get_expiry();
 
     bool open_file(void);
 };

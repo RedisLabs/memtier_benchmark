@@ -4,6 +4,7 @@ import logging
 
 MEMTIER_BINARY = os.environ.get("MEMTIER_BINARY", "memtier_benchmark")
 TLS_CERT = os.environ.get("TLS_CERT", "")
+ROOT_FOLDER = os.environ.get("ROOT_FOLDER", "")
 TLS_KEY = os.environ.get("TLS_KEY", "")
 TLS_CACERT = os.environ.get("TLS_CACERT", "")
 TLS_PROTOCOLS = os.environ.get("TLS_PROTOCOLS", "")
@@ -29,6 +30,7 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
         env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
         if overall_request_delta is None:
             # assert we have the expected request count
+            logging.debug(f"Checking if expected value {overall_expected_request_count} matches the actual value {overall_request_count}")
             env.assertEqual(overall_expected_request_count, overall_request_count)
         else:
             env.assertAlmostEqual(overall_expected_request_count, overall_request_count,overall_request_delta)
@@ -142,6 +144,7 @@ def assert_keyspace_range(env, key_max, key_min, master_nodes_connections):
     expected_keyspace_range = key_max - key_min + 1
     overall_keyspace_range = agg_keyspace_range(master_nodes_connections)
     # assert we have the expected keyspace range
+    logging.debug(f"Checking if expected keyspace value {expected_keyspace_range} matches the actual value {overall_keyspace_range}")
     env.assertEqual(expected_keyspace_range, overall_keyspace_range)
 
 

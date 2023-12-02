@@ -1485,6 +1485,11 @@ int main(int argc, char *argv[])
         }
         assert(obj_gen != NULL);
     } else {
+        // oss cluster API can't be enabled
+        if (cfg.cluster_mode) {
+            fprintf(stderr, "error: Cluster mode cannot be specified when importing.\n");
+            exit(1);
+        }
         // check paramters
         if (cfg.data_size ||
             cfg.data_size_list.is_defined() ||
