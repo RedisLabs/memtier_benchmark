@@ -129,6 +129,36 @@ def test_default_set(env):
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
 
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    ## Assert that all BW metrics are properly stored and calculated
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+        set_metrics = results_dict['ALL STATS']['Sets']
+        get_metrics = results_dict['ALL STATS']['Gets']
+        set_metrics_ts = results_dict['ALL STATS']['Sets']["Time-Serie"]
+        get_metrics_ts = results_dict['ALL STATS']['Gets']["Time-Serie"]
+        for metric_name in ["KB/sec RX/TX","KB/sec RX","KB/sec TX","KB/sec"]:
+            # assert the metric exists
+            env.assertTrue(metric_name in set_metrics)
+            env.assertTrue(metric_name in get_metrics)
+            # assert the metric value is non zero on writes and zero on reads
+            set_metric_value_kbs = set_metrics[metric_name]
+            get_metric_value_kbs = get_metrics[metric_name]
+            env.assertTrue(set_metric_value_kbs > 0)
+            env.assertTrue(get_metric_value_kbs == 0)
+
+        for second_data in set_metrics_ts.values():
+            bytes_rx = second_data["Bytes RX"]
+            bytes_tx = second_data["Bytes TX"]
+            env.assertTrue(bytes_rx > 0)
+            env.assertTrue(bytes_tx > 0)
+
+        for second_data in get_metrics_ts.values():
+            bytes_rx = second_data["Bytes RX"]
+            bytes_tx = second_data["Bytes TX"]
+            env.assertTrue(bytes_rx == 0)
+            env.assertTrue(bytes_tx == 0)
+
 def test_default_set_get(env):
     benchmark_specs = {"name": env.testName, "args": []}
     addTLSArgs(benchmark_specs, env)
@@ -154,6 +184,35 @@ def test_default_set_get(env):
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)
 
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    ## Assert that all BW metrics are properly stored and calculated
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+        set_metrics = results_dict['ALL STATS']['Sets']
+        get_metrics = results_dict['ALL STATS']['Gets']
+        set_metrics_ts = results_dict['ALL STATS']['Sets']["Time-Serie"]
+        get_metrics_ts = results_dict['ALL STATS']['Gets']["Time-Serie"]
+        for metric_name in ["KB/sec RX/TX","KB/sec RX","KB/sec TX","KB/sec"]:
+            # assert the metric exists
+            env.assertTrue(metric_name in set_metrics)
+            env.assertTrue(metric_name in get_metrics)
+            # assert the metric value is non zero given we've had write and read
+            set_metric_value_kbs = set_metrics[metric_name]
+            get_metric_value_kbs = get_metrics[metric_name]
+            env.assertTrue(set_metric_value_kbs > 0)
+            env.assertTrue(get_metric_value_kbs > 0)
+
+        for second_data in set_metrics_ts.values():
+            bytes_rx = second_data["Bytes RX"]
+            bytes_tx = second_data["Bytes TX"]
+            env.assertTrue(bytes_rx > 0)
+            env.assertTrue(bytes_tx > 0)
+
+        for second_data in get_metrics_ts.values():
+            bytes_rx = second_data["Bytes RX"]
+            bytes_tx = second_data["Bytes TX"]
+            env.assertTrue(bytes_rx > 0)
+            env.assertTrue(bytes_tx > 0)
 
 def test_default_set_get_with_print_percentiles(env):
     p_str = '0,10,20,30,40,50,60,70,80,90,95,100'

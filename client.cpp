@@ -445,14 +445,16 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
     switch (request->m_type) {
         case rt_get:
             m_stats.update_get_op(&timestamp,
-                                  request->m_size + response->get_total_len(),
+                                  response->get_total_len(),
+                                  request->m_size,
                                   ts_diff(request->m_sent_time, timestamp),
                                   response->get_hits(),
                                   request->m_keys - response->get_hits());
             break;
         case rt_set:
             m_stats.update_set_op(&timestamp,
-                                  request->m_size + response->get_total_len(),
+                                  response->get_total_len(),
+                                  request->m_size,
                                   ts_diff(request->m_sent_time, timestamp));
             break;
         case rt_wait:
@@ -462,7 +464,8 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
         case rt_arbitrary: {
             arbitrary_request *ar = static_cast<arbitrary_request *>(request);
             m_stats.update_arbitrary_op(&timestamp,
-                                        request->m_size + response->get_total_len(),
+                                        response->get_total_len(),
+                                        request->m_size,
                                         ts_diff(request->m_sent_time, timestamp),
                                         ar->index);
             break;

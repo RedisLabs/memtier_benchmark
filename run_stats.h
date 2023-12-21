@@ -121,21 +121,21 @@ public:
     void set_start_time(struct timeval* start_time);
     void set_end_time(struct timeval* end_time);
 
-    void update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses);
+    void update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
 
-    void update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_moved_arbitrary_op(struct timeval *ts, unsigned int bytes,
+    void update_moved_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_moved_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_moved_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
                              unsigned int latency, size_t arbitrary_index);
 
-    void update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_ask_arbitrary_op(struct timeval *ts, unsigned int bytes,
+    void update_ask_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_ask_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_ask_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
                                    unsigned int latency, size_t arbitrary_index);
 
     void update_wait_op(struct timeval* ts, unsigned int latency);
-    void update_arbitrary_op(struct timeval *ts, unsigned int bytes,
+    void update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
                              unsigned int latency, size_t arbitrary_index);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
