@@ -3,6 +3,18 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  build-notls:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev
+
+    - name: Build
+      run: autoreconf -ivf && ./configure --disable-tls && make -j
+
   build-ubuntu:
     strategy:
       matrix:
