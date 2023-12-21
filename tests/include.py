@@ -1,11 +1,14 @@
 import glob
 import os
+import logging
 
 MEMTIER_BINARY = os.environ.get("MEMTIER_BINARY", "memtier_benchmark")
 TLS_CERT = os.environ.get("TLS_CERT", "")
+ROOT_FOLDER = os.environ.get("ROOT_FOLDER", "")
 TLS_KEY = os.environ.get("TLS_KEY", "")
 TLS_CACERT = os.environ.get("TLS_CACERT", "")
 TLS_PROTOCOLS = os.environ.get("TLS_PROTOCOLS", "")
+VERBOSE = bool(int(os.environ.get("VERBOSE","0")))
 
 
 def ensure_tls_protocols(master_nodes_connections):
@@ -27,6 +30,7 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
         env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
         if overall_request_delta is None:
             # assert we have the expected request count
+            logging.debug(f"Checking if expected value {overall_expected_request_count} matches the actual value {overall_request_count}")
             env.assertEqual(overall_expected_request_count, overall_request_count)
         else:
             env.assertAlmostEqual(overall_expected_request_count, overall_request_count,overall_request_delta)
@@ -35,6 +39,9 @@ def assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_re
             debugPrintMemtierOnError(config, env)
 
 def add_required_env_arguments(benchmark_specs, config, env, master_nodes_list):
+    if VERBOSE:
+        logging.basicConfig(level=logging.DEBUG)
+
     # if we've specified TLS_PROTOCOLS ensure we configure it on redis
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     ensure_tls_protocols(master_nodes_connections)
@@ -137,6 +144,7 @@ def assert_keyspace_range(env, key_max, key_min, master_nodes_connections):
     expected_keyspace_range = key_max - key_min + 1
     overall_keyspace_range = agg_keyspace_range(master_nodes_connections)
     # assert we have the expected keyspace range
+    logging.debug(f"Checking if expected keyspace value {expected_keyspace_range} matches the actual value {overall_keyspace_range}")
     env.assertEqual(expected_keyspace_range, overall_keyspace_range)
 
 

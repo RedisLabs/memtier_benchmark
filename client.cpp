@@ -256,7 +256,14 @@ get_key_response client::get_key_for_conn(unsigned int command_index, unsigned i
         iter = obj_iter_type(m_config, command_index);
 
     *key_index = m_obj_gen->get_key_index(iter);
-    m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
+
+    if (!m_config->data_import || m_config->generate_keys) {
+        m_obj_gen->generate_key(*key_index);
+    } else {
+        /* For SET command we already read a completes item (see create_set_request()) */
+        if (command_index == GET_CMD_IDX)
+            dynamic_cast<import_object_generator*>(m_obj_gen)->read_next_key(*key_index);
+    }
 
     return available_for_conn;
 }
@@ -277,7 +284,7 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
             get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
             /* If key not available for this connection, we have a bug of sending partial request */
             assert(res == available_for_conn);
-            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_key_buffer, m_key_len);
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
         } else if (arg->type == data_type) {
             unsigned int value_len;
             const char *value = m_obj_gen->get_value(0, &value_len);
@@ -313,7 +320,7 @@ bool client::create_set_request(struct timeval& timestamp, unsigned int conn_id)
         unsigned int value_len;
         const char *value = m_obj_gen->get_value(key_index, &value_len);
 
-        m_connections[conn_id]->send_set_command(&timestamp, m_key_buffer, m_key_len,
+        m_connections[conn_id]->send_set_command(&timestamp, m_obj_gen->get_key(), m_obj_gen->get_key_len(),
                                                  value, value_len, m_obj_gen->get_expiry(),
                                                  m_config->data_offset);
     }
@@ -328,7 +335,7 @@ bool client::create_get_request(struct timeval& timestamp, unsigned int conn_id)
         return false;
 
     if (res == available_for_conn) {
-        m_connections[conn_id]->send_get_command(&timestamp, m_key_buffer, m_key_len, m_config->data_offset);
+        m_connections[conn_id]->send_get_command(&timestamp, m_obj_gen->get_key(), m_obj_gen->get_key_len(), m_config->data_offset);
     }
 
     return true;
@@ -346,7 +353,7 @@ bool client::create_mget_request(struct timeval& timestamp, unsigned int conn_id
         /* Not supported in cluster mode */
         assert(res == available_for_conn);
 
-        m_keylist->add_key(m_key_buffer, m_key_len);
+        m_keylist->add_key(m_obj_gen->get_key(), m_obj_gen->get_key_len());
     }
 
     m_connections[conn_id]->send_mget_command(&timestamp, m_keylist);
@@ -378,6 +385,11 @@ void client::create_request(struct timeval timestamp, unsigned int conn_id)
 
     // are we set or get? this depends on the ratio
     else if (m_set_ratio_count < m_config->ratio.a) {
+        /* Before we can create a SET request, we need to read the next imported item */
+        if (m_config->data_import) {
+            dynamic_cast<import_object_generator*>(m_obj_gen)->read_next_item();
+        }
+
         if (!create_set_request(timestamp, conn_id))
             return;
 
@@ -482,57 +494,51 @@ unsigned long long int verify_client::get_errors(void)
     return m_errors;
 }
 
-void verify_client::create_request(struct timeval timestamp, unsigned int conn_id)
-{
-    // TODO: Refactor client::create_request so this can be unified.
-    if (m_set_ratio_count < m_config->ratio.a) {
-        // Prepare a GET request that will be compared against a previous
-        // SET request.
-        data_object *obj = m_obj_gen->get_object(obj_iter_type(m_config, 0));
-        unsigned int key_len;
-        const char *key = obj->get_key(&key_len);
+bool verify_client::create_wait_request(struct timeval& timestamp, unsigned int conn_id) {
+    // Nothing to do
+    return true;
+}
+
+bool verify_client::create_set_request(struct timeval& timestamp, unsigned int conn_id) {
+    unsigned long long key_index;
+    get_key_response res = get_key_for_conn(SET_CMD_IDX, conn_id, &key_index);
+    if (res == not_available)
+        return false;
+
+    if (res == available_for_conn) {
         unsigned int value_len;
-        const char *value = obj->get_value(&value_len);
+        const char *value = m_obj_gen->get_value(key_index, &value_len);
 
-        m_connections[conn_id]->send_verify_get_command(&timestamp, key, key_len,
-                                                        value, value_len, obj->get_expiry(),
+        m_connections[conn_id]->send_verify_get_command(&timestamp, m_obj_gen->get_key(), m_obj_gen->get_key_len(),
+                                                        value, value_len,
                                                         m_config->data_offset);
-
-        m_set_ratio_count++;
-    } else if (m_get_ratio_count < m_config->ratio.b) {
-        // We don't really care about GET operations, all we do here is keep
-        // the object generator synced.
-        int iter = obj_iter_type(m_config, 2);
-
-        if (m_config->multi_key_get > 0) {
-            unsigned int keys_count;
-
-            keys_count = m_config->ratio.b - m_get_ratio_count;
-            if ((int)keys_count > m_config->multi_key_get)
-                keys_count = m_config->multi_key_get;
-            m_keylist->clear();
-            while (m_keylist->get_keys_count() < keys_count) {
-                unsigned int keylen;
-                const char *key = m_obj_gen->get_key(iter, &keylen);
-
-                assert(key != NULL);
-                assert(keylen > 0);
-
-                m_keylist->add_key(key, keylen);
-            }
-
-            m_get_ratio_count += keys_count;
-        } else {
-            unsigned int keylen;
-            m_obj_gen->get_key(iter, &keylen);
-            m_get_ratio_count++;
-        }
-
-        // We don't really send this request, but need to count it to be in sync.
-        m_reqs_processed++;
-    } else {
-        m_get_ratio_count = m_set_ratio_count = 0;
     }
+
+    return true;
+}
+
+bool verify_client::create_get_request(struct timeval& timestamp, unsigned int conn_id) {
+    // Just Keep object generator synced
+    unsigned long long key_index;
+    get_key_for_conn(GET_CMD_IDX, conn_id, &key_index);
+
+    return true;
+}
+
+bool verify_client::create_mget_request(struct timeval& timestamp, unsigned int conn_id) {
+    // Just Keep object generator synced
+    unsigned long long key_index;
+    unsigned int keys_count = m_config->ratio.b - m_get_ratio_count;
+    if ((int)keys_count > m_config->multi_key_get)
+        keys_count = m_config->multi_key_get;
+
+    m_keylist->clear();
+    for (unsigned int i = 0; i < keys_count; i++) {
+
+        get_key_for_conn(GET_CMD_IDX, conn_id, &key_index);
+    }
+
+    return true;
 }
 
 void verify_client::handle_response(unsigned int conn_id, struct timeval timestamp,

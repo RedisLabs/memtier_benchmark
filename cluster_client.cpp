@@ -312,7 +312,7 @@ get_key_response cluster_client::get_key_for_conn(unsigned int command_index, un
     // first check if we already have a key in the pool
     if (!m_key_index_pools[conn_id]->empty()) {
         *key_index = m_key_index_pools[conn_id]->front();
-        m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_obj_gen->get_key_prefix(), *key_index);
+        m_obj_gen->generate_key(*key_index);
 
         m_key_index_pools[conn_id]->pop();
         return available_for_conn;
@@ -321,11 +321,13 @@ get_key_response cluster_client::get_key_for_conn(unsigned int command_index, un
     // generate key
     client::get_key_for_conn(command_index, conn_id, key_index);
 
-    unsigned int hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
+    unsigned int hslot = calc_hslot_crc16_cluster(m_obj_gen->get_key(), m_obj_gen->get_key_len());
 
     // check if the key match for this connection
     if (m_slot_to_shard[hslot] == conn_id) {
-        benchmark_debug_log("%s generated key=[%.*s] for itself\n", m_connections[conn_id]->get_readable_id(), m_key_len, m_key_buffer);
+        benchmark_debug_log("%s generated key=[%.*s] for itself\n",
+                            m_connections[conn_id]->get_readable_id(),
+                            m_obj_gen->get_key_len(), m_obj_gen->get_key());
         return available_for_conn;
     }
 
@@ -347,7 +349,10 @@ get_key_response cluster_client::get_key_for_conn(unsigned int command_index, un
         return not_available;
 
     // store command and key for the other connection
-    benchmark_debug_log("%s generated key=[%.*s] for %s\n", m_connections[conn_id]->get_readable_id(), m_key_len, m_key_buffer, m_connections[other_conn_id]->get_readable_id());
+    benchmark_debug_log("%s generated key=[%.*s] for %s\n",
+                        m_connections[conn_id]->get_readable_id(),
+                        m_obj_gen->get_key_len(), m_obj_gen->get_key(),
+                        m_connections[other_conn_id]->get_readable_id());
 
     key_idx_pool->push(command_index);
     key_idx_pool->push(*key_index);
