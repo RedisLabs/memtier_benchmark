@@ -150,12 +150,18 @@ def test_default_set(env):
         for second_data in set_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
-            env.assertTrue(bytes_rx > 0)
-            env.assertTrue(bytes_tx > 0)
+            count = second_data["Count"]
+            # if we had commands on that second the BW needs to be > 0
+            if count > 0:
+                env.assertTrue(bytes_rx > 0)
+                env.assertTrue(bytes_tx > 0)
 
         for second_data in get_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
+            # This test is write only so there should be no reads RX/TX and count
+            count = second_data["Count"]
+            env.assertTrue(count == 0)
             env.assertTrue(bytes_rx == 0)
             env.assertTrue(bytes_tx == 0)
 
@@ -205,14 +211,19 @@ def test_default_set_get(env):
         for second_data in set_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
-            env.assertTrue(bytes_rx > 0)
-            env.assertTrue(bytes_tx > 0)
+            count = second_data["Count"]
+            # if we had commands on that second the BW needs to be > 0
+            if count > 0:
+                env.assertTrue(bytes_rx > 0)
+                env.assertTrue(bytes_tx > 0)
 
         for second_data in get_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
-            env.assertTrue(bytes_rx > 0)
-            env.assertTrue(bytes_tx > 0)
+            # if we had commands on that second the BW needs to be > 0
+            if count > 0:
+                env.assertTrue(bytes_rx > 0)
+                env.assertTrue(bytes_tx > 0)
 
 def test_default_set_get_with_print_percentiles(env):
     p_str = '0,10,20,30,40,50,60,70,80,90,95,100'
