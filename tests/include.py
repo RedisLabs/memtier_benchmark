@@ -158,3 +158,31 @@ def agg_keyspace_range(master_nodes_connections):
                 shard_count = int(shard_reply['db0']['keys'])
         overall_keyspace_range = overall_keyspace_range + shard_count
     return overall_keyspace_range
+
+
+def get_column_csv(filename,column_name):
+    found = False
+    with open(filename,"r") as fd:
+        stop_line = 0
+        lines = fd.readlines()
+        for line in lines:
+            # CSV is the first part of file
+            if "Full-Test GET Latency" in line or len(line) == 0:
+                break
+            stop_line = stop_line + 1
+        print(stop_line)
+        csv_lines = lines[1:stop_line-1]
+        header_line = csv_lines[0].strip().split(",")
+        col_pos = -1
+        for col_index,col in enumerate(header_line):
+            if column_name == col:
+                col_pos = col_index
+                found = True
+        data_lines = []
+        for line in csv_lines[1:]:
+            data_lines.append(line.strip().split(","))
+        column_data = []
+        if found is True:
+            for line in data_lines:
+                column_data.append(line[col_pos])
+    return found, column_data
