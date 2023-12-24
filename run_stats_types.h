@@ -75,7 +75,8 @@ public:
 
 class one_sec_cmd_stats {
 public:
-    unsigned long int m_bytes;
+    unsigned long int m_bytes_rx;
+    unsigned long int m_bytes_tx;
     unsigned long int m_ops;
     unsigned int m_hits;
     unsigned int m_misses;
@@ -90,10 +91,10 @@ public:
     void reset();
     void merge(const one_sec_cmd_stats& other);
     void summarize_quantiles(safe_hdr_histogram histogram, std::vector<float> quantiles);
-    void update_op(unsigned int bytes, unsigned int latency);
-    void update_op(unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_moved_op(unsigned int bytes, unsigned int latency);
-    void update_ask_op(unsigned int bytes, unsigned int latency);
+    void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
+    void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency, unsigned int hits, unsigned int misses);
+    void update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
+    void update_ask_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
 };
 
 class one_second_stats; // forward declaration
@@ -135,6 +136,8 @@ class totals_cmd {
 public:
     double m_ops_sec;
     double m_bytes_sec;
+    double m_bytes_sec_rx;
+    double m_bytes_sec_tx;
     double m_moved_sec;
     double m_ask_sec;
     double m_latency;
@@ -173,17 +176,22 @@ public:
     safe_hdr_histogram latency_histogram;
     double m_ops_sec;
     double m_bytes_sec;
+    double m_bytes_sec_rx;
+    double m_bytes_sec_tx;
     double m_hits_sec;
     double m_misses_sec;
     double m_moved_sec;
     double m_ask_sec;
     unsigned long long int m_latency;
-    unsigned long int m_bytes;
+    // number of bytes received
+    unsigned long int m_bytes_rx;
+    // number of bytes sent
+    unsigned long int m_bytes_tx;
     unsigned long int m_ops;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
-    void update_op(unsigned long int bytes, unsigned int latency);
+    void update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency);
 };
 
 
