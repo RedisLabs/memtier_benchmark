@@ -23,6 +23,7 @@ AM_INIT_AUTOMAKE
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
+
 CXXFLAGS="-O2 -g -Wall"
 
 # Checks for programs.
