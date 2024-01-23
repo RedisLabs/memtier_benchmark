@@ -1675,7 +1675,7 @@ int main(int argc, char *argv[])
             run_stats average(&cfg);
             average.aggregate_average(all_stats);
             char average_header[50];
-            sprintf(average_header,"AGGREGATED AVERAGE RESULTS (%u runs)", cfg.run_count);
+            snprintf(average_header, 50, "AGGREGATED AVERAGE RESULTS (%u runs)", cfg.run_count);
             average.print(outfile, &cfg, average_header, jsonhandler);
         } else {
             all_stats.begin()->print(outfile, &cfg, "ALL STATS", jsonhandler);

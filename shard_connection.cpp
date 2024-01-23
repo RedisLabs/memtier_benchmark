@@ -548,7 +548,7 @@ void shard_connection::handle_event(short events)
         if (!m_conns_manager->get_reqs_processed()) {
             /* Set timer for request rate */
             if (m_config->request_rate) {
-                struct timeval interval = { 0, (long int)m_config->request_interval_microsecond };
+                struct timeval interval = { 0, (int)m_config->request_interval_microsecond };
                 m_request_per_cur_interval = m_config->request_per_interval;
                 m_event_timer = event_new(m_event_base, -1, EV_PERSIST, cluster_client_timer_handler, (void *)this);
                 event_add(m_event_timer, &interval);
