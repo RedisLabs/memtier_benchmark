@@ -125,10 +125,12 @@ public:
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
+    one_sec_cmd_stats m_total_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
     one_second_stats(unsigned int second);
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
+    void summarize();
     void merge(const one_second_stats& other);
 };
 
@@ -172,6 +174,7 @@ public:
     totals_cmd m_set_cmd;
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
+    totals_cmd m_total_cmd;
     ar_totals_cmd m_ar_commands;
     safe_hdr_histogram latency_histogram;
     double m_ops_sec;

@@ -246,19 +246,31 @@ def test_default_set_get(env):
         for second_data in set_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
+            p50 = second_data["p50.00"]
+            p99 = second_data["p99.00"]
+            p999 = second_data["p99.90"]
             count = second_data["Count"]
             # if we had commands on that second the BW needs to be > 0
             if count > 0:
                 env.assertTrue(bytes_rx > 0)
                 env.assertTrue(bytes_tx > 0)
+                env.assertTrue(p50 > 0.0)
+                env.assertTrue(p99 > 0.0)
+                env.assertTrue(p999 > 0.0)
 
         for second_data in get_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
+            p50 = second_data["p50.00"]
+            p99 = second_data["p99.00"]
+            p999 = second_data["p99.90"]
             # if we had commands on that second the BW needs to be > 0
             if count > 0:
                 env.assertTrue(bytes_rx > 0)
                 env.assertTrue(bytes_tx > 0)
+                env.assertTrue(p50 > 0.0)
+                env.assertTrue(p99 > 0.0)
+                env.assertTrue(p999 > 0.0)
 
 def test_default_set_get_with_print_percentiles(env):
     p_str = '0,10,20,30,40,50,60,70,80,90,95,100'
@@ -407,6 +419,37 @@ def test_default_arbitrary_command_keyless(env):
 
     if not benchmark.run():
         debugPrintMemtierOnError(config, env)
+
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    ## Assert that all BW metrics are properly stored and calculated
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+        metrics = results_dict['ALL STATS']['Pings']
+        metrics_ts = results_dict['ALL STATS']['Pings']["Time-Serie"]
+        totals_metrics_ts = results_dict['ALL STATS']['Totals']["Time-Serie"]
+        for metric_name in ["KB/sec RX/TX","KB/sec RX","KB/sec TX","KB/sec"]:
+            # assert the metric exists
+            env.assertTrue(metric_name in metrics)
+            # assert the metric value is non zero given we've had write and read
+            metric_value_kbs = metrics[metric_name]
+            env.assertTrue(metric_value_kbs > 0)
+
+        totals_metrics_ts_v = list(totals_metrics_ts.values())
+        for pos, second_data in enumerate(metrics_ts.values()):
+            bytes_rx = second_data["Bytes RX"]
+            bytes_tx = second_data["Bytes TX"]
+            count = second_data["Count"]
+            second_data_total = totals_metrics_ts_v[pos]
+            for metric_name in ["p50.00","p99.00","p99.90"]:
+                if count > 0:
+                    metric_value_second_data = second_data[metric_name]
+                    metric_value_totals_second_data = second_data_total[metric_name]
+                    env.assertTrue(metric_value_totals_second_data == metric_value_second_data)
+                    env.assertTrue(metric_value_second_data > 0.0)
+            # if we had commands on that second the BW needs to be > 0
+            if count > 0:
+                env.assertTrue(bytes_rx > 0)
+                env.assertTrue(bytes_tx > 0)
 
 
 def test_default_arbitrary_command_set(env):
