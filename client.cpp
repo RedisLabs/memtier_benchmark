@@ -441,7 +441,6 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
                             m_connections[conn_id]->get_readable_id(),
                             response->get_status());
     }
-
     switch (request->m_type) {
         case rt_get:
             m_stats.update_get_op(&timestamp,

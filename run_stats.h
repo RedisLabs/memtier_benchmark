@@ -106,12 +106,14 @@ protected:
     safe_hdr_histogram m_set_latency_histogram;
     safe_hdr_histogram m_wait_latency_histogram;
     std::vector<safe_hdr_histogram> m_ar_commands_latency_histograms;
+    safe_hdr_histogram m_totals_latency_histogram;
 
     // instantaneous command stats ( used in the per second latencies )
     safe_hdr_histogram inst_m_get_latency_histogram;
     safe_hdr_histogram inst_m_set_latency_histogram;
     safe_hdr_histogram inst_m_wait_latency_histogram;
     std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
+    safe_hdr_histogram inst_m_totals_latency_histogram;
 
     void roll_cur_stats(struct timeval* ts);
 
@@ -140,6 +142,7 @@ public:
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
+    void summarize_current_second();
     void merge(const run_stats& other, int iteration);
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_get();
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_set();
