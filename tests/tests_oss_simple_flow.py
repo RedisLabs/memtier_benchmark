@@ -246,12 +246,12 @@ def test_default_set_get(env):
         for second_data in set_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
-            p50 = second_data["p50.00"]
-            p99 = second_data["p99.00"]
-            p999 = second_data["p99.90"]
             count = second_data["Count"]
             # if we had commands on that second the BW needs to be > 0
             if count > 0:
+                p50 = second_data["p50.00"]
+                p99 = second_data["p99.00"]
+                p999 = second_data["p99.90"]
                 env.assertTrue(bytes_rx > 0)
                 env.assertTrue(bytes_tx > 0)
                 env.assertTrue(p50 > 0.0)
@@ -261,11 +261,12 @@ def test_default_set_get(env):
         for second_data in get_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
             bytes_tx = second_data["Bytes TX"]
-            p50 = second_data["p50.00"]
-            p99 = second_data["p99.00"]
-            p999 = second_data["p99.90"]
+            count = second_data["Count"]
             # if we had commands on that second the BW needs to be > 0
             if count > 0:
+                p50 = second_data["p50.00"]
+                p99 = second_data["p99.00"]
+                p999 = second_data["p99.90"]
                 env.assertTrue(bytes_rx > 0)
                 env.assertTrue(bytes_tx > 0)
                 env.assertTrue(p50 > 0.0)
