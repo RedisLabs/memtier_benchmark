@@ -112,7 +112,7 @@ jobs:
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure && make
 
-  build-macos-openssl-1.0:
+  build-macos-openssl-1-0-2:
     strategy:
       matrix:
         platform: [macos-latest]
