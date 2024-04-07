@@ -1392,8 +1392,11 @@ int main(int argc, char *argv[])
             SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1_1);
         if (!(cfg.tls_protocols & REDIS_TLS_PROTO_TLSv1_2))
             SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1_2);
+// TLS 1.3 is only available as from version 1.1.1.
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L
         if (!(cfg.tls_protocols & REDIS_TLS_PROTO_TLSv1_3))
             SSL_CTX_set_options(cfg.openssl_ctx, SSL_OP_NO_TLSv1_3);
+#endif
 
         if (cfg.tls_cert) {
             if (!SSL_CTX_use_certificate_chain_file(cfg.openssl_ctx, cfg.tls_cert)) {
