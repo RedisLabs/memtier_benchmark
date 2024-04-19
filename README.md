@@ -24,7 +24,30 @@ Read more at:
 
 ## Getting Started
 
-### Prerequisites
+### Installing on Debian and Ubuntu
+
+Pre-compiled binaries are available for these platforms from the packages.redis.io Redis APT
+repository. To configure this repository, use the following steps:
+
+```
+sudo apt install lsb-release curl gpg
+
+curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+
+sudo apt-get update
+```
+
+Once configured, to install memtier_benchmark use:
+
+```
+sudo apt-get install memtier-benchmark
+```
+
+### Installing from source
+
+#### Prerequisites
 
 The following libraries are required for building:
 
@@ -39,44 +62,21 @@ The following tools are required
 * GNU make
 * GCC C++ compiler
 
-#### CentOS 6.x
+#### CentOS/Red Hat Linux 7 or newer
 
-On a CentOS 6.x system, use the following to install prerequisites:
+Use the following to install prerequisites:
 ```
-# yum install autoconf automake make gcc-c++
-# yum install pcre-devel zlib-devel libmemcached-devel libevent-devel openssl-devel
+$ sudo yum install autoconf automake make gcc-c++ \
+    pcre-devel zlib-devel libmemcached-devel libevent-devel openssl-devel
 ```
-
-CentOS 6.4 ships with older versions of libevent, which must be manually built
-and installed as follows:
-
-To download, build and install libevent-2.0.21:
-```
-$ wget https://github.com/downloads/libevent/libevent/libevent-2.0.21-stable.tar.gz
-$ tar xfz libevent-2.0.21-stable.tar.gz
-$ pushd libevent-2.0.21-stable
-$ ./configure
-$ make
-$ sudo make install
-$ popd
-```
-
-The above steps will install into /usr/local so it does not confict with the 
-distribution-bundled versions.  The last step is to set up the 
-PKG_CONFIG_PATH so configure can find the newly installed library.
-
-```
-$ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}
-```
-
-Then proceed to follow the build instructions below.
 
 #### Ubuntu/Debian
 
-On Ubuntu/Debian distributions, simply install all prerequisites as follows:
+Use the following to install prerequisites:
 
 ```
-# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
+$ sudo apt-get install build-essential autoconf automake libpcre3-dev \
+    libevent-dev pkg-config zlib1g-dev libssl-dev
 ```
 
 #### macOS
@@ -94,7 +94,7 @@ tweak the `PKG_CONFIG_PATH` environment variable:
 PKG_CONFIG_PATH=/usr/local/opt/openssl@3.0/lib/pkgconfig ./configure
 ```
 
-### Building and installing
+#### Building and installing
 
 After downloading the source tree, use standard autoconf/automake commands:
 
