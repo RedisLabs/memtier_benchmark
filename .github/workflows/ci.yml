@@ -88,13 +88,7 @@ jobs:
         ./tests/run_tests.sh
 
     - name: Capture code coverage
-      timeout-minutes: 3
-      if: matrix.platform == 'ubuntu-latest'
-      run: |
-        make code-coverage-capture
-
-    - name: Capture code coverage
-      timeout-minutes: 3
+      timeout-minutes: 6
       if: matrix.platform == 'ubuntu-latest'
       run: |
         make code-coverage-capture
