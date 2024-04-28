@@ -91,7 +91,7 @@ When running `./configure`, if it fails to find libssl it may be necessary to
 tweak the `PKG_CONFIG_PATH` environment variable:
 
 ```
-PKG_CONFIG_PATH=/usr/local/opt/openssl@3.0/lib/pkgconfig ./configure
+PKG_CONFIG_PATH=`brew --prefix openssl@3.0`/lib/pkgconfig ./configure
 ```
 
 #### Building and installing
