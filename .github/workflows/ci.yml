@@ -111,7 +111,7 @@ jobs:
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent pkg-config openssl@${{ matrix.openssl }}
     - name: Build
-      run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@${{ matrix.openssl }}/lib/pkgconfig ./configure && make
+      run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@${{ matrix.openssl }}`/lib/pkgconfig ./configure && make
 
   build-macos-openssl-1-0-2:
     strategy:
@@ -125,4 +125,4 @@ jobs:
     - name: Install openssl v1.0.2
       run: brew install rbenv/tap/openssl@1.0
     - name: Build
-      run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@1.0/lib/pkgconfig ./configure && make
+      run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.0`/lib/pkgconfig ./configure && make
