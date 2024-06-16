@@ -277,16 +277,27 @@ int shard_connection::connect(struct connect_info* addr) {
     // call connect
     m_connection_state = conn_in_progress;
 
-    if (bufferevent_socket_connect(m_bev,
-                  m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
-                  m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == -1) {
+    while (true) {
+        if (bufferevent_socket_connect(m_bev,
+                      m_unix_sockaddr ? (struct sockaddr *) m_unix_sockaddr : addr->ci_addr,
+                      m_unix_sockaddr ? sizeof(struct sockaddr_un) : addr->ci_addrlen) == 0) {
+            return 0;
+        }
+
+        if (errno == EINPROGRESS) {
+            return 0;
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // resource temporarily unavailable; try again
+            continue;
+        }
+
         disconnect();
 
         benchmark_error_log("connect failed, error = %s\n", strerror(errno));
         return -1;
     }
-
-    return 0;
 }
 
 void shard_connection::disconnect() {
