@@ -352,6 +352,8 @@ def test_default_set_get_1_1(env):
 
 # run each test on different env
 def test_short_reconnect_interval(env):
+    # cluster mode dose not support reconnect-interval option
+    env.skipOnCluster()
     benchmark_specs = {"name": env.testName, "args": ['--reconnect-interval=1']}
     addTLSArgs(benchmark_specs, env)
     config = get_default_memtier_config()
