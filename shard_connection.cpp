@@ -231,12 +231,18 @@ int shard_connection::setup_socket(struct connect_info* addr) {
             return -1;
         }
 
-        // configure socket behavior
-        struct linger ling = {0, 0};
-        int flags = 1;
+
         int error = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (void *) &flags, sizeof(flags));
         assert(error == 0);
 
+        /*
+        * Configure socket behavior:
+        * If l_onoff is non-zero and l_linger is zero:
+        *   The socket will discard any unsent data and the close() call will return immediately.
+        */
+        struct linger ling;
+        ling.l_onoff = 1;  // Enable SO_LINGER
+        ling.l_linger = 0; // Discard any unsent data and close immediately
         error = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (void *) &ling, sizeof(ling));
         assert(error == 0);
 
@@ -264,7 +270,7 @@ int shard_connection::connect(struct connect_info* addr) {
     // setup socket
     int sockfd = setup_socket(addr);
     if (sockfd < 0) {
-        fprintf(stderr, "Failed to setup socket: %s", strerror(errno));
+        fprintf(stderr, "Failed to setup socket: %s\n", strerror(errno));
         return -1;
     }
 
@@ -478,8 +484,10 @@ void shard_connection::process_response(void)
             // client manage connection & disconnection of shard
             m_conns_manager->disconnect();
             ret = m_conns_manager->connect();
-            assert(ret == 0);
-
+            if (ret != 0) {
+                benchmark_error_log("failed to reconnect.\n");
+                exit(1);
+            }
             return;
         }
     }
