@@ -46,6 +46,12 @@ jobs:
         sudo apt-get install redis
         sudo service redis-server stop
 
+    - name: Increase connection limit
+      run: |
+        sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+        sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+        ulimit -n 40960
+
     - name: Generate TLS test certificates
       if: matrix.platform == 'ubuntu-latest'
       run: |
