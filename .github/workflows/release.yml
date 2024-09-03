@@ -76,7 +76,7 @@ jobs:
     - name: Prepare sbuild environment
       run: sudo ./debian/setup_sbuild.sh ${{ matrix.dist }} ${{ env.BUILD_ARCH }}
     - name: Get source package
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4.1.7
       with:
         name: source-${{ matrix.dist }}
     - name: Build binary package
@@ -109,7 +109,7 @@ jobs:
     container: ${{ matrix.image }}
     steps:
     - name: Get binary packages
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4.1.7
     - name: Install packages
       run: |
         apt-get update
@@ -130,7 +130,7 @@ jobs:
       env:
         APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
     - name: Get binary packages
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4.1.7
     - name: Setup ruby
       uses: ruby/setup-ruby@v1
       with:
