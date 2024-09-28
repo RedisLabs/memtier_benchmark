@@ -104,9 +104,12 @@ inline unsigned long int ts_diff_now(struct timeval a)
 inline timeval timeval_factorial_average(timeval a, timeval b, unsigned int weight)
 {
     timeval tv;
-    double factor = ((double)weight - 1) / weight;
-    tv.tv_sec   = factor * a.tv_sec  + (double)b.tv_sec  / weight ;
-    tv.tv_usec  = factor * a.tv_usec + (double)b.tv_usec / weight ;
+    unsigned long long a_usec = a.tv_sec * 1000000 + a.tv_usec;
+    unsigned long long b_usec = b.tv_sec * 1000000 + b.tv_usec;
+    unsigned long long average = (a_usec * (weight - 1) + b_usec) / weight;
+
+    tv.tv_sec = average / 1000000;
+    tv.tv_usec = average % 1000000;
     return (tv);
 }
 
