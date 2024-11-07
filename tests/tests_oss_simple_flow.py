@@ -702,7 +702,7 @@ def test_valid_json_using_debug_command(env):
         debug_metrics = results_dict['ALL STATS']['Debugs']
         debug_count = debug_metrics["Count"]
         total_metrics = results_dict['ALL STATS']['Totals']
-        total_count = debug_metrics["Count"]
+        total_count = total_metrics["Count"]
         env.assertEqual(debug_count, total_count)
         env.assertEqual(debug_count, total_requests)
         debug_metrics_ts = debug_metrics["Time-Serie"]
@@ -715,12 +715,3 @@ def test_valid_json_using_debug_command(env):
                 for latency_metric_name in ["Accumulated Latency","Min Latency","Max Latency","p50.00","p99.00","p99.90"]:
                     metric_value = second_data[latency_metric_name]
                     env.assertTrue(metric_value > 0.0)
-
-        # for second_data in get_metrics_ts.values():
-        #     bytes_rx = second_data["Bytes RX"]
-        #     bytes_tx = second_data["Bytes TX"]
-        #     # This test is write only so there should be no reads RX/TX and count
-        #     count = second_data["Count"]
-        #     env.assertTrue(count == 0)
-        #     env.assertTrue(bytes_rx == 0)
-        #     env.assertTrue(bytes_tx == 0)
