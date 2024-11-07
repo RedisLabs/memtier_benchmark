@@ -879,16 +879,19 @@ void run_stats::summarize(totals& result) const
     result.m_ask_sec = (double) (totals.m_set_cmd.m_ask + totals.m_get_cmd.m_ask) / test_duration_usec * 1000000;
 }
 
-void result_print_to_json(json_handler * jsonhandler, const char * type, double ops,
+void result_print_to_json(json_handler * jsonhandler, const char * type, double ops_sec,
                           double hits, double miss, double moved, double ask, double kbs, double kbs_rx, double kbs_tx,
+                          double latency, long ops,
                           std::vector<float> quantile_list, struct hdr_histogram* latency_histogram, 
                           std::vector<unsigned int> timestamps, 
                           std::vector<one_sec_cmd_stats> timeserie_stats )
 {
     if (jsonhandler != NULL){ // Added for double verification in case someone accidently send NULL.
         jsonhandler->open_nesting(type);
-        jsonhandler->write_obj("Count","%lld", hdr_total_count(latency_histogram));
-        jsonhandler->write_obj("Ops/sec","%.2f", ops);
+        const long hdr_count = hdr_total_count(latency_histogram);
+        assert(hdr_count < ops && "reported ops and tracked ops via hdrhistogram are same");
+        jsonhandler->write_obj("Count","%lld", hdr_count);
+        jsonhandler->write_obj("Ops/sec","%.2f", ops_sec);
         jsonhandler->write_obj("Hits/sec","%.2f", hits);
         jsonhandler->write_obj("Misses/sec","%.2f", miss);
 
@@ -899,9 +902,9 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
             jsonhandler->write_obj("ASK/sec","%.2f", ask);
 
         const bool has_samples = hdr_total_count(latency_histogram)>0;
-        const double avg_latency = has_samples ? hdr_mean(latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-        const double min_latency = has_samples ? hdr_min(latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-        const double max_latency = has_samples ? hdr_max(latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+        const double avg_latency = latency;
+        const double min_latency = has_samples ? (hdr_min(latency_histogram) * 1.0)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+        const double max_latency = has_samples ? (hdr_max(latency_histogram) * 1.0)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
         // to be retrocompatible
         jsonhandler->write_obj("Latency","%.3f", avg_latency);
         jsonhandler->write_obj("Average Latency","%.3f", avg_latency);
@@ -1240,6 +1243,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                                  m_totals.m_ar_commands[i].m_bytes_sec,
                                  m_totals.m_ar_commands[i].m_bytes_sec_rx,
                                  m_totals.m_ar_commands[i].m_bytes_sec_tx,
+                                 m_totals.m_ar_commands[i].m_latency,
+                                 m_totals.m_ar_commands[i].m_ops,
                                  quantiles_list,
                                  arbitrary_command_latency_histogram,
                                  timestamps,
@@ -1258,6 +1263,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              m_totals.m_set_cmd.m_bytes_sec,
                              m_totals.m_set_cmd.m_bytes_sec_rx,
                              m_totals.m_set_cmd.m_bytes_sec_tx,
+                             m_totals.m_set_cmd.m_latency,
+                             m_totals.m_set_cmd.m_ops,
                              quantiles_list,
                              m_set_latency_histogram,
                              timestamps,
@@ -1271,6 +1278,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              m_totals.m_get_cmd.m_bytes_sec,
                              m_totals.m_get_cmd.m_bytes_sec_rx,
                              m_totals.m_get_cmd.m_bytes_sec_tx,
+                             m_totals.m_get_cmd.m_latency,
+                             m_totals.m_get_cmd.m_ops,
                              quantiles_list,
                              m_get_latency_histogram,
                              timestamps,
@@ -1284,6 +1293,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              0.0,
                              0.0,
                              0.0,
+                             0.0,
+                             m_totals.m_wait_cmd.m_ops,
                              quantiles_list,
                              m_wait_latency_histogram,
                              timestamps,
@@ -1299,6 +1310,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                          m_totals.m_bytes_sec,
                          m_totals.m_bytes_sec_rx,
                          m_totals.m_bytes_sec_tx,
+                         m_totals.m_latency,
+                         m_totals.m_ops,
                          quantiles_list,
                          m_totals.latency_histogram,
                          timestamps,

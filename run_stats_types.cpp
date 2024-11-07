@@ -23,7 +23,7 @@
 #include <stdio.h>
 
 #include "run_stats_types.h"
-
+#include <limits>
 
 
 one_sec_cmd_stats::one_sec_cmd_stats() :
@@ -36,8 +36,8 @@ one_sec_cmd_stats::one_sec_cmd_stats() :
     m_ask(0),
     m_total_latency(0),
     m_avg_latency(0.0),
-    m_min_latency(0.0),
-    m_max_latency(0.0) {
+    m_min_latency(std::numeric_limits<double>::max()),
+    m_max_latency(std::numeric_limits<double>::lowest()) {
 }
 
 
@@ -51,8 +51,8 @@ void one_sec_cmd_stats::reset() {
     m_ask = 0;
     m_total_latency = 0;
     m_avg_latency = 0;
-    m_max_latency = 0;
-    m_min_latency = 0;
+    m_max_latency = std::numeric_limits<double>::lowest();
+    m_min_latency = std::numeric_limits<double>::max();
     summarized_quantile_values.clear();
 }
 
@@ -65,7 +65,9 @@ void one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
     m_moved += other.m_moved;
     m_ask += other.m_ask;
     m_total_latency += other.m_total_latency;
-    m_avg_latency = (double) m_total_latency / (double) m_ops / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+    if (m_ops > 0) {
+        m_avg_latency = (double) m_total_latency / (double) m_ops / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+    }
     m_max_latency = other.m_max_latency > m_max_latency ? other.m_max_latency : m_max_latency;
     m_min_latency = other.m_min_latency < m_min_latency ? other.m_min_latency : m_min_latency;
 }
@@ -78,8 +80,8 @@ void one_sec_cmd_stats::summarize_quantiles(safe_hdr_histogram histogram, std::v
         summarized_quantile_values.push_back(value);
     }
     m_avg_latency = has_samples ? hdr_mean(histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-    m_max_latency = has_samples ? hdr_max(histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-    m_min_latency = has_samples ? hdr_min(histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+    m_max_latency = has_samples ? (1.0 * hdr_max(histogram))/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : std::numeric_limits<double>::lowest();
+    m_min_latency = has_samples ? (1.0 * hdr_min(histogram))/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : std::numeric_limits<double>::max();;
 }
 
 void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency) {
