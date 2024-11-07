@@ -70,7 +70,7 @@ TLS_CACERT=$ROOT/tests/tls/ca.crt
 REDIS_SERVER=${REDIS_SERVER:-redis-server}
 MEMTIER_BINARY=$ROOT/memtier_benchmark
 
-RLTEST_ARGS=" --oss-redis-path $REDIS_SERVER"
+RLTEST_ARGS=" --oss-redis-path $REDIS_SERVER --enable-debug-command"
 [[ "$TEST" != "" ]] && RLTEST_ARGS+=" --test $TEST"
 [[ $VERBOSE == 1 ]] && RLTEST_ARGS+=" -v"
 [[ $TLS == 1 ]] && RLTEST_ARGS+=" --tls-cert-file $TLS_CERT --tls-key-file $TLS_KEY --tls-ca-cert-file $TLS_CACERT --tls"
