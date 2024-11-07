@@ -73,15 +73,11 @@ void one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
 }
 
 void one_sec_cmd_stats::summarize_quantiles(safe_hdr_histogram histogram, std::vector<float> quantiles) {
-    const bool has_samples = m_ops>0;
     for (std::size_t i = 0; i < quantiles.size(); i++){
         const float quantile = quantiles[i];
         const double value = hdr_value_at_percentile(histogram, quantile)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER;
         summarized_quantile_values.push_back(value);
     }
-    m_avg_latency = has_samples ? hdr_mean(histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-    m_max_latency = has_samples ? (1.0 * hdr_max(histogram))/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : std::numeric_limits<double>::lowest();
-    m_min_latency = has_samples ? (1.0 * hdr_min(histogram))/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : std::numeric_limits<double>::max();;
 }
 
 void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency) {
@@ -89,6 +85,10 @@ void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, 
     m_bytes_tx += bytes_tx;
     m_ops++;
     m_total_latency += latency;
+    const double latency_millis = latency / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+    m_avg_latency = (double) (m_total_latency) / (double) m_ops / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+    m_max_latency = (m_max_latency < latency_millis) ? latency_millis: m_max_latency;
+    m_min_latency = (m_min_latency > latency_millis) ? latency_millis: m_min_latency;
 }
 
 void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency,
@@ -202,6 +202,7 @@ totals_cmd::totals_cmd() :
         m_moved_sec(0),
         m_ask_sec(0),
         m_latency(0),
+        m_total_latency(0),
         m_ops(0) {
 }
 
@@ -213,6 +214,7 @@ void totals_cmd::add(const totals_cmd& other) {
     m_bytes_sec_rx += other.m_bytes_sec_rx;
     m_bytes_sec_tx += other.m_bytes_sec_tx;
     m_latency += other.m_latency;
+    m_total_latency += other.m_total_latency;
     m_ops += other.m_ops;
 }
 
@@ -228,6 +230,7 @@ void totals_cmd::aggregate_average(size_t stats_size) {
 
 void totals_cmd::summarize(const one_sec_cmd_stats& other, unsigned long test_duration_usec) {
     m_ops = other.m_ops;
+    m_total_latency = other.m_total_latency;
 
     m_ops_sec = (double) other.m_ops / test_duration_usec * 1000000;
     if (other.m_ops > 0) {
@@ -283,6 +286,7 @@ totals::totals() :
         m_moved_sec(0),
         m_ask_sec(0),
         m_latency(0),
+        m_total_latency(0),
         m_bytes_rx(0),
         m_bytes_tx(0),
         m_ops(0) {
@@ -308,6 +312,7 @@ void totals::add(const totals& other) {
     m_bytes_rx += other.m_bytes_rx;
     m_bytes_tx += other.m_bytes_tx;
     m_latency += other.m_latency;
+    m_total_latency += other.m_latency;
     m_ops += other.m_ops;
 
     // aggregate latency data
@@ -319,5 +324,6 @@ void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, u
     m_bytes_tx += bytes_tx;
     m_ops++;
     m_latency += latency;
-    hdr_record_value(latency_histogram,latency);
+    m_total_latency += latency;
+    hdr_record_value_capped(latency_histogram,latency);
 }

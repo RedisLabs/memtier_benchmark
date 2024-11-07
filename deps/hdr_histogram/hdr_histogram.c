@@ -448,6 +448,12 @@ size_t hdr_get_memory_size(struct hdr_histogram *h)
 /* ##     ## ##        ##     ## ##     ##    ##    ##       ##    ## */
 /*  #######  ##        ########  ##     ##    ##    ########  ######  */
 
+bool hdr_record_value_capped(struct hdr_histogram* h, int64_t value)
+{
+    int64_t capped_value = (value > h->highest_trackable_value) ? h->highest_trackable_value : value;
+    capped_value = (capped_value < h->lowest_trackable_value) ? h->lowest_trackable_value : capped_value;
+    return hdr_record_value(h, capped_value);
+}
 
 bool hdr_record_value(struct hdr_histogram* h, int64_t value)
 {

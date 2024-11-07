@@ -20,11 +20,11 @@
 #define MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 
 #define LATENCY_HDR_MIN_VALUE 10
-#define LATENCY_HDR_MAX_VALUE 60000000 ## LL
+#define LATENCY_HDR_MAX_VALUE 6000000000 ## LL
 #define LATENCY_HDR_SIGDIGTS 3
 #define LATENCY_HDR_SEC_MIN_VALUE 10
-#define LATENCY_HDR_SEC_MAX_VALUE 1000000 ## LL
-#define LATENCY_HDR_SEC_SIGDIGTS 2
+#define LATENCY_HDR_SEC_MAX_VALUE 600000000 ## LL
+#define LATENCY_HDR_SEC_SIGDIGTS 3
 #define LATENCY_HDR_RESULTS_MULTIPLIER 1000
 #define LATENCY_HDR_GRANULARITY 10
 
@@ -143,6 +143,7 @@ public:
     double m_moved_sec;
     double m_ask_sec;
     double m_latency;
+    unsigned long long int m_total_latency;
     unsigned long int m_ops;
     totals_cmd();
     void add(const totals_cmd& other);
@@ -186,6 +187,7 @@ public:
     double m_moved_sec;
     double m_ask_sec;
     unsigned long long int m_latency;
+    unsigned long long int m_total_latency;
     // number of bytes received
     unsigned long int m_bytes_rx;
     // number of bytes sent
