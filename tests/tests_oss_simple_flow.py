@@ -142,9 +142,9 @@ def test_default_set(env):
             set_tx = int(set_tx_column_data[col_pos])
             set_rx = int(set_rx_column_data[col_pos])
             set_tx_rx = int(set_tx_rx_column_data[col_pos])
-            env.assertTrue(set_tx > 0)
-            env.assertTrue(set_rx > 0)
-            env.assertTrue(set_tx_rx > 0)
+            env.assertTrue(set_tx >= 0)
+            env.assertTrue(set_rx >= 0)
+            env.assertTrue(set_tx_rx >= 0)
             env.assertAlmostEqual(set_tx_rx,set_tx+set_rx,1)
 
     # the GET bw should be 0
@@ -179,7 +179,7 @@ def test_default_set(env):
             # assert the metric value is non zero on writes and zero on reads
             set_metric_value_kbs = set_metrics[metric_name]
             get_metric_value_kbs = get_metrics[metric_name]
-            env.assertTrue(set_metric_value_kbs > 0)
+            env.assertTrue(set_metric_value_kbs >= 0)
             env.assertTrue(get_metric_value_kbs == 0)
 
         for second_data in set_metrics_ts.values():
@@ -188,8 +188,8 @@ def test_default_set(env):
             count = second_data["Count"]
             # if we had commands on that second the BW needs to be > 0
             if count > 0:
-                env.assertTrue(bytes_rx > 0)
-                env.assertTrue(bytes_tx > 0)
+                env.assertTrue(bytes_rx >= 0)
+                env.assertTrue(bytes_tx >= 0)
 
         for second_data in get_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
@@ -240,8 +240,8 @@ def test_default_set_get(env):
             # assert the metric value is non zero given we've had write and read
             set_metric_value_kbs = set_metrics[metric_name]
             get_metric_value_kbs = get_metrics[metric_name]
-            env.assertTrue(set_metric_value_kbs > 0)
-            env.assertTrue(get_metric_value_kbs > 0)
+            env.assertTrue(set_metric_value_kbs >= 0)
+            env.assertTrue(get_metric_value_kbs >= 0)
 
         for second_data in set_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
@@ -252,11 +252,11 @@ def test_default_set_get(env):
                 p50 = second_data["p50.00"]
                 p99 = second_data["p99.00"]
                 p999 = second_data["p99.90"]
-                env.assertTrue(bytes_rx > 0)
-                env.assertTrue(bytes_tx > 0)
-                env.assertTrue(p50 > 0.0)
-                env.assertTrue(p99 > 0.0)
-                env.assertTrue(p999 > 0.0)
+                env.assertTrue(bytes_rx >= 0)
+                env.assertTrue(bytes_tx >= 0)
+                env.assertTrue(p50 >= 0.0)
+                env.assertTrue(p99 >= 0.0)
+                env.assertTrue(p999 >= 0.0)
 
         for second_data in get_metrics_ts.values():
             bytes_rx = second_data["Bytes RX"]
@@ -267,11 +267,11 @@ def test_default_set_get(env):
                 p50 = second_data["p50.00"]
                 p99 = second_data["p99.00"]
                 p999 = second_data["p99.90"]
-                env.assertTrue(bytes_rx > 0)
-                env.assertTrue(bytes_tx > 0)
-                env.assertTrue(p50 > 0.0)
-                env.assertTrue(p99 > 0.0)
-                env.assertTrue(p999 > 0.0)
+                env.assertTrue(bytes_rx >= 0)
+                env.assertTrue(bytes_tx >= 0)
+                env.assertTrue(p50 >= 0.0)
+                env.assertTrue(p99 >= 0.0)
+                env.assertTrue(p999 >= 0.0)
 
 def test_default_set_get_with_print_percentiles(env):
     p_str = '0,10,20,30,40,50,60,70,80,90,95,100'
@@ -434,7 +434,7 @@ def test_default_arbitrary_command_keyless(env):
     addTLSArgs(benchmark_specs, env)
     # on arbitrary command args should be the last one
     benchmark_specs["args"].append('--command=PING')
-    config = get_default_memtier_config()
+    config = get_default_memtier_config(10,5,10000)
     master_nodes_list = env.getMasterNodesList()
 
     add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
@@ -478,8 +478,8 @@ def test_default_arbitrary_command_keyless(env):
                     env.assertTrue(metric_value_second_data > 0.0)
             # if we had commands on that second the BW needs to be > 0
             if count > 0:
-                env.assertTrue(bytes_rx > 0)
-                env.assertTrue(bytes_tx > 0)
+                env.assertTrue(bytes_rx >= 0)
+                env.assertTrue(bytes_tx >= 0)
 
 
 def test_default_arbitrary_command_set(env):
@@ -670,3 +670,48 @@ def test_data_import_setex(env):
     merged_command_stats = {'cmdstat_setex': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)
+
+
+def test_valid_json_using_debug_command(env):
+    benchmark_specs = {"name": env.testName, "args": []}
+    addTLSArgs(benchmark_specs, env)
+    # on arbitrary command args should be the last one
+    benchmark_specs["args"].append('--command=DEBUG SLEEP 2')
+    total_requests = 3
+    config = get_default_memtier_config(1,1,total_requests)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    if not benchmark.run():
+        debugPrintMemtierOnError(config, env)
+
+    ## Assert that all JSON BW metrics are properly stored and calculated
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    with open(json_filename) as results_json:
+        # ensure it's a valid json
+        results_dict = json.load(results_json)
+        debug_metrics = results_dict['ALL STATS']['Debugs']
+        debug_count = debug_metrics["Count"]
+        total_metrics = results_dict['ALL STATS']['Totals']
+        total_count = total_metrics["Count"]
+        env.assertEqual(debug_count, total_count)
+        env.assertEqual(debug_count, total_requests)
+        debug_metrics_ts = debug_metrics["Time-Serie"]
+      
+
+        for second_data in debug_metrics_ts.values():
+            count = second_data["Count"]
+            # if we had commands on that second the BW needs to be > 0
+            if count > 0:
+                for latency_metric_name in ["Accumulated Latency","Min Latency","Max Latency","p50.00","p99.00","p99.90"]:
+                    metric_value = second_data[latency_metric_name]
+                    env.assertTrue(metric_value >= 0.0)

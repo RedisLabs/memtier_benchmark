@@ -111,6 +111,18 @@ size_t hdr_get_memory_size(struct hdr_histogram* h);
 bool hdr_record_value(struct hdr_histogram* h, int64_t value);
 
 /**
+ * Records a value in the histogram, rounding the value to the specified precision
+ * (based on the significant figure set during histogram creation). This function
+ * will cap the recorded value at the histogram's highest_trackable_value if the input
+ * exceeds this threshold, and at the lowest_trackable_value if it falls below.
+ *
+ * @param h       Pointer to the histogram structure
+ * @param value   Value to add to the histogram
+ * @return        false if the value cannot be recorded due to an error, true otherwise
+ */
+bool hdr_record_value_capped(struct hdr_histogram* h, int64_t value);
+
+/**
  * Records a value in the histogram, will round this value of to a precision at or better
  * than the significant_figure specified at construction time.
  *
