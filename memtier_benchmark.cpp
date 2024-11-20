@@ -512,7 +512,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case 'v':
                     puts(PACKAGE_STRING);
-                    puts("Copyright (C) 2011-2022 Redis Ltd.");
+                    puts("Copyright (C) 2011-2024 Redis Ltd.");
                     puts("This is free software.  You may redistribute copies of it under the terms of");
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
