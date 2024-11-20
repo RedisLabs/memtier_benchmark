@@ -34,7 +34,7 @@ jobs:
       run: |
           cd sources && dpkg-buildpackage -S
     - name: Upload source package artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: source-${{ matrix.dist }}
         path: |
@@ -76,7 +76,7 @@ jobs:
     - name: Prepare sbuild environment
       run: sudo ./debian/setup_sbuild.sh ${{ matrix.dist }} ${{ env.BUILD_ARCH }}
     - name: Get source package
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: source-${{ matrix.dist }}
     - name: Build binary package
@@ -87,7 +87,7 @@ jobs:
             --build ${{ env.BUILD_ARCH }} \
             --dist ${{ matrix.dist }} *.dsc
     - name: Upload binary package artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: binary-${{ matrix.dist }}-${{ matrix.arch }}
         path: |
@@ -109,7 +109,9 @@ jobs:
     container: ${{ matrix.image }}
     steps:
     - name: Get binary packages
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
+      with:
+        name: binary-${{ matrix.dist }}-${{ env.ARCH }}
     - name: Install packages
       run: |
         apt-get update
@@ -130,7 +132,9 @@ jobs:
       env:
         APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
     - name: Get binary packages
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
+      with:
+        name: binary-${{ matrix.dist }}-${{ env.ARCH }}
     - name: Setup ruby
       uses: ruby/setup-ruby@v1
       with:
