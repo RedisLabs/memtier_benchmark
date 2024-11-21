@@ -3,7 +3,20 @@ name: Build and Publish to APT
 on:
   release:
     types: [published]
-
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag name for testing (e.g., 2.1.2)"
+        required: true
+        default: ""
+      build_dists:
+        description: "Distributions to build for (comma-separated, e.g., focal,jammy, noble)"
+        required: false
+        default: "focal,jammy,noble"
+      smoke_test_images:
+        description: "Docker images for smoke testing (comma-separated, e.g., ubuntu:20.04,ubuntu:22.04,ubuntu:24.04)"
+        required: false
+        default: "ubuntu:20.04,ubuntu:22.04,ubuntu:24.04"
 jobs:
   build-source-package:
     runs-on: ubuntu-latest
@@ -120,6 +133,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
+        path: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
     - name: Install packages
       run: |
         apt-get update
@@ -149,10 +163,20 @@ jobs:
       run: |
           curl -sLO https://github.com/deb-s3/deb-s3/releases/download/${{ env.DEB_S3_VERSION }}/deb-s3-${{ env.DEB_S3_VERSION }}.gem
           gem install deb-s3-${{ env.DEB_S3_VERSION }}.gem
-    - name: Upload packages
+    - name: Quick hack to deal with duplicate _all packages
       run: |
         # Quick hack to deal with duplicate _all packages
         rm -f binary-*-i386/*_all.deb
+    - name: List all packages to be uploaded
+      run: |
+        for dir in binary-*; do \
+            dist=$(echo $dir | cut -d- -f 2) ; \
+            ls -lha $dir/*.deb ; \
+        done
+    - name: Upload packages
+      # We stop here on the workflow dispatch smoke tests and on the preleases
+      if: github.event_name == 'release' && github.event.release.prerelease == false
+      run: |
         for dir in binary-*; do \
             dist=$(echo $dir | cut -d- -f 2) ; \
             deb-s3 upload \
