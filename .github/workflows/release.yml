@@ -108,14 +108,22 @@ jobs:
         image: ${{ fromJSON(vars.SMOKE_TEST_IMAGES) }}
     container: ${{ matrix.image }}
     steps:
+    - name: Extract BUILD_ARCH from matrix.image
+      run: |
+        BUILD_ARCH=$(echo ${{ matrix.image }} | cut -d: -f2)
+        if [ -z "$BUILD_ARCH" ]; then
+          echo "Error: Failed to extract BUILD_ARCH from matrix.image" >&2
+          exit 1
+        fi
+        echo "BUILD_ARCH=$BUILD_ARCH" >> $GITHUB_ENV
     - name: Get binary packages
       uses: actions/download-artifact@v4
       with:
-        name: binary-${{ matrix.dist }}-${{ env.ARCH }}
+        name: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
     - name: Install packages
       run: |
         apt-get update
-        cd binary-$(echo ${{ matrix.image }} | cut -d: -f2)-${{ env.ARCH }} && apt install --yes ./*.deb
+        cd binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }} && apt install --yes ./*.deb
 
   publish-to-apt:
     if: github.event.release.prerelease == false
@@ -133,8 +141,6 @@ jobs:
         APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
     - name: Get binary packages
       uses: actions/download-artifact@v4
-      with:
-        name: binary-${{ matrix.dist }}-${{ env.ARCH }}
     - name: Setup ruby
       uses: ruby/setup-ruby@v1
       with:
