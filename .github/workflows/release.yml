@@ -111,6 +111,8 @@ jobs:
         path: |
           *.deb
     - name: Upload as release assets
+      # we don't upload on workflow dispatch
+      if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: |
@@ -145,7 +147,6 @@ jobs:
         cd binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }} && apt install --yes ./*.deb
 
   publish-to-apt:
-    if: github.event.release.prerelease == false
     env:
       DEB_S3_VERSION: "0.11.3"
     runs-on: ubuntu-latest
