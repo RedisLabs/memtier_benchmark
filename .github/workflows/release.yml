@@ -34,13 +34,18 @@ jobs:
             debhelper dput libevent-dev libpcre2-dev libssl-dev pkg-config
     - name: Create changelog
       env:
-        VERSION: ${{ github.event.release.tag_name }}
+        VERSION: ${{ github.event.inputs.tag_name || github.event.release.tag_name }}
         DIST: ${{ matrix.dist }}
       run: |
         mkdir -p sources/debian
+        if [ "${{ github.event_name }}" = "release" ]; then
+          RELEASE_URL=": ${{ github.event.release.html_url }}"
+        else
+          RELEASE_URL=""
+        fi
         (echo "memtier-benchmark ($VERSION~$DIST) $DIST; urgency=medium"
          echo ""
-         echo "  * Release ${{ github.event.release.tag_name }}: ${{ github.event.release.html_url }}"
+         echo "  * Release $VERSION$RELEASE_URL"
          echo ""
          echo " -- Redis Team <oss@redis.com>  $(date -R)") > sources/debian/changelog
     - name: Build source package
