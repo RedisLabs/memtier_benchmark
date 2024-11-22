@@ -104,7 +104,7 @@ jobs:
     strategy:
       matrix:
         openssl: ["3.0"]
-    runs-on: macos-latest
+    runs-on: macos-15
     continue-on-error: true
     steps:
     - uses: actions/checkout@v1
