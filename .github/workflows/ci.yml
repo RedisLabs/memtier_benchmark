@@ -104,12 +104,12 @@ jobs:
     strategy:
       matrix:
         openssl: ["3.0"]
-    runs-on: macos-15
+    runs-on: macos-latest
     continue-on-error: true
     steps:
     - uses: actions/checkout@v1
     - name: Install dependencies
-      run: brew install autoconf automake libtool libevent pkg-config openssl@${{ matrix.openssl }}
+      run: brew install autoconf automake libtool libevent openssl@${{ matrix.openssl }}
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@${{ matrix.openssl }}`/lib/pkgconfig ./configure && make
 
