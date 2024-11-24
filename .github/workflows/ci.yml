@@ -28,7 +28,9 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get -qq update -y
-        apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev -y
+        apt-get install -y \
+        build-essential autoconf automake libpcre3-dev libevent-dev \
+        pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex
 
     - name: Build
       run: autoreconf -ivf && ./configure && make -j
