@@ -160,9 +160,6 @@ jobs:
   publish-to-apt:
     env:
       DEB_S3_VERSION: "0.11.3"
-      # required by ubuntu:bionic
-      # https://github.blog/changelog/2024-03-07-github-actions-all-actions-will-run-on-node20-instead-of-node16-by-default/
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     runs-on: ubuntu-latest
     environment: build
     needs: smoke-test-packages
