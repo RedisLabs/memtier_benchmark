@@ -3,6 +3,25 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  smoketest-build-distros:
+    runs-on: ubuntu-latest
+    env:
+      ARCH: amd64
+    strategy:
+      matrix:
+        image: ${{ fromJSON(vars.SMOKE_TEST_IMAGES) }}
+    container: ${{ matrix.image }}
+    name: Build ${{ matrix.image }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+
+    - name: Build
+      run: autoreconf -ivf && ./configure && make -j
+
   build-notls:
     runs-on: ubuntu-latest
     steps:
@@ -107,7 +126,7 @@ jobs:
     runs-on: macos-latest
     continue-on-error: true
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent openssl@${{ matrix.openssl }}
     - name: Build
@@ -122,7 +141,7 @@ jobs:
         platform: [macos-12]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent openssl@1.1
     - name: Build
@@ -135,7 +154,7 @@ jobs:
         platform: [macos-12]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent pkg-config
     - name: Install openssl v1.0.2
