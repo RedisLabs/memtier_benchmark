@@ -16,7 +16,13 @@ jobs:
     container: ${{ matrix.image }}
     name: Build ${{ matrix.image }}
     steps:
-    - uses: ${{ matrix.image == 'ubuntu:18.04' && 'actions/checkout@v3' || 'actions/checkout@v4' }}
+    - name: Checkout Code for ubuntu:bionic
+      if: matrix.image == 'ubuntu:bionic'
+      uses: actions/checkout@v3
+
+    - name: Checkout Code for other versions
+      if: matrix.image != 'ubuntu:bionic'
+      uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         apt-get -qq update -y
