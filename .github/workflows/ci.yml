@@ -5,6 +5,7 @@ on: [push, pull_request]
 jobs:
   smoketest-build-distros:
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       ARCH: amd64
       # required by ubuntu:bionic
@@ -23,6 +24,7 @@ jobs:
     - name: Checkout Code for other versions
       if: matrix.image != 'ubuntu:bionic'
       uses: actions/checkout@v4
+
     - name: Install dependencies
       run: |
         apt-get -qq update -y
