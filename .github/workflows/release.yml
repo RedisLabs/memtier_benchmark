@@ -24,7 +24,7 @@ jobs:
       matrix:
         dist: ${{ fromJSON(vars.BUILD_DISTS) }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         path: sources
     - name: Install dependencies
@@ -70,7 +70,7 @@ jobs:
         exclude: ${{ fromJSON(vars.BUILD_EXCLUDE) }}
     needs: build-source-package
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Determine build architecture
       run: |
           if [ ${{ matrix.arch }} = "i386" ]; then
