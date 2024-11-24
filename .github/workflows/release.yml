@@ -139,7 +139,15 @@ jobs:
           exit 1
         fi
         echo "BUILD_ARCH=$BUILD_ARCH" >> $GITHUB_ENV
-    - name: Get binary packages
+    - name: Get binary packages for ubuntu:bionic
+      if: matrix.image == 'ubuntu:bionic'
+      uses: actions/download-artifact@v3
+      with:
+        name: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
+        path: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
+
+    - name: Get binary packages for other versions
+      if: matrix.image != 'ubuntu:bionic'
       uses: actions/download-artifact@v4
       with:
         name: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
