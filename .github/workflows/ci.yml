@@ -16,8 +16,8 @@ jobs:
     - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
-        sudo apt-get -qq update
-        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+        apt-get -qq update
+        apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
 
     - name: Build
       run: autoreconf -ivf && ./configure && make -j
