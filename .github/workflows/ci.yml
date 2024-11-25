@@ -3,6 +3,39 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  smoketest-build-distros:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      ARCH: amd64
+      # required by ubuntu:bionic
+      # https://github.blog/changelog/2024-03-07-github-actions-all-actions-will-run-on-node20-instead-of-node16-by-default/
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      DEBIAN_FRONTEND: noninteractive
+    strategy:
+      matrix:
+        image: ${{ fromJSON(vars.SMOKE_TEST_IMAGES) }}
+    container: ${{ matrix.image }}
+    name: Build ${{ matrix.image }}
+    steps:
+    - name: Checkout Code for ubuntu:bionic
+      if: matrix.image == 'ubuntu:bionic'
+      uses: actions/checkout@v3
+
+    - name: Checkout Code for other versions
+      if: matrix.image != 'ubuntu:bionic'
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        apt-get -qq update -y
+        apt-get install -y \
+        build-essential autoconf automake libpcre3-dev libevent-dev \
+        pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex
+
+    - name: Build
+      run: autoreconf -ivf && ./configure && make -j
+
   build-notls:
     runs-on: ubuntu-latest
     steps:
@@ -107,7 +140,7 @@ jobs:
     runs-on: macos-latest
     continue-on-error: true
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent openssl@${{ matrix.openssl }}
     - name: Build
@@ -122,7 +155,7 @@ jobs:
         platform: [macos-12]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent openssl@1.1
     - name: Build
@@ -135,7 +168,7 @@ jobs:
         platform: [macos-12]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install autoconf automake libtool libevent pkg-config
     - name: Install openssl v1.0.2
