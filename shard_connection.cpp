@@ -130,7 +130,7 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
         m_bev(NULL), m_request_per_cur_interval(0), m_pending_resp(0), m_connection_state(conn_disconnected),
-        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done) {
+        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done), m_event_timer(NULL) {
     m_id = id;
     m_conns_manager = conns_man;
     m_config = config;
@@ -553,7 +553,7 @@ void shard_connection::handle_event(short events)
         m_connection_state = conn_connected;
         bufferevent_enable(m_bev, EV_READ|EV_WRITE);
 
-        if (!m_conns_manager->get_reqs_processed()) {
+        if (m_event_timer == NULL) {
             /* Set timer for request rate */
             if (m_config->request_rate) {
                 struct timeval interval = { 0, (int)m_config->request_interval_microsecond };
