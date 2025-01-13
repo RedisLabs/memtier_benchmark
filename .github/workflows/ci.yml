@@ -48,10 +48,22 @@ jobs:
     - name: Build
       run: autoreconf -ivf && ./configure --disable-tls && make -j
 
+  build-ubuntu-latest:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev
+
+    - name: Build
+      run: autoreconf -ivf && ./configure --disable-tls && make -j
+
   build-ubuntu:
     strategy:
       matrix:
-        platform: [ubuntu-latest, ubuntu-20.04]
+        platform: [ubuntu-22.04, ubuntu-20.04]
     runs-on: ${{ matrix.platform }}
     steps:
     - uses: actions/checkout@v4
@@ -61,6 +73,8 @@ jobs:
         sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
 
     - name: Build
+      # for coverage reports we need to use Ubuntu 22.04 or lower
+      # (given Ubuntu 24.04 uses lcov >= 2.0 which is not support on autoconf still)
       run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
     - name: Setup Python
       uses: actions/setup-python@v2
