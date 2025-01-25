@@ -117,8 +117,9 @@ run_stats::run_stats(benchmark_config *config) :
 {
     memset(&m_start_time, 0, sizeof(m_start_time));
     memset(&m_end_time, 0, sizeof(m_end_time));
-    quantiles_list = config->print_percentiles.quantile_list;
-
+    std::vector<float> quantiles_list_float = config->print_percentiles.quantile_list;
+    std::sort(quantiles_list_float.begin(), quantiles_list_float.end());
+    quantiles_list = std::vector<double>(quantiles_list_float.begin(), quantiles_list_float.end());
     if (config->arbitrary_commands->is_defined()) {
         setup_arbitrary_commands(config->arbitrary_commands->size());
     }
@@ -882,7 +883,7 @@ void run_stats::summarize(totals& result) const
 void result_print_to_json(json_handler * jsonhandler, const char * type, double ops_sec,
                           double hits, double miss, double moved, double ask, double kbs, double kbs_rx, double kbs_tx,
                           double latency, long m_total_latency, long ops,
-                          std::vector<float> quantile_list, struct hdr_histogram* latency_histogram, 
+                          std::vector<double> quantile_list, struct hdr_histogram* latency_histogram,
                           std::vector<unsigned int> timestamps, 
                           std::vector<one_sec_cmd_stats> timeserie_stats )
 {

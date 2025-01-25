@@ -285,6 +285,18 @@ int64_t hdr_max(const struct hdr_histogram* h);
 int64_t hdr_value_at_percentile(const struct hdr_histogram* h, double percentile);
 
 /**
+ * Get the values at the given percentiles.
+ *
+ * @param h "This" pointer.
+ * @param percentiles The ordered percentiles array to get the values for.
+ * @param length Number of elements in the arrays.
+ * @param values Destination array containing the values at the given percentiles.
+ * The values array should be allocated by the caller.
+ * @return 0 on success, ENOMEM if the provided destination array is null.
+ */
+int hdr_value_at_percentiles(const struct hdr_histogram *h, const double *percentiles, int64_t *values, size_t length);
+
+/**
  * Gets the standard deviation for the values in the histogram.
  *
  * @param h "This" pointer

@@ -97,7 +97,7 @@ protected:
     totals m_totals;
 
     std::list<one_second_stats> m_stats;
-    std::vector<float> quantiles_list;
+    std::vector<double> quantiles_list;
 
     // current second stats ( appended to m_stats and reset every second )
     one_second_stats m_cur_stats;

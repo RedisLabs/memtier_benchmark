@@ -24,7 +24,7 @@
 #define LATENCY_HDR_SIGDIGTS 3
 #define LATENCY_HDR_SEC_MIN_VALUE 10
 #define LATENCY_HDR_SEC_MAX_VALUE 600000000 ## LL
-#define LATENCY_HDR_SEC_SIGDIGTS 3
+#define LATENCY_HDR_SEC_SIGDIGTS 2
 #define LATENCY_HDR_RESULTS_MULTIPLIER 1000
 #define LATENCY_HDR_GRANULARITY 10
 
@@ -90,7 +90,14 @@ public:
     one_sec_cmd_stats();
     void reset();
     void merge(const one_sec_cmd_stats& other);
-    void summarize_quantiles(safe_hdr_histogram histogram, std::vector<float> quantiles);
+    /**
+     * Summarizes quantiles from the given histogram.
+     *
+     * @param histogram The histogram from which quantile values are extracted.
+     * @param sorted_quantiles A sorted (ascending order) vector of quantiles for which values will be computed.
+     *                         The caller must ensure the vector is sorted from smallest to largest.
+     */
+    void summarize_quantiles(safe_hdr_histogram histogram, std::vector<double> sorted_quantiles);
     void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
     void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency, unsigned int hits, unsigned int misses);
     void update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
