@@ -643,28 +643,67 @@ int64_t hdr_min(const struct hdr_histogram* h)
     return non_zero_min(h);
 }
 
-int64_t hdr_value_at_percentile(const struct hdr_histogram* h, double percentile)
+static int64_t get_value_from_idx_up_to_count(const struct hdr_histogram* h, int64_t count_at_percentile)
 {
-    struct hdr_iter iter;
-    int64_t total = 0;
-    double requested_percentile = percentile < 100.0 ? percentile : 100.0;
-    int64_t count_at_percentile =
-        (int64_t) (((requested_percentile / 100) * h->total_count) + 0.5);
-    count_at_percentile = count_at_percentile > 1 ? count_at_percentile : 1;
+    int64_t count_to_idx = 0;
 
-    hdr_iter_init(&iter, h);
-
-    while (hdr_iter_next(&iter))
+    count_at_percentile = 0 < count_at_percentile ? count_at_percentile : 1;
+    for (int32_t idx = 0; idx < h->counts_len; idx++)
     {
-        total += iter.count;
-
-        if (total >= count_at_percentile)
+        count_to_idx += h->counts[idx];
+        if (count_to_idx >= count_at_percentile)
         {
-            int64_t value_from_index = iter.value;
-            return highest_equivalent_value(h, value_from_index);
+            return hdr_value_at_index(h, idx);
         }
     }
 
+    return 0;
+}
+
+int64_t hdr_value_at_percentile(const struct hdr_histogram* h, double percentile)
+{
+    double requested_percentile = percentile < 100.0 ? percentile : 100.0;
+    int64_t count_at_percentile =
+        (int64_t) (((requested_percentile / 100) * h->total_count) + 0.5);
+    int64_t value_from_idx = get_value_from_idx_up_to_count(h, count_at_percentile);
+    if (percentile == 0.0)
+    {
+        return lowest_equivalent_value(h, value_from_idx);
+    }
+    return highest_equivalent_value(h, value_from_idx);
+}
+
+int hdr_value_at_percentiles(const struct hdr_histogram *h, const double *percentiles, int64_t *values, size_t length)
+{
+    if (NULL == percentiles || NULL == values)
+    {
+        return EINVAL;
+    }
+
+    struct hdr_iter iter;
+    const int64_t total_count = h->total_count;
+    // to avoid allocations we use the values array for intermediate computation
+    // i.e. to store the expected cumulative count at each percentile
+    for (size_t i = 0; i < length; i++)
+    {
+        const double requested_percentile = percentiles[i] < 100.0 ? percentiles[i] : 100.0;
+        const int64_t count_at_percentile =
+        (int64_t) (((requested_percentile / 100) * total_count) + 0.5);
+        values[i] = count_at_percentile > 1 ? count_at_percentile : 1;
+    }
+
+    hdr_iter_init(&iter, h);
+    int64_t total = 0;
+    size_t at_pos = 0;
+    while (hdr_iter_next(&iter) && at_pos < length)
+    {
+        total += iter.count;
+        while (at_pos < length && total >= values[at_pos])
+        {
+            values[at_pos] = highest_equivalent_value(h, iter.value);
+            at_pos++;
+        }
+    }
     return 0;
 }
 
