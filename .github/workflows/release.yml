@@ -31,7 +31,7 @@ jobs:
       run: |
           sudo apt-get update && \
           sudo apt-get install \
-            debhelper dput libevent-dev libpcre2-dev libssl-dev pkg-config
+            debhelper dput libevent-dev libpcre3-dev libssl-dev pkg-config
     - name: Create changelog
       env:
         VERSION: ${{ github.event.inputs.tag_name || github.event.release.tag_name }}
