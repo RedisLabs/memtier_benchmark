@@ -31,7 +31,9 @@ jobs:
       run: |
           sudo apt-get update && \
           sudo apt-get install \
-            debhelper dput libevent-dev libpcre3-dev libssl-dev pkg-config
+            build-essential autoconf automake libpcre3-dev libevent-dev \
+            pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex \
+            debhelper dput
     - name: Create changelog
       env:
         VERSION: ${{ github.event.inputs.tag_name || github.event.release.tag_name }}
