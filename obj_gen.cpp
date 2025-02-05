@@ -440,10 +440,10 @@ imported_keylist::imported_keylist(const char *filename)
 
 imported_keylist::~imported_keylist()
 {
-    while (!m_keys.empty()) {
-        free(m_keys.front());
-        m_keys.erase(m_keys.begin());
+    for (unsigned int i = 0; i < m_keys.size(); i++) {
+        free(m_keys[i]);
     }
+    m_keys.clear();
 }
 
 bool imported_keylist::read_keys(void)
