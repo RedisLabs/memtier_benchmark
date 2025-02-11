@@ -24,7 +24,7 @@ on:
         type: string
 jobs:
   build-source-package:
-    runs-on: ${{ inputs.build_runner }}
+    runs-on: ubuntu-22.04
     continue-on-error: true
     strategy:
       matrix:
@@ -87,7 +87,7 @@ jobs:
             memtier-benchmark_*.tar.*
 
   build-binary-package:
-    runs-on: ${{ inputs.build_runner }}
+    runs-on: ubuntu-22.04
     continue-on-error: true
     environment: build
     strategy:
@@ -146,7 +146,7 @@ jobs:
           *.deb
 
   smoke-test-packages:
-    runs-on: ${{ inputs.build_runner }}
+    runs-on: ubuntu-22.04
     needs: build-binary-package
     env:
       ARCH: amd64
@@ -187,7 +187,7 @@ jobs:
   publish-to-apt:
     env:
       DEB_S3_VERSION: "0.11.3"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment: build
     needs: smoke-test-packages
     steps:
