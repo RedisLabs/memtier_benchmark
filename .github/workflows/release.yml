@@ -150,9 +150,6 @@ jobs:
     needs: build-binary-package
     env:
       ARCH: amd64
-      # required by ubuntu:bionic
-      # https://github.blog/changelog/2024-03-07-github-actions-all-actions-will-run-on-node20-instead-of-node16-by-default/
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     strategy:
       matrix:
         image: ${{ fromJSON(vars.SMOKE_TEST_IMAGES) }}
@@ -166,15 +163,7 @@ jobs:
           exit 1
         fi
         echo "BUILD_ARCH=$BUILD_ARCH" >> $GITHUB_ENV
-    - name: Get binary packages for ubuntu:bionic
-      if: matrix.image == 'ubuntu:bionic'
-      uses: actions/download-artifact@v3
-      with:
-        name: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
-        path: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
-
-    - name: Get binary packages for other versions
-      if: matrix.image != 'ubuntu:bionic'
+    - name: Get binary packages
       uses: actions/download-artifact@v4
       with:
         name: binary-${{ env.BUILD_ARCH }}-${{ env.ARCH }}
