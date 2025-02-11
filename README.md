@@ -204,7 +204,7 @@ When you impose a rate limit on your benchmark tests, you're essentially mimicki
 
 #### Using rate-limiting in memtier
 
-To use this feature, add the `--rate-limiting`` parameter followed by the desired RPS per connection.
+To use this feature, add the `--rate-limiting` parameter followed by the desired RPS per connection.
 
 
 ```
