@@ -443,7 +443,7 @@ def test_print_all_runs(env):
         env.assertTrue(print_all_runs)
         for run_count in range(1, run_count+1):
             # assert the run infomation exists
-            env.assertTrue(f"RUN # {run_count} RESULTS" in results_dict)
+            env.assertTrue(f"RUN #{run_count} RESULTS" in results_dict)
         
         # ensure best, worst, and aggregate results are present
         env.assertTrue("BEST RUN RESULTS" in results_dict)
