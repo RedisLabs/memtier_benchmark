@@ -159,7 +159,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "wait-ratio = %u:%u\n"
         "num-slaves = %u-%u\n"
         "wait-timeout = %u-%u\n"
-        "json-out-file = %s\n",
+        "json-out-file = %s\n"
+        "print-all-runs = %s\n",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -209,7 +210,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->wait_ratio.a, cfg->wait_ratio.b,
         cfg->num_slaves.min, cfg->num_slaves.max,
         cfg->wait_timeout.min, cfg->wait_timeout.max,
-        cfg->json_out_file);
+        cfg->json_out_file,
+        cfg->print_all_runs ? "yes" : "no");
 }
 
 static void config_print_to_json(json_handler * jsonhandler, struct benchmark_config *cfg)
@@ -267,6 +269,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("wait-ratio"        ,"\"%u:%u\"",    cfg->wait_ratio.a, cfg->wait_ratio.b);
     jsonhandler->write_obj("num-slaves"        ,"\"%u:%u\"",    cfg->num_slaves.min, cfg->num_slaves.max);
     jsonhandler->write_obj("wait-timeout"      ,"\"%u-%u\"",   	cfg->wait_timeout.min, cfg->wait_timeout.max);
+    jsonhandler->write_obj("print-all-runs"   ,"\"%s\"",       cfg->print_all_runs ? "true" : "false");
 
     jsonhandler->close_nesting();
 }
@@ -403,6 +406,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_show_config,
         o_hide_histogram,
         o_print_percentiles,
+        o_print_all_runs,
         o_distinct_client_seed,
         o_randomize,
         o_client_stats,
@@ -456,6 +460,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "show-config",                0, 0, o_show_config },
         { "hide-histogram",             0, 0, o_hide_histogram },
         { "print-percentiles",          1, 0, o_print_percentiles },
+        { "print-all-runs",            0, 0, o_print_all_runs },
         { "distinct-client-seed",       0, 0, o_distinct_client_seed },
         { "randomize",                  0, 0, o_randomize },
         { "requests",                   1, 0, 'n' },
@@ -586,6 +591,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         fprintf(stderr, "error: quantiles must be expressed as [0.0-100.0],[0.0-100.0](,...) .\n");
                         return -1;
                     }
+                    break;
+                case o_print_all_runs:
+                    cfg->print_all_runs = true;
                     break;
                 case o_distinct_client_seed:
                     cfg->distinct_client_seed++;
@@ -977,6 +985,7 @@ void usage() {
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
             "      --print-percentiles        Specify which percentiles info to print on the results table (by default prints percentiles: 50,99,99.9)\n"
+            "      --print-all-runs           When performing multiple test iterations, print and save results for all iterations\n"
             "      --cluster-mode             Run client in cluster mode\n"
             "  -h, --help                     Display this help\n"
             "  -v, --version                  Display version information\n"
@@ -1652,7 +1661,16 @@ int main(int argc, char *argv[])
         }
 
         // If more than 1 run was used, compute best, worst and average
+        // Furthermore, if print_all_runs is enabled we save separate histograms per run
         if (cfg.run_count > 1) {
+            // User wants to see a separate histogram per run
+            if (cfg.print_all_runs) {
+                for (auto i = 0U; i < all_stats.size(); i++) {
+                    auto run_title = std::string("RUN #") + std::to_string(i + 1) + " RESULTS";
+                    all_stats[i].print(outfile, &cfg, run_title.c_str(), jsonhandler);
+                }
+            }
+            // User wants the best and worst
             unsigned int min_ops_sec = (unsigned int) -1;
             unsigned int max_ops_sec = 0;
             run_stats* worst = NULL;
@@ -1669,7 +1687,6 @@ int main(int argc, char *argv[])
                     best = &(*i);
                 }
             }
-
             // Best results:
             best->print(outfile, &cfg, "BEST RUN RESULTS", jsonhandler);
             // worst results:

@@ -407,6 +407,51 @@ def test_default_set_get_3_runs(env):
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)
 
 
+
+# run each test on different env
+def test_print_all_runs(env):
+    run_count = 5
+    benchmark_specs = {"name": env.testName, "args": ['--print-all-runs','--run-count={}'.format(run_count)]}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
+    master_nodes_list = env.getMasterNodesList()
+    overall_expected_request_count = get_expected_request_count(config) * run_count
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
+    overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count)
+
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    ## Assert that all BW metrics are properly stored and calculated
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+        print_all_runs = results_dict["configuration"]["print-all-runs"]
+        env.assertTrue(print_all_runs)
+        for run_count in range(1, run_count+1):
+            # assert the run infomation exists
+            env.assertTrue(f"RUN #{run_count} RESULTS" in results_dict)
+        
+        # ensure best, worst, and aggregate results are present
+        env.assertTrue("BEST RUN RESULTS" in results_dict)
+        env.assertTrue("WORST RUN RESULTS" in results_dict)
+        env.assertTrue(f"AGGREGATED AVERAGE RESULTS ({run_count} runs)" in results_dict)
+        # all stats should only exist on a single run json
+        env.assertTrue("ALL STATS" not in results_dict)
+
 def test_default_arbitrary_command_pubsub(env):
     benchmark_specs = {"name": env.testName, "args": []}
     addTLSArgs(benchmark_specs, env)
