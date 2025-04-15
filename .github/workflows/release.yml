@@ -22,6 +22,9 @@ on:
         required: false
         default: "ubuntu-22.04"
         type: string
+permissions:
+  contents: read
+  actions: read
 jobs:
   build-source-package:
     runs-on: ubuntu-22.04
@@ -32,7 +35,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        path: sources
+        path: repo
+    - name: Copy source code to build dir
+      run: |
+        mkdir -p sources
+        rsync -a --exclude='.git' repo/ sources/
     - name: Validate configure.ac version matches GitHub Release (only on release)
       if: github.event.release.tag_name != ''
       env:
