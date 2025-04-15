@@ -45,7 +45,7 @@ jobs:
       env:
         VERSION: ${{ github.event.release.tag_name }}
       run: |
-        #Extract the current version from configure.ac
+        # Extract the current version from configure.ac
         CURRENT_VERSION=$(awk -F'[(),]' '/AC_INIT/ {print $3}' sources/configure.ac | tr -d ' ')
 
         echo "Current configure.ac version: $CURRENT_VERSION"
