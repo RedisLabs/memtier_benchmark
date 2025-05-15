@@ -546,10 +546,13 @@ void shard_connection::fill_pipeline(void)
         // no pending response (nothing to read) and output buffer empty (nothing to write)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
-            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-            if (m_conns_manager->finished()) {
-                // If we're done with the benchmark, stop the timer
-                event_del(m_event_timer);
+            // Only disable the connection if we're not in the process of receiving responses
+            if (evbuffer_get_length(bufferevent_get_input(m_bev)) == 0) {
+                bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+                if (m_conns_manager->finished()) {
+                    // If we're done with the benchmark, stop the timer
+                    event_del(m_event_timer);
+                }
             }
         }
     }
