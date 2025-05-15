@@ -227,12 +227,17 @@ void client::set_end_time() {
     if (!m_end_set) {
         benchmark_debug_log("nothing else to do, test is finished.\n");
 
+        // First update the stats
         m_stats.set_end_time(NULL);
         m_end_set = true;
 
-        // Break out of the event loop when we're done
+        // Then break out of the event loop
         if (m_event_base != NULL) {
-            event_base_loopbreak(m_event_base);
+            // Give a small delay to ensure stats are collected
+            struct timeval tv;
+            tv.tv_sec = 0;
+            tv.tv_usec = 100000; // 100ms delay
+            event_base_loopexit(m_event_base, &tv);
         }
     }
 }
