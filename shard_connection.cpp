@@ -364,7 +364,10 @@ void shard_connection::push_req(request* req) {
     m_pipeline->push(req);
     m_pending_resp++;
     if (m_config->request_rate) {
-        assert(m_request_per_cur_interval > 0);
+        if (m_request_per_cur_interval == 0) {
+            // not ideal for accuracy but will prevent crashes in very low-rate cases
+            return;
+        }
         m_request_per_cur_interval--;
     }
 }
