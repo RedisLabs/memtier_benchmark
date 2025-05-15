@@ -229,6 +229,11 @@ void client::set_end_time() {
 
         m_stats.set_end_time(NULL);
         m_end_set = true;
+
+        // Break out of the event loop when we're done
+        if (m_event_base != NULL) {
+            event_base_loopbreak(m_event_base);
+        }
     }
 }
 
