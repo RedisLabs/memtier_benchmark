@@ -454,6 +454,11 @@ void shard_connection::process_response(void)
 
                 m_cluster_slots = setup_done;
                 benchmark_debug_log("cluster slot command successful\n");
+                
+                // Re-enable the connection after cluster slots update
+                if (m_bev != NULL && m_connection_state == conn_connected) {
+                    bufferevent_enable(m_bev, EV_READ|EV_WRITE);
+                }
             }
             break;
         case rt_hello:
@@ -546,8 +551,10 @@ void shard_connection::fill_pipeline(void)
         // no pending response (nothing to read) and output buffer empty (nothing to write)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
-            bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-            // Don't delete the timer event - we need it for the next interval
+            // Only disable the connection if we're not waiting for cluster slots
+            if (m_cluster_slots == setup_done) {
+                bufferevent_disable(m_bev, EV_WRITE|EV_READ);
+            }
         }
     }
 }
@@ -608,6 +615,12 @@ void shard_connection::handle_event(short events)
 
 void shard_connection::handle_timer_event() {
     m_request_per_cur_interval = m_config->request_per_interval;
+    
+    // Re-enable the connection if it was disabled due to rate limiting
+    if (m_bev != NULL && m_connection_state == conn_connected) {
+        bufferevent_enable(m_bev, EV_READ|EV_WRITE);
+    }
+    
     fill_pipeline();
 }
 
