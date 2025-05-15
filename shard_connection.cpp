@@ -364,11 +364,9 @@ void shard_connection::push_req(request* req) {
     m_pipeline->push(req);
     m_pending_resp++;
     if (m_config->request_rate) {
-        if (m_request_per_cur_interval == 0) {
-            // not ideal for accuracy but will prevent crashes in very low-rate cases
-            return;
+        if (m_request_per_cur_interval > 0) {
+            m_request_per_cur_interval--;
         }
-        m_request_per_cur_interval--;
     }
 }
 
@@ -535,7 +533,7 @@ void shard_connection::fill_pipeline(void)
 
         // that's enough, we reached the rate limit
         if (m_config->request_rate && m_request_per_cur_interval == 0) {
-            // return and skip on update events
+            // Keep the connection enabled but don't send more requests this interval
             return;
         }
 
@@ -549,9 +547,7 @@ void shard_connection::fill_pipeline(void)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
             bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-            if (m_config->request_rate) {
-                event_del(m_event_timer);
-            }
+            // Don't delete the timer event - we need it for the next interval
         }
     }
 }
