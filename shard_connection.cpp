@@ -547,7 +547,10 @@ void shard_connection::fill_pipeline(void)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
             bufferevent_disable(m_bev, EV_WRITE|EV_READ);
-            // Don't delete the timer event - we need it for the next interval
+            if (m_config->request_rate && m_conns_manager->finished()) {
+                // Only delete the timer when we're actually done with the benchmark
+                event_del(m_event_timer);
+            }
         }
     }
 }
@@ -607,6 +610,11 @@ void shard_connection::handle_event(short events)
 }
 
 void shard_connection::handle_timer_event() {
+    if (m_conns_manager->finished()) {
+        // If we're done with the benchmark, stop the timer
+        event_del(m_event_timer);
+        return;
+    }
     m_request_per_cur_interval = m_config->request_per_interval;
     fill_pipeline();
 }
