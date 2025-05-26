@@ -1,7 +1,11 @@
 memtier_benchmark
 =================
+![GitHub](https://img.shields.io/github/license/RedisLabs/memtier_benchmark)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/RedisLabs/memtier_benchmark)](https://github.com/RedisLabs/memtier_benchmark/releases)
+[![codecov](https://codecov.io/gh/RedisLabs/memtier_benchmark/branch/master/graph/badge.svg)](https://codecov.io/gh/RedisLabs/memtier_benchmark)
 
-memtier_benchmark is a command line utility developed by Redis Labs (formerly Garantia Data Ltd.) for load generation and bechmarking NoSQL key-value databases. It offers the following:
+
+memtier_benchmark is a command line utility developed by [Redis](https://redis.com) (formerly Garantia Data Ltd.) for load generation and benchmarking NoSQL key-value databases. It offers the following:
 
 * Support for both Redis and Memcache protocols (text and binary)
 * Multi-threaded multi-client execution
@@ -20,7 +24,30 @@ Read more at:
 
 ## Getting Started
 
-### Prerequisites
+### Installing on Debian and Ubuntu
+
+Pre-compiled binaries are available for these platforms from the packages.redis.io Redis APT
+repository. To configure this repository, use the following steps:
+
+```
+sudo apt install lsb-release curl gpg
+
+curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+
+sudo apt-get update
+```
+
+Once configured, to install memtier_benchmark use:
+
+```
+sudo apt-get install memtier-benchmark
+```
+
+### Installing from source
+
+#### Prerequisites
 
 The following libraries are required for building:
 
@@ -35,44 +62,21 @@ The following tools are required
 * GNU make
 * GCC C++ compiler
 
-#### CentOS 6.x
+#### CentOS/Red Hat Linux 7 or newer
 
-On a CentOS 6.x system, use the following to install prerequisites:
+Use the following to install prerequisites:
 ```
-# yum install autoconf automake make gcc-c++ 
-# yum install pcre-devel zlib-devel libmemcached-devel
+$ sudo yum install autoconf automake make gcc-c++ \
+    pcre-devel zlib-devel libmemcached-devel libevent-devel openssl-devel
 ```
-
-CentOS 6.4 ships with older versions of libevent, which must be manually built
-and installed as follows:
-
-To download, build and install libevent-2.0.21:
-```
-$ wget https://github.com/downloads/libevent/libevent/libevent-2.0.21-stable.tar.gz
-$ tar xfz libevent-2.0.21-stable.tar.gz
-$ pushd libevent-2.0.21-stable
-$ ./configure
-$ make
-$ sudo make install
-$ popd
-```
-
-The above steps will install into /usr/local so it does not confict with the 
-distribution-bundled versions.  The last step is to set up the 
-PKG_CONFIG_PATH so configure can find the newly installed library.
-
-```
-$ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}
-```
-
-Then proceed to follow the build instructions below.
 
 #### Ubuntu/Debian
 
-On Ubuntu/Debian distributions, simply install all prerequisites as follows:
+Use the following to install prerequisites:
 
 ```
-# apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
+$ sudo apt-get install build-essential autoconf automake libpcre3-dev \
+    libevent-dev pkg-config zlib1g-dev libssl-dev
 ```
 
 #### macOS
@@ -80,17 +84,17 @@ On Ubuntu/Debian distributions, simply install all prerequisites as follows:
 To build natively on macOS, use Homebrew to install the required dependencies:
 
 ```
-$ brew install autoconf automake libtool libevent pkg-config openssl@1.1
+$ brew install autoconf automake libtool libevent pkg-config openssl@3.0
 ```
 
 When running `./configure`, if it fails to find libssl it may be necessary to
 tweak the `PKG_CONFIG_PATH` environment variable:
 
 ```
-PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure
+PKG_CONFIG_PATH=`brew --prefix openssl@3.0`/lib/pkgconfig ./configure
 ```
 
-### Building and installing
+#### Building and installing
 
 After downloading the source tree, use standard autoconf/automake commands:
 
@@ -98,8 +102,32 @@ After downloading the source tree, use standard autoconf/automake commands:
 $ autoreconf -ivf
 $ ./configure
 $ make
-$ make install
+$ sudo make install
 ```
+
+#### Testing
+
+The project includes a basic set of integration tests.
+
+
+**Integration tests**
+
+
+Integration tests are based on [RLTest](https://github.com/RedisLabsModules/RLTest), and specific setup parameters can be provided
+to configure tests and topologies (OSS standalone and OSS cluster). By default the tests will be ran for all common commands, and with OSS standalone setup.
+
+
+To run all integration tests in a Python virtualenv, follow these steps:
+
+    $ mkdir -p .env
+    $ virtualenv .env
+    $ source .env/bin/activate
+    $ pip install -r tests/test_requirements.txt
+    $ ./tests/run_tests.sh
+
+To understand what test options are available simply run:
+
+    $ ./tests/run_tests.sh --help
 
 ## Using Docker
 
@@ -155,6 +183,42 @@ the --requests option, there may be gaps in the generated keys.
 Also, the ratio and the key generator is per client (and not connection).
 In this case, setting the ratio to 1:1 does not guarantee 100% hits because
 the keys spread to different connections/nodes.
+
+
+
+### Using rate-limiting for informed benchmarking
+
+When you impose a rate limit on your benchmark tests, you're essentially mimicking a controlled production environment. This setup is crucial for understanding how latency behaves under certain throughput constraints. Here's why benchmarking latency in a rate-limited scenario is important:
+
+
+1. **Realistic Performance Metrics**: In real-world scenarios, systems often operate under various limitations. Understanding how these limitations affect latency gives you a more accurate picture of system performance, than simply running benchmarks at full stress level.
+
+1. **Capacity Planning**: By observing latency at different rate limits, you can better plan for scaling your infrastructure. It helps in identifying at what point increased load leads to unacceptable latency, guiding decisions about when to scale up.
+
+1. **Quality of Service (QoS) Guarantees**: For services that require a certain level of performance guarantee, knowing the latency at specific rate limits helps in setting realistic QoS benchmarks.
+
+1. **Identifying Bottlenecks**: Rate-limited benchmarking can help in identifying bottlenecks in your system. If latency increases disproportionately with a small increase in rate limit, it may indicate a bottleneck that needs attention.
+
+1. **Comparative Analysis**: It enables the comparison of different solutions, configurations or hardware in terms of how they handle latency under simmilar benchmark conditions.
+
+
+#### Using rate-limiting in memtier
+
+To use this feature, add the `--rate-limiting`` parameter followed by the desired RPS per connection.
+
+
+```
+memtier_benchmark [other options] --rate-limiting=<RPS>
+```
+
+Note: When using rate-limiting together with cluster-mode option, the rate-limit is associated to the connection for each node.
+
+
+#### Rate limited example: 100% writes, 1M Keys, 60 seconds benchmark at 10K RPS
+
+```
+memtier_benchmark --ratio=1:0 --test-time=60 --rate-limiting=100 -t 2 -c 50 --key-pattern=P:P --key-maximum 1000000
+```
 
 ### Full latency spectrum analysis
 

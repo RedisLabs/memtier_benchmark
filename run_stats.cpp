@@ -117,7 +117,9 @@ run_stats::run_stats(benchmark_config *config) :
 {
     memset(&m_start_time, 0, sizeof(m_start_time));
     memset(&m_end_time, 0, sizeof(m_end_time));
-
+    std::vector<float> quantiles_list_float = config->print_percentiles.quantile_list;
+    std::sort(quantiles_list_float.begin(), quantiles_list_float.end());
+    quantiles_list = std::vector<double>(quantiles_list_float.begin(), quantiles_list_float.end());
     if (config->arbitrary_commands->is_defined()) {
         setup_arbitrary_commands(config->arbitrary_commands->size());
     }
@@ -127,6 +129,7 @@ void run_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
     m_totals.setup_arbitrary_commands(n_arbitrary_commands);
     m_cur_stats.setup_arbitrary_commands(n_arbitrary_commands);
     m_ar_commands_latency_histograms.resize(n_arbitrary_commands);
+    inst_m_ar_commands_latency_histograms.resize(n_arbitrary_commands);
 }
 
 void run_stats::set_start_time(struct timeval* start_time)
@@ -148,90 +151,167 @@ void run_stats::set_end_time(struct timeval* end_time)
         end_time = &tv;
     }
     m_end_time = *end_time;
+    summarize_current_second();
     m_stats.push_back(m_cur_stats);
+}
+
+void run_stats::summarize_current_second(){
+    m_cur_stats.m_get_cmd.summarize_quantiles(inst_m_get_latency_histogram,quantiles_list);
+    m_cur_stats.m_set_cmd.summarize_quantiles(inst_m_set_latency_histogram,quantiles_list);
+    m_cur_stats.m_wait_cmd.summarize_quantiles(inst_m_wait_latency_histogram,quantiles_list);
+    m_cur_stats.m_total_cmd.summarize_quantiles(inst_m_totals_latency_histogram,quantiles_list);
+    for (unsigned int i=0; i<m_cur_stats.m_ar_commands.size(); i++) {
+        m_cur_stats.m_ar_commands[i].summarize_quantiles(inst_m_ar_commands_latency_histograms[i],quantiles_list);
+    hdr_reset(inst_m_ar_commands_latency_histograms[i]);
+    }
+    hdr_reset(inst_m_get_latency_histogram);
+    hdr_reset(inst_m_set_latency_histogram);
+    hdr_reset(inst_m_wait_latency_histogram);
+    hdr_reset(inst_m_totals_latency_histogram);
 }
 
 void run_stats::roll_cur_stats(struct timeval* ts)
 {
     const unsigned int sec = ts_diff(m_start_time, *ts) / 1000000;
     if (sec > m_cur_stats.m_second) {
+        summarize_current_second();
         m_stats.push_back(m_cur_stats);
         m_cur_stats.reset(sec);
     }
 }
 
-void run_stats::update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses)
+void run_stats::update_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses)
 {
     roll_cur_stats(ts);
-    m_cur_stats.m_get_cmd.update_op(bytes, latency, hits, misses);
-    m_totals.update_op(bytes, latency);
-    hdr_record_value(m_get_latency_histogram,latency);
-
+    m_cur_stats.m_get_cmd.update_op(bytes_rx, bytes_tx, latency, hits, misses);
+    m_cur_stats.m_total_cmd.update_op(bytes_rx, bytes_tx, latency, hits, misses);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+    hdr_record_value_capped(m_get_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_get_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
-void run_stats::update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
+void run_stats::update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
 {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_set_cmd.update_op(bytes, latency);
-    m_totals.update_op(bytes, latency);
-    hdr_record_value(m_set_latency_histogram,latency);
+    m_cur_stats.m_set_cmd.update_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+    hdr_record_value_capped(m_set_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_set_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
-void run_stats::update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
+void run_stats::update_moved_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
 {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_get_cmd.update_moved_op(bytes, latency);
-    m_totals.update_op(bytes, latency);
-    hdr_record_value(m_get_latency_histogram,latency);
+    m_cur_stats.m_get_cmd.update_moved_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+    hdr_record_value_capped(m_get_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_get_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
-void run_stats::update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
+void run_stats::update_moved_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
 {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_set_cmd.update_moved_op(bytes, latency);
-    m_totals.update_op(bytes, latency);
-    hdr_record_value(m_set_latency_histogram,latency);
+    m_cur_stats.m_set_cmd.update_moved_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_moved_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+    hdr_record_value_capped(m_set_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_set_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
-void run_stats::update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
-{
+void run_stats::update_moved_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
+                                    unsigned int latency, size_t request_index) {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_get_cmd.update_ask_op(bytes, latency);
-    m_totals.update_op(bytes, latency);
-    hdr_record_value(m_get_latency_histogram,latency);
+    m_cur_stats.m_ar_commands.at(request_index).update_moved_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+
+    struct hdr_histogram* hist = m_ar_commands_latency_histograms.at(request_index);
+    hdr_record_value_capped(hist,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
-void run_stats::update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency)
+void run_stats::update_ask_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
 {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_set_cmd.update_ask_op(bytes, latency);
-    m_totals.update_op(bytes, latency);
-    hdr_record_value(m_set_latency_histogram,latency);
+    m_cur_stats.m_get_cmd.update_ask_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_ask_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+    hdr_record_value_capped(m_get_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_get_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
+}
+
+void run_stats::update_ask_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
+{
+    roll_cur_stats(ts);
+
+    m_cur_stats.m_set_cmd.update_ask_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_ask_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+    hdr_record_value_capped(m_set_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_set_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
+}
+
+void run_stats::update_ask_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
+                                          unsigned int latency, size_t request_index) {
+    roll_cur_stats(ts);
+
+    m_cur_stats.m_ar_commands.at(request_index).update_ask_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_ask_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+
+    struct hdr_histogram* hist = m_ar_commands_latency_histograms.at(request_index);
+    hdr_record_value_capped(hist,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
 void run_stats::update_wait_op(struct timeval *ts, unsigned int latency)
 {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_wait_cmd.update_op(0, latency);
-    m_totals.update_op(0, latency);
-    hdr_record_value(m_wait_latency_histogram,latency);
+    m_cur_stats.m_wait_cmd.update_op(0,0, latency);
+    m_cur_stats.m_total_cmd.update_op(0,0, latency);
+    m_totals.update_op(0,0, latency);
+    hdr_record_value_capped(m_wait_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_wait_latency_histogram,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
-void run_stats::update_arbitrary_op(struct timeval *ts, unsigned int bytes,
+void run_stats::update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
                                     unsigned int latency, size_t request_index) {
     roll_cur_stats(ts);
 
-    m_cur_stats.m_ar_commands.at(request_index).update_op(bytes, latency);
-    m_totals.update_op(bytes, latency);
+    m_cur_stats.m_ar_commands.at(request_index).update_op(bytes_rx, bytes_tx, latency);
+    m_cur_stats.m_total_cmd.update_op(bytes_rx, bytes_tx, latency);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
 
     struct hdr_histogram* hist = m_ar_commands_latency_histograms.at(request_index);
-    hdr_record_value(hist,latency);
+    struct hdr_histogram* inst_hist = inst_m_ar_commands_latency_histograms.at(request_index);
+    hdr_record_value_capped(hist,latency);
+    hdr_record_value_capped(inst_hist,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
 unsigned int run_stats::get_duration(void)
@@ -252,7 +332,7 @@ unsigned long int run_stats::get_duration_usec(void)
 
 unsigned long int run_stats::get_total_bytes(void)
 {
-    return m_totals.m_bytes;
+    return m_totals.m_bytes_rx+m_totals.m_bytes_tx;
 }
 
 unsigned long int run_stats::get_total_ops(void)
@@ -275,8 +355,8 @@ void run_stats::save_csv_one_sec(FILE *f,
                                  unsigned long int& total_set_ops,
                                  unsigned long int& total_wait_ops) {
     fprintf(f, "Per-Second Benchmark Data\n");
-    fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,"
-               "GET Requests,GET Average Latency,GET Total Bytes,GET Misses,GET Hits,"
+    fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,SET Total Bytes TX,SET Total Bytes RX,"
+               "GET Requests,GET Average Latency,GET Total Bytes,GET Total Bytes TX,GET Total Bytes RX,GET Misses,GET Hits,"
                "WAIT Requests,WAIT Average Latency\n");
 
     total_get_ops = 0;
@@ -285,14 +365,18 @@ void run_stats::save_csv_one_sec(FILE *f,
     for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
 
-        fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%u.%06u,%lu,%u,%u,%lu,%u.%06u\n",
+        fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%lu,%lu,%u.%06u,%lu,%lu,%lu,%u,%u,%lu,%u.%06u\n",
                 i->m_second,
                 i->m_set_cmd.m_ops,
                 USEC_FORMAT(AVERAGE(i->m_set_cmd.m_total_latency, i->m_set_cmd.m_ops)),
-                i->m_set_cmd.m_bytes,
+                i->m_set_cmd.m_bytes_rx + i->m_set_cmd.m_bytes_tx,
+                i->m_set_cmd.m_bytes_tx,
+                i->m_set_cmd.m_bytes_rx,
                 i->m_get_cmd.m_ops,
                 USEC_FORMAT(AVERAGE(i->m_get_cmd.m_total_latency, i->m_get_cmd.m_ops)),
-                i->m_get_cmd.m_bytes,
+                i->m_get_cmd.m_bytes_rx + i->m_get_cmd.m_bytes_tx,
+                i->m_get_cmd.m_bytes_tx,
+                i->m_get_cmd.m_bytes_rx,
                 i->m_get_cmd.m_misses,
                 i->m_get_cmd.m_hits,
                 i->m_wait_cmd.m_ops,
@@ -338,17 +422,9 @@ std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_wait() {
 std::vector<one_sec_cmd_stats> run_stats::get_one_sec_cmd_stats_totals() {
     std::vector<one_sec_cmd_stats> result;
     result.reserve(m_stats.size());
-    for (std::list<one_second_stats>::iterator i = m_stats.begin(); i != m_stats.end(); ++i)
-    {
-        one_second_stats current_second_stats = *i;
-        one_sec_cmd_stats total_stat = one_sec_cmd_stats(current_second_stats.m_get_cmd);
-        total_stat.merge(current_second_stats.m_set_cmd);
-        total_stat.merge(current_second_stats.m_wait_cmd);
-        for (size_t j = 0; j < current_second_stats.m_ar_commands.size(); j++)
-        {
-             total_stat.merge(current_second_stats.m_ar_commands.at(j));
-        }
-        result.push_back(total_stat);
+    for (std::list<one_second_stats>::iterator i = m_stats.begin();
+         i != m_stats.end(); i++) {
+            result.push_back(i->m_total_cmd);
     }
     return result;
 }
@@ -409,7 +485,7 @@ void run_stats::save_csv_set_get_commands(FILE *f, bool cluster_mode) {
     percentiles = &iter.specifics.percentiles;
     while (hdr_iter_next(&iter)){
         double  value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-        fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+        fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
     }
     fprintf(f, "\n" "Full-Test SET Latency\n");
     fprintf(f, "Latency (<= msec),Percent\n");
@@ -417,7 +493,7 @@ void run_stats::save_csv_set_get_commands(FILE *f, bool cluster_mode) {
     percentiles = &iter.specifics.percentiles;
     while (hdr_iter_next(&iter)){
         double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-        fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+        fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
     }
 
     fprintf(f, "\n" "Full-Test WAIT Latency\n");
@@ -426,7 +502,7 @@ void run_stats::save_csv_set_get_commands(FILE *f, bool cluster_mode) {
     percentiles = &iter.specifics.percentiles;
     while (hdr_iter_next(&iter)){
         double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-        fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+        fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
     }
 
     // cluster mode data
@@ -445,7 +521,9 @@ void run_stats::save_csv_arbitrary_commands_one_sec(FILE *f,
     for (unsigned int i=0; i<command_list.size(); i++) {
         std::string command_name = command_list[i].command_name;
 
-        fprintf(f, ",%s Requests,%s Average Latency,%s Total Bytes",
+        fprintf(f, ",%s Requests,%s Average Latency,%s Total Bytes,%s Total Bytes TX,%s Total Bytes RX",
+                command_name.c_str(),
+                command_name.c_str(),
                 command_name.c_str(),
                 command_name.c_str(),
                 command_name.c_str());
@@ -461,10 +539,13 @@ void run_stats::save_csv_arbitrary_commands_one_sec(FILE *f,
         for (unsigned int i=0; i<stat->m_ar_commands.size(); i++) {
             one_sec_cmd_stats& arbitrary_command_stats = stat->m_ar_commands[i];
 
-            fprintf(f, "%lu,%u.%06u,%lu,",
+            fprintf(f, "%lu,%u.%06u,%lu,%lu,%lu,",
                 arbitrary_command_stats.m_ops,
                 USEC_FORMAT(AVERAGE(arbitrary_command_stats.m_total_latency, arbitrary_command_stats.m_ops)),
-                arbitrary_command_stats.m_bytes);
+                arbitrary_command_stats.m_bytes_rx+arbitrary_command_stats.m_bytes_tx,
+                arbitrary_command_stats.m_bytes_tx,
+                arbitrary_command_stats.m_bytes_rx
+                );
 
             total_arbitrary_commands_ops.at(i) += arbitrary_command_stats.m_ops;
         }
@@ -494,7 +575,7 @@ void run_stats::save_csv_arbitrary_commands(FILE *f, arbitrary_command_list& com
         percentiles = &iter.specifics.percentiles;
         while (hdr_iter_next(&iter)){
             double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-            fprintf(f, "%8.3f,%.2f\n", value,percentiles->percentile);
+            fprintf(f, "%8.3f,%.3f\n", value,percentiles->percentile);
         }
     }
 }
@@ -656,8 +737,8 @@ void run_stats::debug_dump(void)
                             i->m_set_cmd.m_ops,
                             i->m_get_cmd.m_ops,
                             i->m_wait_cmd.m_ops,
-                            i->m_set_cmd.m_bytes,
-                            i->m_get_cmd.m_bytes,
+                            i->m_set_cmd.m_bytes_rx+i->m_set_cmd.m_bytes_tx,
+                            i->m_get_cmd.m_bytes_rx+i->m_get_cmd.m_bytes_tx,
                             i->m_get_cmd.m_hits,
                             i->m_get_cmd.m_misses);
     }
@@ -683,6 +764,7 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
         hdr_add(m_get_latency_histogram,i->m_get_latency_histogram);
         hdr_add(m_set_latency_histogram,i->m_set_latency_histogram);
         hdr_add(m_wait_latency_histogram,i->m_wait_latency_histogram);
+        hdr_add(m_totals_latency_histogram,i->m_totals_latency_histogram);
 
         for (unsigned int j=0; j < i->m_ar_commands_latency_histograms.size(); j++) {
             hdr_add(m_ar_commands_latency_histograms.at(j),i->m_ar_commands_latency_histograms.at(j));
@@ -692,6 +774,7 @@ void run_stats::aggregate_average(const std::vector<run_stats>& all_stats)
     m_totals.m_set_cmd.aggregate_average(all_stats.size());
     m_totals.m_get_cmd.aggregate_average(all_stats.size());
     m_totals.m_wait_cmd.aggregate_average(all_stats.size());
+    m_totals.m_total_cmd.aggregate_average(all_stats.size());
     m_totals.m_ar_commands.aggregate_average(all_stats.size());
     m_totals.m_ops_sec /= all_stats.size();
     m_totals.m_hits_sec /= all_stats.size();
@@ -739,7 +822,7 @@ void run_stats::merge(const run_stats& other, int iteration)
     m_totals.add(other.m_totals);
 
     // aggregate latency data
-    // hdr_add(m_totals.latency_histogram,other.m_totals.latency_histogram);
+    hdr_add(m_totals_latency_histogram,other.m_totals.latency_histogram);
     hdr_add(m_get_latency_histogram,other.m_get_latency_histogram);
     hdr_add(m_set_latency_histogram,other.m_set_latency_histogram);
     hdr_add(m_wait_latency_histogram,other.m_wait_latency_histogram);
@@ -764,7 +847,8 @@ void run_stats::summarize(totals& result) const
 
     // total ops, bytes
     result.m_ops = totals.m_set_cmd.m_ops + totals.m_get_cmd.m_ops + totals.m_wait_cmd.m_ops + totals.m_ar_commands.ops();
-    result.m_bytes = totals.m_set_cmd.m_bytes + totals.m_get_cmd.m_bytes + totals.m_ar_commands.bytes();
+    result.m_bytes_rx = totals.m_set_cmd.m_bytes_rx + totals.m_get_cmd.m_bytes_rx + totals.m_ar_commands.bytes();
+    result.m_bytes_tx = totals.m_set_cmd.m_bytes_tx + totals.m_get_cmd.m_bytes_tx + totals.m_ar_commands.bytes();
 
     // cmd/sec
     result.m_set_cmd.summarize(totals.m_set_cmd, test_duration_usec);
@@ -789,21 +873,24 @@ void run_stats::summarize(totals& result) const
         result.m_latency = 0;
     }
 
-    result.m_bytes_sec = (result.m_bytes / 1024.0) / test_duration_usec * 1000000;
+    result.m_bytes_sec = ((result.m_bytes_rx + result.m_bytes_tx) / 1024.0) / test_duration_usec * 1000000;
+    result.m_bytes_sec_rx = (result.m_bytes_rx / 1024.0) / test_duration_usec * 1000000;
+    result.m_bytes_sec_tx = (result.m_bytes_tx / 1024.0) / test_duration_usec * 1000000;
     result.m_moved_sec = (double) (totals.m_set_cmd.m_moved + totals.m_get_cmd.m_moved) / test_duration_usec * 1000000;
     result.m_ask_sec = (double) (totals.m_set_cmd.m_ask + totals.m_get_cmd.m_ask) / test_duration_usec * 1000000;
 }
 
-void result_print_to_json(json_handler * jsonhandler, const char * type, double ops,
-                          double hits, double miss, double moved, double ask, double kbs, 
-                          std::vector<float> quantile_list, struct hdr_histogram* latency_histogram, 
+void result_print_to_json(json_handler * jsonhandler, const char * type, double ops_sec,
+                          double hits, double miss, double moved, double ask, double kbs, double kbs_rx, double kbs_tx,
+                          double latency, long m_total_latency, long ops,
+                          std::vector<double> quantile_list, struct hdr_histogram* latency_histogram,
                           std::vector<unsigned int> timestamps, 
                           std::vector<one_sec_cmd_stats> timeserie_stats )
 {
     if (jsonhandler != NULL){ // Added for double verification in case someone accidently send NULL.
         jsonhandler->open_nesting(type);
-        jsonhandler->write_obj("Count","%lld", hdr_total_count(latency_histogram));
-        jsonhandler->write_obj("Ops/sec","%.2f", ops);
+        jsonhandler->write_obj("Count","%lld", ops);
+        jsonhandler->write_obj("Ops/sec","%.2f", ops_sec);
         jsonhandler->write_obj("Hits/sec","%.2f", hits);
         jsonhandler->write_obj("Misses/sec","%.2f", miss);
 
@@ -814,36 +901,45 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
             jsonhandler->write_obj("ASK/sec","%.2f", ask);
 
         const bool has_samples = hdr_total_count(latency_histogram)>0;
-        const double avg_latency = has_samples ? hdr_mean(latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-        const double min_latency = has_samples ? hdr_min(latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-        const double max_latency = has_samples ? hdr_max(latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+        const double avg_latency = latency;
+        const double min_latency = has_samples ? (hdr_min(latency_histogram) * 1.0)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+        const double max_latency = has_samples ? (hdr_max(latency_histogram) * 1.0)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
         // to be retrocompatible
         jsonhandler->write_obj("Latency","%.3f", avg_latency);
         jsonhandler->write_obj("Average Latency","%.3f", avg_latency);
+        jsonhandler->write_obj("Accumulated Latency","%lld", m_total_latency / LATENCY_HDR_RESULTS_MULTIPLIER);
         jsonhandler->write_obj("Min Latency","%.3f", min_latency);
         jsonhandler->write_obj("Max Latency","%.3f", max_latency);
+        // preserve KB/sec for backwards compatibility
         jsonhandler->write_obj("KB/sec","%.2f", kbs);
+        jsonhandler->write_obj("KB/sec RX/TX","%.2f", kbs);
+        jsonhandler->write_obj("KB/sec RX","%.2f", kbs_rx);
+        jsonhandler->write_obj("KB/sec TX","%.2f", kbs_tx);
         jsonhandler->open_nesting("Time-Serie");
         for (std::size_t i = 0; i < timeserie_stats.size(); i++){
             char timestamp_str[16];
             one_sec_cmd_stats cmd_stats = timeserie_stats[i];
             const unsigned int timestamp = timestamps[i];
-            const bool sec_has_samples = hdr_total_count(cmd_stats.latency_histogram)>0;
-            const double sec_avg_latency = sec_has_samples ? hdr_mean(cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-            const double sec_min_latency = has_samples ? hdr_min(cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
-            const double sec_max_latency = has_samples ? hdr_max(cmd_stats.latency_histogram)/ (double) LATENCY_HDR_RESULTS_MULTIPLIER : 0.0;
+            const bool sec_has_samples = cmd_stats.m_ops > 0;
             snprintf(timestamp_str,sizeof(timestamp_str)-1,"%d", timestamp);
             jsonhandler->open_nesting(timestamp_str);
-            jsonhandler->write_obj("Count","%lld", hdr_total_count(cmd_stats.latency_histogram));
-            jsonhandler->write_obj("Average Latency","%.2f", sec_avg_latency);
-            jsonhandler->write_obj("Min Latency","%.2f", sec_min_latency);
-            jsonhandler->write_obj("Max Latency","%.2f", sec_max_latency);
-            for (std::size_t i = 0; i < quantile_list.size(); i++){
-                const float quantile = quantile_list[i];
-                char quantile_header[8];
-                snprintf(quantile_header,sizeof(quantile_header)-1,"p%.2f", quantile);
-                const double value = hdr_value_at_percentile(cmd_stats.latency_histogram, quantile )/ (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-                jsonhandler->write_obj((char *)quantile_header,"%.2f", value);
+            jsonhandler->write_obj("Bytes RX","%lld", cmd_stats.m_bytes_rx);
+            jsonhandler->write_obj("Bytes TX","%lld", cmd_stats.m_bytes_tx);
+            jsonhandler->write_obj("Count","%lld", cmd_stats.m_ops);
+            if (sec_has_samples){
+                jsonhandler->write_obj("Average Latency","%.3f", cmd_stats.m_avg_latency);
+                jsonhandler->write_obj("Accumulated Latency","%lld", cmd_stats.m_total_latency / LATENCY_HDR_RESULTS_MULTIPLIER);
+                jsonhandler->write_obj("Min Latency","%.3f", cmd_stats.m_min_latency);
+                jsonhandler->write_obj("Max Latency","%.3f", cmd_stats.m_max_latency);
+                for (std::size_t i = 0; i < quantile_list.size(); i++){
+                    if (i < cmd_stats.summarized_quantile_values.size()){
+                        const float quantile = quantile_list[i];
+                        char quantile_header[8];
+                        snprintf(quantile_header,sizeof(quantile_header)-1,"p%.2f", quantile);
+                        const double value = cmd_stats.summarized_quantile_values[i];
+                        jsonhandler->write_obj((char *)quantile_header,"%.3f", value);
+                    }
+                }
             }
             jsonhandler->close_nesting();
         }
@@ -869,11 +965,11 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
 
 void histogram_print(FILE * out, json_handler * jsonhandler, const char * type, float msec, float percent)
 {
-    fprintf(out, "%-6s %8.3f %12.2f\n", type, msec, percent);
+    fprintf(out, "%-6s %8.3f %12.3f\n", type, msec, percent);
     if (jsonhandler != NULL){
         jsonhandler->open_nesting(NULL);
         jsonhandler->write_obj("<=msec","%.3f", msec);
-        jsonhandler->write_obj("percent","%.2f", percent);
+        jsonhandler->write_obj("percent","%.3f", percent);
         jsonhandler->close_nesting();
     }
 }
@@ -975,11 +1071,18 @@ void run_stats::print_moved_sec_column(output_table &table) {
 
     column.elements.push_back(*el.init_str("%12s ", "MOVED/sec"));
     column.elements.push_back(*el.init_str("%s", "-------------"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_moved_sec));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_moved_sec));
-    column.elements.push_back(*el.init_str("%12s ", "---"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec));
 
+    if (print_arbitrary_commands_results()) {
+        for (unsigned int i=0; i<m_totals.m_ar_commands.size(); i++) {
+            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_moved_sec));
+        }
+    } else {
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_moved_sec));
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_moved_sec));
+        column.elements.push_back(*el.init_str("%12s ", "---"));
+
+    }
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_moved_sec));
     table.add_column(column);
 }
 
@@ -989,11 +1092,17 @@ void run_stats::print_ask_sec_column(output_table &table) {
 
     column.elements.push_back(*el.init_str("%12s ", "ASK/sec"));
     column.elements.push_back(*el.init_str("%s", "-------------"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ask_sec));
+    if (print_arbitrary_commands_results()) {
+        for (unsigned int i=0; i<m_totals.m_ar_commands.size(); i++) {
+            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_ask_sec));
+        }
+    } else {
+        column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ask_sec));
     column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_get_cmd.m_ask_sec));
     column.elements.push_back(*el.init_str("%12s ", "---"));
-    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec));
 
+    }
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ask_sec));
     table.add_column(column);
 }
 
@@ -1103,7 +1212,7 @@ void run_stats::print_kb_sec_column(output_table &table) {
     table.add_column(column);
 }
 
-void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode, std::vector<float> quantile_list) {
+void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode) {
     if (jsonhandler != NULL){ // Added for double verification in case someone accidently send NULL.
         jsonhandler->open_nesting("Runtime");
         const unsigned long long start_time_ms = (m_start_time.tv_sec * 1000000 + m_start_time.tv_usec)/1000;
@@ -1133,7 +1242,12 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                                  cluster_mode ? m_totals.m_ar_commands[i].m_moved_sec : -1,
                                  cluster_mode ? m_totals.m_ar_commands[i].m_ask_sec : -1,
                                  m_totals.m_ar_commands[i].m_bytes_sec,
-                                 quantile_list,
+                                 m_totals.m_ar_commands[i].m_bytes_sec_rx,
+                                 m_totals.m_ar_commands[i].m_bytes_sec_tx,
+                                 m_totals.m_ar_commands[i].m_latency,
+                                 m_totals.m_ar_commands[i].m_total_latency,
+                                 m_totals.m_ar_commands[i].m_ops,
+                                 quantiles_list,
                                  arbitrary_command_latency_histogram,
                                  timestamps,
                                  arbitrary_command_stats
@@ -1149,7 +1263,12 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              cluster_mode ? m_totals.m_set_cmd.m_moved_sec : -1,
                              cluster_mode ? m_totals.m_set_cmd.m_ask_sec : -1,
                              m_totals.m_set_cmd.m_bytes_sec,
-                             quantile_list,
+                             m_totals.m_set_cmd.m_bytes_sec_rx,
+                             m_totals.m_set_cmd.m_bytes_sec_tx,
+                             m_totals.m_set_cmd.m_latency,
+                             m_totals.m_set_cmd.m_total_latency,
+                             m_totals.m_set_cmd.m_ops,
+                             quantiles_list,
                              m_set_latency_histogram,
                              timestamps,
                              set_stats
@@ -1160,7 +1279,12 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              cluster_mode ? m_totals.m_get_cmd.m_moved_sec : -1,
                              cluster_mode ? m_totals.m_get_cmd.m_ask_sec : -1,
                              m_totals.m_get_cmd.m_bytes_sec,
-                             quantile_list,
+                             m_totals.m_get_cmd.m_bytes_sec_rx,
+                             m_totals.m_get_cmd.m_bytes_sec_tx,
+                             m_totals.m_get_cmd.m_latency,
+                             m_totals.m_get_cmd.m_total_latency,
+                             m_totals.m_get_cmd.m_ops,
+                             quantiles_list,
                              m_get_latency_histogram,
                              timestamps,
                              get_stats
@@ -1171,7 +1295,12 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              cluster_mode ? 0.0 : -1,
                              cluster_mode ? 0.0 : -1,
                              0.0,
-                             quantile_list,
+                             0.0,
+                             0.0,
+                             0.0,
+                             0.0,
+                             m_totals.m_wait_cmd.m_ops,
+                             quantiles_list,
                              m_wait_latency_histogram,
                              timestamps,
                              wait_stats
@@ -1184,7 +1313,12 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                          cluster_mode ? m_totals.m_moved_sec : -1,
                          cluster_mode ? m_totals.m_ask_sec : -1,
                          m_totals.m_bytes_sec,
-                         quantile_list,
+                         m_totals.m_bytes_sec_rx,
+                         m_totals.m_bytes_sec_tx,
+                         m_totals.m_latency,
+                         m_totals.m_total_latency,
+                         m_totals.m_ops,
+                         quantiles_list,
                          m_totals.latency_histogram,
                          timestamps,
                          total_stats
@@ -1327,7 +1461,7 @@ void run_stats::print(FILE *out, benchmark_config *config,
             jsonhandler->open_nesting("UNKNOWN STATS");
         }
 
-        print_json(jsonhandler, *config->arbitrary_commands, config->cluster_mode, config->print_percentiles.quantile_list);
+        print_json(jsonhandler, *config->arbitrary_commands, config->cluster_mode);
     }
 
     if (!config->hide_histogram) {

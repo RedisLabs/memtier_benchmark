@@ -260,20 +260,20 @@ void object_generator::alloc_value_buffer(void)
             char *d = m_value_buffer;
             int ret;
             int iter = 0;
-
             while (d - m_value_buffer < size) {
                 if (buf1_idx == sizeof(buf1)) {
                     buf1_idx = 0;
                     buf2_idx++;
+
                     if (buf2_idx >= sizeof(buf2)) {
-                        iter++;
-                        if (iter == 20) {
+                        if (iter % 20 == 0) {
                             ret = read(m_random_fd, buf1, sizeof(buf1));
                             assert(ret > -1);
                             ret = read(m_random_fd, buf2, sizeof(buf2));
                             assert(ret > -1);
-                            buf1_idx = buf2_idx = iter = 0;
                         }
+                        buf2_idx = 0;
+                        iter++;
                     }
                 }
                 *d = buf1[buf1_idx] ^ buf2[buf2_idx] ^ iter;
@@ -486,37 +486,9 @@ unsigned long long object_generator::get_key_index(int iter)
     return k;
 }
 
-const char* object_generator::get_key(int iter, unsigned int *len)
-{
-    unsigned int l;
-    m_key_index = get_key_index(iter);
-
-    // format key
-    l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
-        "%s%llu", m_key_prefix, m_key_index);
-    if (len != NULL) *len = l;
-
-    return m_key_buffer;
-}
-
-data_object* object_generator::get_object(int iter)
-{
-    // compute key
-    (void) get_key(iter, NULL);
-
-    // compute value
-    unsigned int new_size = 0;
-    get_value(m_key_index, &new_size);
-
-    // compute expiry
-    unsigned int expiry = get_expiry();
-
-    // set object
-    m_object.set_key(m_key_buffer, strlen(m_key_buffer));
-    m_object.set_value(m_value_buffer, new_size);
-    m_object.set_expiry(expiry);
-
-    return &m_object;
+void object_generator::generate_key(unsigned long long key_index) {
+    m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_key_prefix, key_index);
+    m_key = m_key_buffer;
 }
 
 const char* object_generator::get_key_prefix() {
@@ -561,67 +533,6 @@ unsigned int object_generator::get_expiry() {
     }
 
     return expiry;
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-data_object::data_object() :
-    m_key(NULL), m_key_len(0),
-    m_value(NULL), m_value_len(0),
-    m_expiry(0)
-{
-}
-
-data_object::~data_object()
-{
-    clear();
-}
-
-void data_object::clear(void)
-{
-    m_key = NULL;
-    m_key_len = 0;
-    m_value = NULL;
-    m_value_len = 0;
-    m_expiry = 0;
-}
-
-void data_object::set_key(const char* key, unsigned int key_len)
-{
-    m_key = key;
-    m_key_len = key_len;
-}
-
-const char* data_object::get_key(unsigned int* key_len)
-{
-    assert(key_len != NULL);
-    *key_len = m_key_len;
-
-    return m_key;
-}
-
-void data_object::set_value(const char* value, unsigned int value_len)
-{
-    m_value = value;
-    m_value_len = value_len;
-}
-
-const char* data_object::get_value(unsigned int *value_len)
-{
-    assert(value_len != NULL);
-    *value_len = m_value_len;
-
-    return m_value;
-}
-
-void data_object::set_expiry(unsigned int expiry)
-{
-    m_expiry = expiry;
-}
-
-unsigned int data_object::get_expiry(void)
-{
-    return m_expiry;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -727,18 +638,8 @@ import_object_generator* import_object_generator::clone(void)
     return new import_object_generator(*this);
 }
 
-const char* import_object_generator::get_key(int iter, unsigned int *len)
-{
-    if (m_keys == NULL) {
-        return object_generator::get_key(iter, len);
-    } else {
-        unsigned int k = get_key_index(iter) - 1;
-        return m_keys->get(k, len);
-    }
-}
-
-data_object* import_object_generator::get_object(int iter)
-{
+void import_object_generator::read_next_item() {
+    /* Used by SET command to read an item that includes  KEY, VALUE, EXPIRE */
     memcache_item *i = m_reader.read_item();
 
     if (i == NULL && m_reader.is_eof()) {
@@ -752,26 +653,34 @@ data_object* import_object_generator::get_object(int iter)
     }
     m_cur_item = i;
 
-    m_object.set_value(m_cur_item->get_data(), m_cur_item->get_nbytes() - 2);
-    if (m_keys != NULL) {
-        m_object.set_key(m_cur_item->get_key(), m_cur_item->get_nkey());
-    } else {
-        unsigned int tmplen;
-        const char *tmpkey = object_generator::get_key(iter, &tmplen);
-        m_object.set_key(tmpkey, tmplen);
-    }
+    m_key = m_cur_item->get_key();
+    m_key_len = m_cur_item->get_nkey();
+}
+
+void import_object_generator::read_next_key(unsigned long long key_index) {
+    /* Used by GET command that needs only a KEY */
+    m_key = m_keys->get(key_index-1, (unsigned int *)&m_key_len);
+}
+
+const char* import_object_generator::get_value(unsigned long long key_index, unsigned int *len) {
+    assert(m_cur_item != NULL);
+
+    *len = m_cur_item->get_nbytes() - 2;
+    return m_cur_item->get_data();
+}
+
+unsigned int import_object_generator::get_expiry() {
+    assert(m_cur_item != NULL);
 
     // compute expiry
-    int expiry = 0;
+    unsigned int expiry = 0;
     if (!m_no_expiry) {
         if (m_expiry_max > 0) {
             expiry = random_range(m_expiry_min, m_expiry_max);
         } else {
             expiry = m_cur_item->get_exptime();
         }
-        m_object.set_expiry(expiry);
     }
 
-    return &m_object;
+    return expiry;
 }
-

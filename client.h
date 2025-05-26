@@ -45,7 +45,11 @@ class client;
 class client_group;
 struct benchmark_config;
 class object_generator;
-class data_object;
+
+#define SET_CMD_IDX 0
+#define GET_CMD_IDX 2
+
+enum get_key_response { not_available, available_for_conn, available_for_other_conn };
 
 class client : public connections_manager {
 protected:
@@ -77,12 +81,17 @@ public:
     client(client_group* group);
     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     virtual ~client();
-    virtual bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
-    virtual int prepare(void);
-
+    bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+    int prepare(void);
     bool initialized(void);
-
     run_stats* get_stats(void) { return &m_stats; }
+
+    virtual get_key_response get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index);
+    virtual bool create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_wait_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_set_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_get_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_mget_request(struct timeval& timestamp, unsigned int conn_id);
 
     // client manager api's
     unsigned long long get_reqs_processed() {
@@ -110,13 +119,33 @@ public:
     virtual bool finished(void);
     virtual void set_start_time();
     virtual void set_end_time();
-    virtual void create_arbitrary_request(const arbitrary_command* cmd, struct timeval& timestamp, unsigned int conn_id);
     virtual void create_request(struct timeval timestamp, unsigned int conn_id);
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual int connect(void);
     virtual void disconnect(void);
     //
 
+    /* Get current executed arbitrary command */
+    const arbitrary_command & get_arbitrary_command(unsigned int command_index) {
+        return m_config->arbitrary_commands->at(command_index);
+    }
+
+    /* Set the arbitrary command index to the next to be executed */
+    void advance_arbitrary_command_index() {
+        while(true) {
+            if (m_arbitrary_command_ratio_count < get_arbitrary_command(m_executed_command_index).ratio) {
+                m_arbitrary_command_ratio_count++;
+                return;
+            } else {
+                m_arbitrary_command_ratio_count = 0;
+                m_executed_command_index++;
+                if (m_executed_command_index == m_config->arbitrary_commands->size()) {
+                    m_executed_command_index = 0;
+                }
+            }
+        }
+
+    }
     // Utility function to get the object iterator type based on the config
     inline int obj_iter_type(benchmark_config *cfg, unsigned char index)
     {
@@ -134,12 +163,13 @@ public:
         }
     }
 
-    inline int get_arbitrary_obj_iter_type(const arbitrary_command* cmd, unsigned int index) {
-        if (cmd->key_pattern == 'R') {
+    inline int arbitrary_obj_iter_type(unsigned int index) {
+        const arbitrary_command& cmd = get_arbitrary_command(index);
+        if (cmd.key_pattern == 'R') {
             return OBJECT_GENERATOR_KEY_RANDOM;
-        } else if (cmd->key_pattern == 'G') {
+        } else if (cmd.key_pattern == 'G') {
             return OBJECT_GENERATOR_KEY_GAUSSIAN;
-        } else if (cmd->key_pattern == 'Z') {
+        } else if (cmd.key_pattern == 'Z') {
             return OBJECT_GENERATOR_KEY_ZIPFIAN;
         } else {
             return index;
@@ -154,7 +184,10 @@ protected:
     unsigned long long int m_errors;
 
     virtual bool finished(void);
-    virtual void create_request(struct timeval timestamp, unsigned int conn_id);
+    virtual bool create_wait_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_set_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_get_request(struct timeval& timestamp, unsigned int conn_id);
+    virtual bool create_mget_request(struct timeval& timestamp, unsigned int conn_id);
     virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
                                  request *request, protocol_response *response);
 public:

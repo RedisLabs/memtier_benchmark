@@ -3,113 +3,190 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  build-ubuntu:
+  smoketest-build-distros:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      ARCH: amd64
+      # required by ubuntu:bionic
+      # https://github.blog/changelog/2024-03-07-github-actions-all-actions-will-run-on-node20-instead-of-node16-by-default/
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      DEBIAN_FRONTEND: noninteractive
     strategy:
       matrix:
-        platform: [ubuntu-latest,ubuntu-16.04]
-    runs-on: ${{ matrix.platform }}
+        image: ${{ fromJSON(vars.SMOKE_TEST_IMAGES) }}
+    container: ${{ matrix.image }}
+    name: Build ${{ matrix.image }}
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout Code for ubuntu:bionic
+      if: matrix.image == 'ubuntu:bionic'
+      uses: actions/checkout@v3
+
+    - name: Checkout Code for other versions
+      if: matrix.image != 'ubuntu:bionic'
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        apt-get -qq update -y
+        apt-get install -y \
+        build-essential autoconf automake libpcre3-dev libevent-dev \
+        pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex
+
+    - name: Build
+      run: autoreconf -ivf && ./configure && make -j
+
+  build-notls:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get -qq update
-        sudo apt-get install autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev
+
     - name: Build
-      run: autoreconf -ivf && ./configure && make
-    - name: Setup Python
-      uses: actions/setup-python@v1
-      with:
-        python-version: '3.6'
+      run: autoreconf -ivf && ./configure --disable-tls && make -j
 
-    - name: Cache pip
-      uses: actions/cache@v1
-      with:
-        path: ~/.cache/pip # This path is specific to Ubuntu
-        # Look to see if there is a cache hit for the corresponding requirements file
-        key: ${{ runner.os }}-pip-${{ hashFiles('tests/test_requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-          ${{ runner.os }}-
-    - name: Install Python dependencies
-      run: pip install -r tests/test_requirements.txt
-
-    - name: Cache Redis
-      id: cache-redis
-      uses: actions/cache@v1
-      with:
-        path: /home/runner/work/memtier_benchmark/memtier_benchmark/redis
-        key: ${{ runner.os }}-redis
-
-    - name: Install Redis Server test dependencies
-      if: steps.cache-redis.outputs.cache-hit != 'true'
+  build-ubuntu-latest:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
       run: |
-        git clone git://github.com/antirez/redis.git --branch unstable
-        cd redis
-        make BUILD_TLS=yes
-        ./utils/gen-test-certs.sh
-        ./src/redis-server --version
-        cd ..
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev
+
+    - name: Build
+      run: autoreconf -ivf && ./configure --disable-tls && make -j
+
+  build-ubuntu:
+    strategy:
+      matrix:
+        platform: [ubuntu-22.04, ubuntu-20.04]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+
+    - name: Build
+      # for coverage reports we need to use Ubuntu 22.04 or lower
+      # (given Ubuntu 24.04 uses lcov >= 2.0 which is not support on autoconf still)
+      run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
+
+    - name: Install Python dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
+      run: |
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Increase connection limit
+      run: |
+        sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+        sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+        ulimit -n 40960
+
+    - name: Generate TLS test certificates
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+          ./tests/gen-test-certs.sh
 
     - name: Test OSS TCP
+      timeout-minutes: 10
       run: |
-        cd tests 
-        MEMTIER_BINARY=./../memtier_benchmark \
-        python3 -m RLTest \
-        --env oss -v --clear-logs \
-        --oss-redis-path ../redis/src/redis-server
-        cd ..
+        ./tests/run_tests.sh
 
     - name: Test OSS TCP TLS
       if: matrix.platform == 'ubuntu-latest'
+      timeout-minutes: 10
       run: |
-        cd tests
-        TLS_CERT=../redis/tests/tls/redis.crt \
-        TLS_KEY=../redis/tests/tls/redis.key \
-        TLS_CACERT=../redis/tests/tls/ca.crt \
-        MEMTIER_BINARY=../memtier_benchmark \
-        python3 -m RLTest \
-          --env oss -v --clear-logs \
-          --oss-redis-path ../redis/src/redis-server \
-          --tls-cert-file ../redis/tests/tls/redis.crt \
-          --tls-key-file ../redis/tests/tls/redis.key \
-          --tls-ca-cert-file ../redis/tests/tls/ca.crt \
-          --tls
-        cd ..
+        TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS v1.2
+      if: matrix.platform == 'ubuntu-latest'
+      timeout-minutes: 10
+      run: |
+        TLS_PROTOCOLS='TLSv1.2' VERBOSE=1 TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS v1.3
+      if: matrix.platform == 'ubuntu-latest'
+      timeout-minutes: 10
+      run: |
+        TLS_PROTOCOLS='TLSv1.3' VERBOSE=1 TLS=1 ./tests/run_tests.sh
 
     - name: Test OSS-CLUSTER TCP
+      timeout-minutes: 10
       run: |
-        cd tests 
-        MEMTIER_BINARY=./../memtier_benchmark \
-        python3 -m RLTest \
-        --env oss-cluster -v --clear-logs --shards-count 3 \
-        --oss-redis-path ../redis/src/redis-server
-        cd ..
+        OSS_STANDALONE=0 OSS_CLUSTER=1 VERBOSE=1 \
+        ./tests/run_tests.sh
 
     - name: Test OSS-CLUSTER TCP TLS
+      timeout-minutes: 10
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cd tests
-        TLS_CERT=../redis/tests/tls/redis.crt \
-        TLS_KEY=../redis/tests/tls/redis.key \
-        TLS_CACERT=../redis/tests/tls/ca.crt \
-        MEMTIER_BINARY=../memtier_benchmark \
-        python3 -m RLTest \
-          --env oss-cluster --shards-count 3 -v --clear-logs \
-          --oss-redis-path ../redis/src/redis-server \
-          --tls-cert-file ../redis/tests/tls/redis.crt \
-          --tls-key-file ../redis/tests/tls/redis.key \
-          --tls-ca-cert-file ../redis/tests/tls/ca.crt \
-          --tls
-        cd ..
+        OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 VERBOSE=1 \
+        ./tests/run_tests.sh
+
+    - name: Capture code coverage
+      timeout-minutes: 6
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+        make code-coverage-capture
+        bash <(curl -s https://codecov.io/bash) -f memtier_benchmark-*-coverage.info || echo "Codecov did not collect coverage reports"
 
   build-macos:
     strategy:
       matrix:
-        platform: [macos-latest]
+        openssl: ["3.0"]
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: brew install autoconf automake libtool libevent openssl@${{ matrix.openssl }}
+    - name: Build
+      run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@${{ matrix.openssl }}`/lib/pkgconfig ./configure && make
+
+  # According to https://github.com/actions/runner-images/blob/macos-14-arm64/20241119.509/images/macos/macos-14-arm64-Readme.md
+  # [macOS] OpenSSL 1.1 will be removed and OpenSSL 3 will be the default for all macOS images from November 4, 2024
+  # so use macos-13 which does not have the deprecation notice
+  # macos-13 details: https://github.com/actions/runner-images/blob/main/images/macos/macos-13-Readme.md
+  build-macos-openssl-1-1:
+    strategy:
+      matrix:
+        platform: [macos-13]
     runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install dependencies
-      run: brew install autoconf automake libtool libevent pkg-config openssl@1.1
+      run: brew install autoconf automake libtool libevent openssl@1.1
     - name: Build
-      run: autoreconf -ivf && PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig ./configure && make
+      run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.1`/lib/pkgconfig ./configure && make
+
+
+  build-macos-openssl-1-0-2:
+    strategy:
+      matrix:
+        platform: [macos-13]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: brew install autoconf automake libtool libevent pkg-config
+    - name: Install openssl v1.0.2
+      run: brew install rbenv/tap/openssl@1.0
+    - name: Build
+      run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.0`/lib/pkgconfig ./configure && make

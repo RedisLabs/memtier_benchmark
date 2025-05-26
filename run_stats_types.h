@@ -20,10 +20,10 @@
 #define MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 
 #define LATENCY_HDR_MIN_VALUE 10
-#define LATENCY_HDR_MAX_VALUE 60000000 ## LL
+#define LATENCY_HDR_MAX_VALUE 6000000000 ## LL
 #define LATENCY_HDR_SIGDIGTS 3
 #define LATENCY_HDR_SEC_MIN_VALUE 10
-#define LATENCY_HDR_SEC_MAX_VALUE 1000000 ## LL
+#define LATENCY_HDR_SEC_MAX_VALUE 600000000 ## LL
 #define LATENCY_HDR_SEC_SIGDIGTS 2
 #define LATENCY_HDR_RESULTS_MULTIPLIER 1000
 #define LATENCY_HDR_GRANULARITY 10
@@ -75,21 +75,33 @@ public:
 
 class one_sec_cmd_stats {
 public:
-    unsigned long int m_bytes;
+    unsigned long int m_bytes_rx;
+    unsigned long int m_bytes_tx;
     unsigned long int m_ops;
     unsigned int m_hits;
     unsigned int m_misses;
     unsigned int m_moved;
     unsigned int m_ask;
     unsigned long long int m_total_latency;
-    safe_hdr_histogram latency_histogram;
+    std::vector<double> summarized_quantile_values;
+    double m_avg_latency;
+    double m_min_latency;
+    double m_max_latency;
     one_sec_cmd_stats();
     void reset();
     void merge(const one_sec_cmd_stats& other);
-    void update_op(unsigned int bytes, unsigned int latency);
-    void update_op(unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_moved_op(unsigned int bytes, unsigned int latency);
-    void update_ask_op(unsigned int bytes, unsigned int latency);
+    /**
+     * Summarizes quantiles from the given histogram.
+     *
+     * @param histogram The histogram from which quantile values are extracted.
+     * @param sorted_quantiles A sorted (ascending order) vector of quantiles for which values will be computed.
+     *                         The caller must ensure the vector is sorted from smallest to largest.
+     */
+    void summarize_quantiles(safe_hdr_histogram histogram, std::vector<double> sorted_quantiles);
+    void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
+    void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency, unsigned int hits, unsigned int misses);
+    void update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
+    void update_ask_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
 };
 
 class one_second_stats; // forward declaration
@@ -120,10 +132,12 @@ public:
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
+    one_sec_cmd_stats m_total_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
     one_second_stats(unsigned int second);
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
+    void summarize();
     void merge(const one_second_stats& other);
 };
 
@@ -131,9 +145,12 @@ class totals_cmd {
 public:
     double m_ops_sec;
     double m_bytes_sec;
+    double m_bytes_sec_rx;
+    double m_bytes_sec_tx;
     double m_moved_sec;
     double m_ask_sec;
     double m_latency;
+    unsigned long long int m_total_latency;
     unsigned long int m_ops;
     totals_cmd();
     void add(const totals_cmd& other);
@@ -165,21 +182,28 @@ public:
     totals_cmd m_set_cmd;
     totals_cmd m_get_cmd;
     totals_cmd m_wait_cmd;
+    totals_cmd m_total_cmd;
     ar_totals_cmd m_ar_commands;
     safe_hdr_histogram latency_histogram;
     double m_ops_sec;
     double m_bytes_sec;
+    double m_bytes_sec_rx;
+    double m_bytes_sec_tx;
     double m_hits_sec;
     double m_misses_sec;
     double m_moved_sec;
     double m_ask_sec;
     unsigned long long int m_latency;
-    unsigned long int m_bytes;
+    unsigned long long int m_total_latency;
+    // number of bytes received
+    unsigned long int m_bytes_rx;
+    // number of bytes sent
+    unsigned long int m_bytes_tx;
     unsigned long int m_ops;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
-    void update_op(unsigned long int bytes, unsigned int latency);
+    void update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency);
 };
 
 

@@ -111,6 +111,18 @@ size_t hdr_get_memory_size(struct hdr_histogram* h);
 bool hdr_record_value(struct hdr_histogram* h, int64_t value);
 
 /**
+ * Records a value in the histogram, rounding the value to the specified precision
+ * (based on the significant figure set during histogram creation). This function
+ * will cap the recorded value at the histogram's highest_trackable_value if the input
+ * exceeds this threshold, and at the lowest_trackable_value if it falls below.
+ *
+ * @param h       Pointer to the histogram structure
+ * @param value   Value to add to the histogram
+ * @return        false if the value cannot be recorded due to an error, true otherwise
+ */
+bool hdr_record_value_capped(struct hdr_histogram* h, int64_t value);
+
+/**
  * Records a value in the histogram, will round this value of to a precision at or better
  * than the significant_figure specified at construction time.
  *
@@ -271,6 +283,18 @@ int64_t hdr_max(const struct hdr_histogram* h);
  * @param percentile The percentile to get the value for
  */
 int64_t hdr_value_at_percentile(const struct hdr_histogram* h, double percentile);
+
+/**
+ * Get the values at the given percentiles.
+ *
+ * @param h "This" pointer.
+ * @param percentiles The ordered percentiles array to get the values for.
+ * @param length Number of elements in the arrays.
+ * @param values Destination array containing the values at the given percentiles.
+ * The values array should be allocated by the caller.
+ * @return 0 on success, ENOMEM if the provided destination array is null.
+ */
+int hdr_value_at_percentiles(const struct hdr_histogram *h, const double *percentiles, int64_t *values, size_t length);
 
 /**
  * Gets the standard deviation for the values in the histogram.

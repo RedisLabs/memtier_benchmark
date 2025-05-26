@@ -97,6 +97,7 @@ protected:
     totals m_totals;
 
     std::list<one_second_stats> m_stats;
+    std::vector<double> quantiles_list;
 
     // current second stats ( appended to m_stats and reset every second )
     one_second_stats m_cur_stats;
@@ -105,6 +106,14 @@ protected:
     safe_hdr_histogram m_set_latency_histogram;
     safe_hdr_histogram m_wait_latency_histogram;
     std::vector<safe_hdr_histogram> m_ar_commands_latency_histograms;
+    safe_hdr_histogram m_totals_latency_histogram;
+
+    // instantaneous command stats ( used in the per second latencies )
+    safe_hdr_histogram inst_m_get_latency_histogram;
+    safe_hdr_histogram inst_m_set_latency_histogram;
+    safe_hdr_histogram inst_m_wait_latency_histogram;
+    std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
+    safe_hdr_histogram inst_m_totals_latency_histogram;
 
     void roll_cur_stats(struct timeval* ts);
 
@@ -114,21 +123,26 @@ public:
     void set_start_time(struct timeval* start_time);
     void set_end_time(struct timeval* end_time);
 
-    void update_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses);
+    void update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
 
-    void update_moved_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_moved_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_moved_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_moved_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_moved_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
+                             unsigned int latency, size_t arbitrary_index);
 
-    void update_ask_get_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
-    void update_ask_set_op(struct timeval* ts, unsigned int bytes, unsigned int latency);
+    void update_ask_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_ask_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_ask_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
+                                   unsigned int latency, size_t arbitrary_index);
 
     void update_wait_op(struct timeval* ts, unsigned int latency);
-    void update_arbitrary_op(struct timeval *ts, unsigned int bytes,
+    void update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
                              unsigned int latency, size_t arbitrary_index);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
+    void summarize_current_second();
     void merge(const run_stats& other, int iteration);
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_get();
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_set();
@@ -167,7 +181,7 @@ public:
     void print_avg_latency_column(output_table &table);
     void print_quantile_latency_column(output_table &table, double quantile, char* label);
     void print_kb_sec_column(output_table &table);
-    void print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode, std::vector<float> quantile_list);
+    void print_json(json_handler *jsonhandler, arbitrary_command_list& command_list, bool cluster_mode);
     void print_histogram(FILE *out, json_handler* jsonhandler, arbitrary_command_list& command_list);
     void print(FILE *file, benchmark_config *config,
                const char* header = NULL, json_handler* jsonhandler = NULL);

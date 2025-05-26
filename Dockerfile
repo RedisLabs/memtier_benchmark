@@ -1,4 +1,4 @@
-FROM ubuntu:18.04 as builder
+FROM ubuntu:22.04 as builder
 RUN apt-get update
 RUN \
   DEBIAN_FRONTEND=noninteractive \
@@ -9,7 +9,7 @@ COPY . /memtier_benchmark
 WORKDIR /memtier_benchmark
 RUN autoreconf -ivf && ./configure && make && make install
 
-FROM ubuntu:18.04
+FROM ubuntu:22.04
 LABEL Description="memtier_benchmark"
 COPY --from=builder /usr/local/bin/memtier_benchmark /usr/local/bin/memtier_benchmark
 RUN \
