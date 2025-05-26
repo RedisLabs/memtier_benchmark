@@ -63,7 +63,7 @@ jobs:
   build-ubuntu:
     strategy:
       matrix:
-        platform: [ubuntu-22.04, ubuntu-20.04]
+        platform: [ubuntu-22.04]
     runs-on: ${{ matrix.platform }}
     steps:
     - uses: actions/checkout@v4
