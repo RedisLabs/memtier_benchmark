@@ -1,54 +1,8 @@
-import tempfile
-import threading
 from collections import Counter
-import redis
 import math
+from itertools import pairwise
 
-import redis.client
-
-from include import (
-    get_default_memtier_config,
-    add_required_env_arguments,
-    ensure_clean_benchmark_folder,
-    addTLSArgs,
-    agg_info_commandstats,
-    assert_minimum_memtier_outcomes,
-    get_expected_request_count,
-)
-from mbdirector.benchmark import Benchmark
-from mbdirector.runner import RunConfig
-
-
-class MonitorThread(threading.Thread):
-    """Monitor Redis commands and count key accesses"""
-
-    def __init__(self, connection, stop_commands: set[str] = None):
-        threading.Thread.__init__(self)
-        self.monitor: redis.client.Monitor = connection.monitor()
-        self.stop_commands: set[str] = stop_commands or {
-            "INFO COMMANDSTATS",
-            "FLUSHALL",
-        }
-
-        self.key_counts: Counter = Counter()
-
-    def run(self):
-        try:
-            with self.monitor as m:
-                for command_info in m.listen():
-                    command = command_info.get("command")
-
-                    if command.upper() in self.stop_commands:
-                        break
-
-                    parts = command.split()
-                    if len(parts) >= 2 and parts[0].upper() in {"SET", "GET"}:
-                        key = parts[1]
-                        self.key_counts[key] += 1
-
-        except redis.ConnectionError:
-            # stop monitoring: server connection was closed
-            pass
+from zipfian_benchmark_runner import ZipfianBenchmarkRunner
 
 
 def correlation_coeficient(x: list[float], y: list[float]) -> float:
@@ -66,86 +20,77 @@ def correlation_coeficient(x: list[float], y: list[float]) -> float:
     return numerator / denominator if denominator != 0 else 0
 
 
+def analyze_zipfian_correlation(key_counts: Counter) -> float:
+    """Analyze key distribution and return correlation coefficient for Zipf's law validation"""
+
+    # Sort keys by frequency (descending)
+    sorted_keys = sorted(key_counts.items(), key=lambda x: x[1], reverse=True)
+
+    # Verify that frequency follows Zipf's law
+    # in Zipfian, frequency of kth element is proportional to 1/k^s
+    # so log(frequency) should be roughly linear with log(rank)
+    ranks = list(range(1, len(sorted_keys) + 1))
+    _, frequencies = zip(*sorted_keys)
+
+    # Calculate correlation between log(rank) and log(frequency)
+    log_ranks = [math.log(r) for r in ranks]
+    log_freqs = [math.log(f) if f > 0 else 0 for f in frequencies]
+
+    return correlation_coeficient(log_ranks, log_freqs)
+
+
+def calculate_concentration_ratio(distribution: Counter, top_n: int = 10) -> float:
+    """Calculate the concentration ratio of top N keys in the distribution"""
+    top_n_sum = sum(sorted(distribution.values(), reverse=True)[:top_n])
+    total_sum = sum(distribution.values())
+
+    return top_n_sum / total_sum if total_sum > 0 else 0.0
+
+
 def test_zipfian_key_distribution(env):
     """Test that the Zipfian key-pattern follows Zipf's law"""
     key_min = 1
     key_max = 10000
 
-    # Configure benchmark with Zipfian distribution
-    benchmark_specs = {
-        "name": env.testName,
-        "args": [
-            "--ratio=1:1",  # Both SET and GET operations
-            "--key-pattern=Z:Z",  # Zipfian for both SET and GET
-            f"--key-minimum={key_min}",
-            f"--key-maximum={key_max}",
-        ],
-    }
+    # Use the helper class to run benchmark and collect data
+    runner = ZipfianBenchmarkRunner(env, key_min, key_max)
+    combined_key_counts = runner.run_benchmark_and_collect_key_counting(env.testName)
 
-    addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config(threads=2, clients=10)
-    master_nodes_list = env.getMasterNodesList()
-    overall_expected_request_count = get_expected_request_count(
-        config, key_min, key_max
-    )
+    # Verify Zipfian properties using helper function
+    correlation = analyze_zipfian_correlation(combined_key_counts)
 
-    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+    # should be close to -1 for a perfect law relationship
+    # should be negative since log(rank) is increasing and log(freq) is decreasing
+    env.assertTrue(correlation < -0.8)
 
-    # Create a temporary directory
-    test_dir = tempfile.mkdtemp()
-    config = RunConfig(test_dir, env.testName, config, {})
-    ensure_clean_benchmark_folder(config.results_dir)
 
-    benchmark = Benchmark.from_json(config, benchmark_specs)
+def test_zipfian_exponent_effect(env):
+    """Test different Zipfian exponents and verify they affect the distribution"""
+    key_min = 1
+    key_max = 10000
 
-    monitor_threads = []
-    master_nodes_connections = env.getOSSMasterNodesConnectionList()
-    # Start monitoring Redis commands
-    for conn in master_nodes_connections:
-        monitor_thread = MonitorThread(conn)
-        monitor_thread.start()
-        monitor_threads.append(monitor_thread)
+    # Test with different exponents
+    zipf_exponents = {0.5, 1.0, 2.0}
+    distributions = {}
 
-    # Run the benchmark
-    memtier_ok = benchmark.run()
+    # Run benchmarks for each exponent
+    runner = ZipfianBenchmarkRunner(env, key_min, key_max)
 
-    # Verify the benchmark ran successfully
-    merged_command_stats = {"cmdstat_set": {"calls": 0}, "cmdstat_get": {"calls": 0}}
-    overall_request_count = agg_info_commandstats(
-        master_nodes_connections, merged_command_stats
-    )
-    assert_minimum_memtier_outcomes(
-        config, env, memtier_ok, overall_expected_request_count, overall_request_count
-    )
-
-    # Combine results from all master nodes' monitor threads
-    combined_key_counts = Counter()
-    for thread in monitor_threads:
-        thread.join()  # waits for monitor thread to finish
-        combined_key_counts.update(thread.key_counts)
-
-    # Verify Zipfian properties
-    if len(combined_key_counts) > 0:
-        # Sort keys by frequency (ascending)
-        sorted_keys = sorted(
-            combined_key_counts.items(), key=lambda x: x[1], reverse=True
+    for zipf_exp in zipf_exponents:
+        test_name = f"{env.testName}_exp_{zipf_exp}"
+        combined_key_counts = runner.run_benchmark_and_collect_key_counting(
+            test_name, zipf_exp=zipf_exp
         )
+        distributions[zipf_exp] = combined_key_counts
 
-        # Verify that frequency follows Zipf's law
-        # in Zipfian, frequency of kth element is proportional to 1/k^s
-        # so log(frequency) should be roughly linear with log(rank)
-        ranks = list(range(1, len(sorted_keys) + 1))
-        _, frequencies = zip(*sorted_keys)
+    # Verify that higher exponents lead to more skewed distributions
+    sorted_exponents = sorted(zipf_exponents)
+    for exp1, exp2 in pairwise(sorted_exponents):
+        dist1 = distributions[exp1]
+        dist2 = distributions[exp2]
 
-        # Calculate correlation between log(rank) and log(frequency)
-        log_ranks = [math.log(r) for r in ranks]
-        log_freqs = [math.log(f) if f > 0 else 0 for f in frequencies]
-        correlation = correlation_coeficient(log_ranks, log_freqs)
+        concentration1 = calculate_concentration_ratio(dist1)
+        concentration2 = calculate_concentration_ratio(dist2)
 
-        env.debugPrint(
-            f"Correlation between log(rank) and log(frequency): {correlation}"
-        )
-
-        # should be close to -1 for a perfect law relationship
-        # should be negative since log(rank) is increasing and log(freq) is decreasing
-        env.assertTrue(correlation < -0.8)
+        # Higher exponent should have higher concentration in top keys
+        env.assertTrue(concentration2 > concentration1)
