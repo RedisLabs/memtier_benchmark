@@ -89,6 +89,7 @@ struct benchmark_config {
     unsigned long long key_maximum;
     double key_stddev;
     double key_median;
+    double key_zipf_exp;
     const char *key_pattern;
     unsigned int reconnect_interval;
     int multi_key_get;

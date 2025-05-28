@@ -261,6 +261,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key_pattern"       ,"\"%s\"",       cfg->key_pattern);
     jsonhandler->write_obj("key_stddev"        ,"%f",           cfg->key_stddev);
     jsonhandler->write_obj("key_median"        ,"%f",           cfg->key_median);
+    jsonhandler->write_obj("key_zipf_exp"      ,"%f",           cfg->key_zipf_exp);
     jsonhandler->write_obj("reconnect_interval","%u",    		cfg->reconnect_interval);
     jsonhandler->write_obj("multi_key_get"     ,"%u",         	cfg->multi_key_get);
     jsonhandler->write_obj("authenticate"      ,"\"%s\"",      	cfg->authenticate ? cfg->authenticate : "");
@@ -403,6 +404,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_key_pattern,
         o_key_stddev,
         o_key_median,
+        o_key_zipf_exp,
         o_show_config,
         o_hide_histogram,
         o_print_percentiles,
@@ -486,6 +488,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key-pattern",                1, 0, o_key_pattern },
         { "key-stddev",                 1, 0, o_key_stddev },
         { "key-median",                 1, 0, o_key_median },
+        { "key-zipf-exp",               1, 0, o_key_zipf_exp},
         { "reconnect-interval",         1, 0, o_reconnect_interval },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
@@ -754,6 +757,14 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_key_zipf_exp:
+                    endptr = NULL;
+                    cfg->key_zipf_exp = strtod(optarg, &endptr);
+                    if (cfg->key_zipf_exp <= 0 || cfg->key_zipf_exp >= 5 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-zipf-exp must be within interval (0, 5).\n");
+                        return -1;
+                    }
+                    break;
                 case o_key_pattern:
                     cfg->key_pattern = optarg;
 
@@ -761,12 +772,14 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         (cfg->key_pattern[key_pattern_set] != 'R' &&
                          cfg->key_pattern[key_pattern_set] != 'S' &&
                          cfg->key_pattern[key_pattern_set] != 'G' &&
+                         cfg->key_pattern[key_pattern_set] != 'Z' &&
                          cfg->key_pattern[key_pattern_set] != 'P') ||
                         (cfg->key_pattern[key_pattern_get] != 'R' &&
                          cfg->key_pattern[key_pattern_get] != 'S' &&
                          cfg->key_pattern[key_pattern_get] != 'G' &&
+                         cfg->key_pattern[key_pattern_get] != 'Z' &&
                          cfg->key_pattern[key_pattern_get] != 'P')) {
-                        fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P]:[S/R/G/P].\n");
+                        fprintf(stderr, "error: key-pattern must be in the format of [S/R/G/P/Z]:[S/R/G/P/Z].\n");
                         return -1;
                     }
 
@@ -1047,12 +1060,16 @@ void usage() {
             "      --key-pattern=PATTERN      Set:Get pattern (default: R:R)\n"
             "                                 G for Gaussian distribution.\n"
             "                                 R for uniform Random.\n"
+            "                                 Z for zipf distribution (will limit keys to positive).\n"
             "                                 S for Sequential.\n"
             "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "      --key-stddev               The standard deviation used in the Gaussian distribution\n"
             "                                 (default is key range / 6)\n"
             "      --key-median               The median point used in the Gaussian distribution\n"
             "                                 (default is the center of the key range)\n"
+            "      --key-zipf-exp             The exponent used in the zipf distribution, limit to (0, 5)\n"
+            "                                 Higher exponents result in higher concentration in top keys\n"
+            "                                 (default is 1, though any number >2 seems insane)\n"
             "\n"
             "WAIT Options:\n"
             "      --wait-ratio=RATIO         Set:Wait ratio (default is no WAIT commands - 1:0)\n"
@@ -1611,6 +1628,13 @@ int main(int argc, char *argv[])
         obj_gen->set_key_distribution(cfg.key_stddev, cfg.key_median);
     }
     obj_gen->set_expiry_range(cfg.expiry_range.min, cfg.expiry_range.max);
+    if (cfg.key_pattern[key_pattern_set] == 'Z' || cfg.key_pattern[key_pattern_get] == 'Z') {
+        if (cfg.key_zipf_exp == 0.0) {
+            // user can't specify 0.0, so 0.0 means unset
+            cfg.key_zipf_exp = 1.0;
+        }
+        obj_gen->set_key_zipf_distribution(cfg.key_zipf_exp);
+    }
 
     // Prepare output file
     FILE *outfile;

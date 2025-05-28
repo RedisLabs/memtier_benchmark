@@ -209,6 +209,7 @@ Key ID maximum value (default: 10000000)
 \fB\-\-key\-pattern\fR=\fI\,PATTERN\/\fR
 Set:Get pattern (default: R:R)
 G for Gaussian distribution.
+Z for Zipfian distribution (will limit keys to positive).
 R for uniform Random.
 S for Sequential.
 P for Parallel (Sequential were each client has a subset of the key\-range).
@@ -220,6 +221,10 @@ The standard deviation used in the Gaussian distribution
 \fB\-\-key\-median\fR
 The median point used in the Gaussian distribution
 (default is the center of the key range)
+.TP
+\fB\-\-key\-zipf\-exp\fR
+The exponent used in the zipf distribution, limit to (0, 5)
+(default is 1, though any number >2 seems insane)\n
 .SS "WAIT Options:"
 .TP
 \fB\-\-wait\-ratio\fR=\fI\,RATIO\/\fR

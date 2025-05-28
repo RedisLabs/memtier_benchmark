@@ -150,6 +150,14 @@ object_generator::object_generator(size_t n_key_iterators/*= OBJECT_GENERATOR_KE
     m_key_max(0),
     m_key_stddev(0),
     m_key_median(0),
+    m_key_zipf_min(0),
+    m_key_zipf_max(0),
+    m_key_zipf_exp(1),
+    m_key_zipf_1mexp(0),
+    m_key_zipf_1mexpInv(0),
+    m_key_zipf_Hmin(0),
+    m_key_zipf_Hmax(0),
+    m_key_zipf_s(0),
     m_value_buffer(NULL),
     m_random_fd(-1),
     m_value_buffer_size(0),
@@ -172,6 +180,14 @@ object_generator::object_generator(const object_generator& copy) :
     m_key_max(copy.m_key_max),
     m_key_stddev(copy.m_key_stddev),
     m_key_median(copy.m_key_median),
+    m_key_zipf_min(copy.m_key_zipf_min),
+    m_key_zipf_max(copy.m_key_zipf_max),
+    m_key_zipf_exp(copy.m_key_zipf_exp),
+    m_key_zipf_1mexp(copy.m_key_zipf_1mexp),
+    m_key_zipf_1mexpInv(copy.m_key_zipf_1mexpInv),
+    m_key_zipf_Hmin(copy.m_key_zipf_Hmin),
+    m_key_zipf_Hmax(copy.m_key_zipf_Hmax),
+    m_key_zipf_s(copy.m_key_zipf_s),
     m_value_buffer(NULL),
     m_random_fd(-1),
     m_value_buffer_size(0),
@@ -348,6 +364,47 @@ void object_generator::set_key_distribution(double key_stddev, double key_median
     m_key_median = key_median;
 }
 
+// should be called after set_key_range in memtier_benchmark.cpp
+void object_generator::set_key_zipf_distribution(double key_exp)
+{
+    const double eps = 1e-4;
+
+    if (key_exp < eps)
+        m_key_zipf_exp = 0.;
+    else if (fabs(key_exp - 1) < eps)
+        m_key_zipf_exp = 1.;
+    else
+        m_key_zipf_exp = key_exp;
+
+    if (m_key_min == 0)
+        m_key_zipf_min = 1;
+    else
+        m_key_zipf_min = m_key_min;
+
+    if (m_key_max <= m_key_zipf_min)
+        m_key_zipf_max = m_key_zipf_min;
+    else
+        m_key_zipf_max = m_key_max;
+
+    if (m_key_zipf_exp < eps)
+        return; // degenerated to uniform distribution
+    else if (fabs(key_exp - 1) < eps) {
+        m_key_zipf_Hmin = log(m_key_zipf_min + 0.5) - 1. / m_key_zipf_min;
+        m_key_zipf_Hmax = log(m_key_zipf_max + 0.5);
+        double t = log(m_key_zipf_min + 1.5) - 1. / (m_key_zipf_min + 1);
+        m_key_zipf_s = m_key_zipf_min + 1 - exp(t);
+    } else {
+        m_key_zipf_1mexp = 1. - m_key_zipf_exp;
+        m_key_zipf_1mexpInv = 1. / m_key_zipf_1mexp;
+        m_key_zipf_Hmin = pow(m_key_zipf_min + 0.5, m_key_zipf_1mexp) - 
+            m_key_zipf_1mexp * pow(m_key_zipf_min, -m_key_zipf_exp);
+        m_key_zipf_Hmax = pow(m_key_zipf_max + 0.5, m_key_zipf_1mexp);
+        double t = pow(m_key_zipf_min + 1.5, m_key_zipf_1mexp) - 
+            m_key_zipf_1mexp * pow(m_key_zipf_min + 1, -m_key_zipf_exp);
+        m_key_zipf_s = m_key_zipf_min + 1 - pow(t, m_key_zipf_1mexpInv);
+    }
+}
+
 // return a random number between r_min and r_max
 unsigned long long object_generator::random_range(unsigned long long r_min, unsigned long long  r_max)
 {
@@ -361,15 +418,62 @@ unsigned long long object_generator::normal_distribution(unsigned long long r_mi
     return m_random.gaussian_distribution_range(r_stddev, r_median, r_min, r_max);
 }
 
+// following sampler is based on:
+// Rejection-inversion to generate variates from monotone discrete distributions
+// ACM Transactions on Modeling and Computer Simulation.
+// Volume 6 Issue 3 July 1996 pp 169–184
+// https://doi.org/10.1145/235025.235029
+unsigned long long object_generator::zipf_distribution()
+{
+    const double eps = 1e-4;
+
+    if (m_key_zipf_exp < eps)
+        return random_range(m_key_zipf_min, m_key_zipf_max);
+    else if (fabs(m_key_zipf_exp - 1.0) < eps) {
+        while (true) {
+            double p = m_random.get_random() / (double)(m_random.get_random_max());
+            double u = p * (m_key_zipf_Hmax - m_key_zipf_Hmin) + m_key_zipf_Hmin;
+            double x = exp(u);
+            if (x < m_key_zipf_min - 0.5)
+                x = m_key_zipf_min + 0.5;
+            if (x >= m_key_zipf_max + 0.5)
+                x = m_key_zipf_max;
+            double k = floor(x + 0.5);
+            if (k - x <= m_key_zipf_s)
+                return k;
+            if (u > log(k + 0.5) - 1. / k)
+                return k;
+        }
+    } else {
+        while (true) {
+            double p = m_random.get_random() / (double)(m_random.get_random_max());
+            double u = p * (m_key_zipf_Hmax - m_key_zipf_Hmin) + m_key_zipf_Hmin;
+            double x = pow(u, m_key_zipf_1mexpInv);
+            if (x < m_key_zipf_min - 0.5)
+                x = m_key_zipf_min + 0.5;
+            if (x >= m_key_zipf_max + 0.5)
+                x = m_key_zipf_max;
+            double k = floor(x + 0.5);
+            if (k - x <= m_key_zipf_s)
+                return k;
+            double t = (u - pow(k + 0.5, m_key_zipf_1mexp));
+            if (m_key_zipf_1mexpInv * t > -pow(k, -m_key_zipf_exp))
+                return k;
+        }
+    }
+}
+
 unsigned long long object_generator::get_key_index(int iter)
 {
-    assert(iter < static_cast<int>(m_next_key.size()) && iter >= OBJECT_GENERATOR_KEY_GAUSSIAN);
+    assert(iter < static_cast<int>(m_next_key.size()) && iter >= OBJECT_GENERATOR_KEY_ZIPFIAN);
 
     unsigned long long k;
     if (iter==OBJECT_GENERATOR_KEY_RANDOM) {
         k = random_range(m_key_min, m_key_max);
     } else if(iter==OBJECT_GENERATOR_KEY_GAUSSIAN) {
         k = normal_distribution(m_key_min, m_key_max, m_key_stddev, m_key_median);
+    } else if(iter == OBJECT_GENERATOR_KEY_ZIPFIAN) {
+        k = zipf_distribution();
     } else {
         if (m_next_key[iter] < m_key_min)
             m_next_key[iter] = m_key_min;
