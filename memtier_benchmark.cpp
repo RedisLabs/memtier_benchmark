@@ -1068,6 +1068,7 @@ void usage() {
             "      --key-median               The median point used in the Gaussian distribution\n"
             "                                 (default is the center of the key range)\n"
             "      --key-zipf-exp             The exponent used in the zipf distribution, limit to (0, 5)\n"
+            "                                 Higher exponents result in higher concentration in top keys\n"
             "                                 (default is 1, though any number >2 seems insane)\n"
             "\n"
             "WAIT Options:\n"
