@@ -112,6 +112,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
     fprintf(file,
         "server = %s\n"
         "port = %u\n"
+        "uri = %s\n"
         "unix socket = %s\n"
         "address family = %s\n"
         "protocol = %s\n"
@@ -163,6 +164,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "print-all-runs = %s\n",
         cfg->server,
         cfg->port,
+        cfg->uri ? cfg->uri : "",
         cfg->unix_socket,
         cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6",
         get_protocol_name(cfg->protocol),
@@ -222,6 +224,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
 
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
+    jsonhandler->write_obj("uri"               ,"\"%s\"",      	cfg->uri ? cfg->uri : "");
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
     jsonhandler->write_obj("address family"    ,"\"%s\"",      	cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6");
     jsonhandler->write_obj("protocol"          ,"\"%s\"",      	get_protocol_name(cfg->protocol));
@@ -273,6 +276,123 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("print-all-runs"   ,"\"%s\"",       cfg->print_all_runs ? "true" : "false");
 
     jsonhandler->close_nesting();
+}
+
+// Parse URI and populate config fields
+// Returns 0 on success, -1 on error
+static int parse_uri(const char *uri, struct benchmark_config *cfg)
+{
+    if (!uri || strlen(uri) == 0) {
+        fprintf(stderr, "error: empty URI provided.\n");
+        return -1;
+    }
+
+    // Make a copy to work with
+    char *uri_copy = strdup(uri);
+    if (!uri_copy) {
+        fprintf(stderr, "error: memory allocation failed.\n");
+        return -1;
+    }
+
+    char *ptr = uri_copy;
+
+    // Parse scheme
+    char *scheme_end = strstr(ptr, "://");
+    if (!scheme_end) {
+        fprintf(stderr, "error: invalid URI format, missing scheme.\n");
+        free(uri_copy);
+        return -1;
+    }
+
+    *scheme_end = '\0';
+    if (strcmp(ptr, "redis") == 0) {
+        // Regular Redis connection
+    } else if (strcmp(ptr, "rediss") == 0) {
+#ifdef USE_TLS
+        cfg->tls = true;
+#else
+        fprintf(stderr, "error: TLS not supported in this build.\n");
+        free(uri_copy);
+        return -1;
+#endif
+    } else {
+        fprintf(stderr, "error: unsupported URI scheme '%s'. Use 'redis' or 'rediss'.\n", ptr);
+        free(uri_copy);
+        return -1;
+    }
+
+    ptr = scheme_end + 3; // Skip "://"
+
+    // Parse user:password@host:port/db
+    char *auth_end = strchr(ptr, '@');
+    char *host_start = ptr;
+
+    if (auth_end) {
+        // Authentication present
+        *auth_end = '\0';
+        char *colon = strchr(ptr, ':');
+        if (colon) {
+            // user:password format
+            *colon = '\0';
+            char *user = ptr;
+            char *password = colon + 1;
+
+            // Combine as user:password for authenticate field
+            int auth_len = strlen(user) + strlen(password) + 2;
+            char *auth_str = (char*)malloc(auth_len);
+            if (!auth_str) {
+                fprintf(stderr, "error: memory allocation failed.\n");
+                free(uri_copy);
+                return -1;
+            }
+            snprintf(auth_str, auth_len, "%s:%s", user, password);
+            cfg->authenticate = auth_str;
+        } else {
+            // Just password (default user)
+            cfg->authenticate = strdup(ptr);
+        }
+        host_start = auth_end + 1;
+    }
+
+    // Parse host:port/db
+    char *db_start = strchr(host_start, '/');
+    if (db_start) {
+        *db_start = '\0';
+        db_start++;
+        if (strlen(db_start) > 0) {
+            char *endptr;
+            int db = (int)strtol(db_start, &endptr, 10);
+            if (*endptr != '\0' || db < 0) {
+                fprintf(stderr, "error: invalid database number '%s'.\n", db_start);
+                free(uri_copy);
+                return -1;
+            }
+            cfg->select_db = db;
+        }
+    }
+
+    // Parse host:port
+    char *port_start = strchr(host_start, ':');
+    if (port_start) {
+        *port_start = '\0';
+        port_start++;
+        char *endptr;
+        unsigned long port = strtoul(port_start, &endptr, 10);
+        if (*endptr != '\0' || port == 0 || port > 65535) {
+            fprintf(stderr, "error: invalid port number '%s'.\n", port_start);
+            free(uri_copy);
+            return -1;
+        }
+        cfg->port = (unsigned short)port;
+    }
+
+    // Set host
+    if (strlen(host_start) > 0) {
+        cfg->server = strdup(host_start);
+    }
+
+    free(uri_copy);
+    return 0;
 }
 
 static void config_init_defaults(struct benchmark_config *cfg)
@@ -434,6 +554,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_protocols,
         o_hdr_file_prefix,
         o_rate_limiting,
+        o_uri,
         o_help
     };
 
@@ -505,6 +626,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "command-key-pattern",        1, 0, o_command_key_pattern },
         { "command-ratio",              1, 0, o_command_ratio },
         { "rate-limiting",              1, 0, o_rate_limiting },
+        { "uri",                        1, 0, o_uri },
         { NULL,                         0, 0, 0 }
     };
 
@@ -512,7 +634,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     int c;
     char *endptr;
     while ((c = getopt_long(argc, argv,
-                "vs:S:p:P:o:x:DRn:c:t:d:a:h:46", long_options, &option_index)) != -1)
+                "vs:S:p:P:o:x:DRn:c:t:d:a:h:46u:", long_options, &option_index)) != -1)
     {
         switch (c) {
                 case o_help:
@@ -813,6 +935,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'a':
                     cfg->authenticate = optarg;
                     break;
+                case 'u':
+                case o_uri:
+                    cfg->uri = optarg;
+                    break;
                 case o_select_db:
                     cfg->select_db = (int) strtoul(optarg, &endptr, 10);
                     if (cfg->select_db < 0 || !endptr || *endptr != '\0') {
@@ -980,6 +1106,10 @@ void usage() {
             "                                 and Redis <= 5.x. <USER>:<PASSWORD> can be\n"
             "                                 specified for memcache_binary or Redis 6.x\n"
             "                                 or newer with ACL user support.\n"
+            "  -u, --uri=URI                  Server URI on format redis://user:password@host:port/dbnum\n"
+            "                                 User, password and dbnum are optional. For authentication\n"
+            "                                 without a username, use username 'default'. For TLS, use\n"
+            "                                 the scheme 'rediss'.\n"
 #ifdef USE_TLS
             "      --tls                      Enable SSL/TLS transport security\n"
             "      --cert=FILE                Use specified client certificate for TLS\n"
@@ -1366,6 +1496,38 @@ int main(int argc, char *argv[])
 
     if (config_parse_args(argc, argv, &cfg) < 0) {
         usage();
+    }
+
+    // Process URI if provided
+    if (cfg.uri) {
+        // Check for conflicts with individual connection parameters
+        bool has_conflicts = false;
+        if (cfg.server && strcmp(cfg.server, "localhost") != 0) {
+            fprintf(stderr, "warning: both URI and --host/--server specified, URI takes precedence.\n");
+            has_conflicts = true;
+        }
+        if (cfg.port && cfg.port != 6379) {
+            fprintf(stderr, "warning: both URI and --port specified, URI takes precedence.\n");
+            has_conflicts = true;
+        }
+        if (cfg.authenticate) {
+            fprintf(stderr, "warning: both URI and --authenticate specified, URI takes precedence.\n");
+            has_conflicts = true;
+        }
+        if (cfg.select_db) {
+            fprintf(stderr, "warning: both URI and --select-db specified, URI takes precedence.\n");
+            has_conflicts = true;
+        }
+#ifdef USE_TLS
+        if (cfg.tls) {
+            fprintf(stderr, "warning: both URI and --tls specified, URI takes precedence.\n");
+            has_conflicts = true;
+        }
+#endif
+
+        if (parse_uri(cfg.uri, &cfg) < 0) {
+            exit(1);
+        }
     }
 
     config_init_defaults(&cfg);
