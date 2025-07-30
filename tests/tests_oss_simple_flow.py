@@ -773,7 +773,7 @@ def test_uri_connection(env):
         return
 
     host = master_node.get('host', 'localhost')
-    port = master_node.get('port', 6379)
+    port = str(master_node.get('port', 6379))
 
     # Test basic redis:// URI
     uri = f"redis://{host}:{port}"
@@ -795,7 +795,7 @@ def test_uri_connection(env):
     debugPrintMemtierOnError(config, env)
 
     # Verify the benchmark ran successfully
-    env.assertTrue(memtier_ok, "URI connection test failed")
+    env.assertTrue(memtier_ok)
 
     # Test URI with database selection
     uri_with_db = f"redis://{host}:{port}/1"
@@ -817,4 +817,68 @@ def test_uri_connection(env):
     debugPrintMemtierOnError(config, env)
 
     # Verify the benchmark ran successfully
-    env.assertTrue(memtier_ok, "URI with database selection test failed")
+    env.assertTrue(memtier_ok)
+
+
+def test_uri_connection_negative(env):
+    """Test URI-based connection functionality with invalid URIs"""
+
+    # Test invalid scheme
+    benchmark_specs = {"name": env.testName, "args": ['--uri=invalid://localhost:6379', '--requests=1']}
+    config = get_default_memtier_config(threads=1, clients=1, requests=1)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() should return False for invalid URI
+    memtier_ok = benchmark.run()
+    env.assertFalse(memtier_ok)
+
+    # Test malformed URI (missing scheme)
+    benchmark_specs = {"name": env.testName, "args": ['--uri=not-a-uri', '--requests=1']}
+    config = get_default_memtier_config(threads=1, clients=1, requests=1)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() should return False for malformed URI
+    memtier_ok = benchmark.run()
+    env.assertFalse(memtier_ok)
+
+    # Test invalid port number
+    benchmark_specs = {"name": env.testName, "args": ['--uri=redis://localhost:99999', '--requests=1']}
+    config = get_default_memtier_config(threads=1, clients=1, requests=1)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() should return False for invalid port
+    memtier_ok = benchmark.run()
+    env.assertFalse(memtier_ok)
+
+    # Test invalid database number
+    benchmark_specs = {"name": env.testName, "args": ['--uri=redis://localhost:6379/invalid', '--requests=1']}
+    config = get_default_memtier_config(threads=1, clients=1, requests=1)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() should return False for invalid database number
+    memtier_ok = benchmark.run()
+    env.assertFalse(memtier_ok)

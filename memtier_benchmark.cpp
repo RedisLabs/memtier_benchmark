@@ -1501,27 +1501,21 @@ int main(int argc, char *argv[])
     // Process URI if provided
     if (cfg.uri) {
         // Check for conflicts with individual connection parameters
-        bool has_conflicts = false;
         if (cfg.server && strcmp(cfg.server, "localhost") != 0) {
             fprintf(stderr, "warning: both URI and --host/--server specified, URI takes precedence.\n");
-            has_conflicts = true;
         }
         if (cfg.port && cfg.port != 6379) {
             fprintf(stderr, "warning: both URI and --port specified, URI takes precedence.\n");
-            has_conflicts = true;
         }
         if (cfg.authenticate) {
             fprintf(stderr, "warning: both URI and --authenticate specified, URI takes precedence.\n");
-            has_conflicts = true;
         }
         if (cfg.select_db) {
             fprintf(stderr, "warning: both URI and --select-db specified, URI takes precedence.\n");
-            has_conflicts = true;
         }
 #ifdef USE_TLS
         if (cfg.tls) {
             fprintf(stderr, "warning: both URI and --tls specified, URI takes precedence.\n");
-            has_conflicts = true;
         }
 #endif
 
