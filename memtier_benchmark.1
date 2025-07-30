@@ -38,6 +38,12 @@ and Redis <= 5.x. <USER>:<PASSWORD> can be
 specified for memcache_binary or Redis 6.x
 or newer with ACL user support.
 .TP
+\fB\-u\fR, \fB\-\-uri\fR=\fI\,URI\/\fR
+Server URI on format redis://user:password@host:port/dbnum
+User, password and dbnum are optional. For authentication
+without a username, use username 'default'. For TLS, use
+the scheme 'rediss'.
+.TP
 \fB\-\-tls\fR
 Enable SSL/TLS transport security
 .TP
