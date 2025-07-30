@@ -1522,6 +1522,12 @@ int main(int argc, char *argv[])
         if (parse_uri(cfg.uri, &cfg) < 0) {
             exit(1);
         }
+
+        // Validate cluster mode constraints
+        if (cfg.cluster_mode && cfg.select_db > 0) {
+            fprintf(stderr, "error: database selection not supported in cluster mode. Redis Cluster only supports database 0.\n");
+            exit(1);
+        }
     }
 
     config_init_defaults(&cfg);

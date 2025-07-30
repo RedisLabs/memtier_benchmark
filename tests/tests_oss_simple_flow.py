@@ -762,8 +762,8 @@ def test_valid_json_using_debug_command(env):
                     env.assertTrue(metric_value >= 0.0)
 
 
-def test_uri_connection(env):
-    """Test URI-based connection functionality"""
+def test_uri_basic_connection(env):
+    """Test basic URI connection functionality"""
     master_nodes_list = env.getMasterNodesList()
     master_node = master_nodes_list[0]
 
@@ -797,6 +797,24 @@ def test_uri_connection(env):
     # Verify the benchmark ran successfully
     env.assertTrue(memtier_ok)
 
+
+def test_uri_with_database_selection(env):
+    """Test URI with database selection functionality"""
+    master_nodes_list = env.getMasterNodesList()
+    master_node = master_nodes_list[0]
+
+    # Build URI based on environment
+    if env.isUnixSocket():
+        # Skip URI test for Unix sockets as they don't use host:port
+        return
+
+    # Skip database selection test in cluster mode (only supports DB 0)
+    if env.isCluster():
+        return
+
+    host = master_node.get('host', 'localhost')
+    port = str(master_node.get('port', 6379))
+
     # Test URI with database selection
     uri_with_db = f"redis://{host}:{port}/1"
     benchmark_specs = {"name": env.testName, "args": [f'--uri={uri_with_db}', '--requests=50']}
@@ -820,9 +838,8 @@ def test_uri_connection(env):
     env.assertTrue(memtier_ok)
 
 
-def test_uri_connection_negative(env):
-    """Test URI-based connection functionality with invalid URIs"""
-
+def test_uri_invalid_scheme(env):
+    """Test URI with invalid scheme"""
     # Test invalid scheme
     benchmark_specs = {"name": env.testName, "args": ['--uri=invalid://localhost:6379', '--requests=1']}
     config = get_default_memtier_config(threads=1, clients=1, requests=1)
@@ -838,6 +855,9 @@ def test_uri_connection_negative(env):
     memtier_ok = benchmark.run()
     env.assertFalse(memtier_ok)
 
+
+def test_uri_malformed(env):
+    """Test malformed URI (missing scheme)"""
     # Test malformed URI (missing scheme)
     benchmark_specs = {"name": env.testName, "args": ['--uri=not-a-uri', '--requests=1']}
     config = get_default_memtier_config(threads=1, clients=1, requests=1)
@@ -853,6 +873,9 @@ def test_uri_connection_negative(env):
     memtier_ok = benchmark.run()
     env.assertFalse(memtier_ok)
 
+
+def test_uri_invalid_port(env):
+    """Test URI with invalid port number"""
     # Test invalid port number
     benchmark_specs = {"name": env.testName, "args": ['--uri=redis://localhost:99999', '--requests=1']}
     config = get_default_memtier_config(threads=1, clients=1, requests=1)
@@ -868,6 +891,9 @@ def test_uri_connection_negative(env):
     memtier_ok = benchmark.run()
     env.assertFalse(memtier_ok)
 
+
+def test_uri_invalid_database(env):
+    """Test URI with invalid database number"""
     # Test invalid database number
     benchmark_specs = {"name": env.testName, "args": ['--uri=redis://localhost:6379/invalid', '--requests=1']}
     config = get_default_memtier_config(threads=1, clients=1, requests=1)
