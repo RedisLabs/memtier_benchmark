@@ -10,12 +10,12 @@ memtier_benchmark is a command line utility developed by [Redis](https://redis.i
 * Support for both Redis and Memcache protocols (text and binary)
 * Multi-threaded multi-client execution
 * Multiple configuration options, including:
- * Read:Write ratio
- * Random and sequential key name pattern policies
- * Random or ranged key expiration
- * Redis cluster
- * TLS support
- * ...and much more
+    * Read:Write ratio
+    * Random and sequential key name pattern policies
+    * Random or ranged key expiration
+    * Redis cluster
+    * TLS support
+    * ...and much more
 
 Read more at:
 
@@ -43,6 +43,14 @@ Once configured, to install memtier_benchmark use:
 
 ```
 sudo apt-get install memtier-benchmark
+```
+
+### Installing on MacOS
+
+To install memtier_benchmark on MacOS, use Homebrew:
+
+```
+brew install memtier_benchmark
 ```
 
 ### Installing from source
