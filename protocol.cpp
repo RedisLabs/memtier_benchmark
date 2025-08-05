@@ -123,48 +123,37 @@ unsigned int protocol_response::get_hits(void)
     return m_hits;
 }
 
-bool protocol_response::is_cache_miss_for_command(const std::string& command_name)
+bool protocol_response::is_cache_miss()
 {
-    // Commands that should track cache misses when they return empty/null results
+    // Protocol-based miss detection - works for ALL Redis commands
+    // Based on Redis protocol response patterns, not specific commands
 
-    // Hash commands
-    if (command_name == "HGET" || command_name == "HGETALL" || command_name == "HMGET" ||
-        command_name == "HKEYS" || command_name == "HVALS" || command_name == "HEXISTS") {
+    if (!m_status) return false; // No status means no response yet
 
-        // For bulk string responses ($-1 = null, $0 = empty but exists)
-        // For array responses (*-1 = null, *0 = empty array = miss for HGETALL/HKEYS/HVALS)
-        // For integer responses (:0 = miss for HEXISTS)
-        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 (null bulk)
-        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 (empty array)
-        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 (zero integer)
+    // Check Redis protocol response types that indicate "empty" or "not found"
+    switch (m_status[0]) {
+        case '$': // Bulk string response
+            // $-1 = null bulk string (key doesn't exist)
+            if (m_status[1] == '-') return true;
+            // $0 = empty string (key exists but empty) - this is a HIT, not a miss
+            return false;
+
+        case '*': // Array response
+            // *-1 = null array (shouldn't happen in practice)
+            // *0 = empty array (no elements found) - typically a miss
+            if (m_status[1] == '-' || m_status[1] == '0') return true;
+            return false;
+
+        case ':': // Integer response
+            // :0 = zero (count/length is zero) - typically a miss
+            if (m_status[1] == '0') return true;
+            return false;
+
+        case '+': // Simple string (OK, etc.) - not a miss
+        case '-': // Error response - not a miss
+        default:
+            return false;
     }
-
-    // List commands
-    else if (command_name == "LLEN" || command_name == "LINDEX" || command_name == "LRANGE") {
-        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 for LLEN
-        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 for LINDEX
-        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 for LRANGE
-    }
-
-    // Set commands
-    else if (command_name == "SCARD" || command_name == "SMEMBERS" || command_name == "SISMEMBER") {
-        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 for SCARD/SISMEMBER
-        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 for SMEMBERS
-    }
-
-    // Sorted set commands
-    else if (command_name == "ZCARD" || command_name == "ZRANGE" || command_name == "ZSCORE") {
-        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 for ZCARD
-        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 for ZRANGE
-        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 for ZSCORE
-    }
-
-    // String commands (MGET handled separately due to multiple keys)
-    else if (command_name == "GET") {
-        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 (null bulk)
-    }
-
-    return false; // Not a miss
 }
 
 void protocol_response::clear(void)

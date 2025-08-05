@@ -136,8 +136,8 @@ public:
     void incr_hits(void);
     unsigned int get_hits(void);
 
-    // Check if response indicates a cache miss for arbitrary commands
-    bool is_cache_miss_for_command(const std::string& command_name);
+    // Check if response indicates a cache miss based on Redis protocol patterns
+    bool is_cache_miss();
 
     void clear();
 

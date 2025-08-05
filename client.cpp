@@ -505,13 +505,13 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp,
         case rt_arbitrary: {
             arbitrary_request *ar = static_cast<arbitrary_request *>(request);
 
-            // Detect cache misses for arbitrary commands
+            // Detect cache misses for arbitrary commands based on protocol response
             const arbitrary_command& cmd = get_arbitrary_command(ar->index);
             unsigned int hits = 0;
             unsigned int misses = 0;
 
             if (cmd.keys_count > 0) { // Only check for commands that access keys
-                if (response->is_cache_miss_for_command(cmd.command_name)) {
+                if (response->is_cache_miss()) {
                     misses = cmd.keys_count;
                 } else {
                     hits = cmd.keys_count;
