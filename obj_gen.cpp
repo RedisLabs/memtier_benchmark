@@ -82,7 +82,7 @@ unsigned long long random_generator::get_random()
 
     rn = jrand48(m_data_blob);
     llrn |= rn & 0xffffffff; // reset the sign extension bits of negative numbers
-    llrn &= 0x8000000000000000; // avoid any trouble from sign mismatch and negative numbers
+    llrn &= 0x7FFFFFFFFFFFFFFF; // avoid any trouble from sign mismatch and negative numbers
 #else
     #error no random function
 #endif
@@ -150,6 +150,14 @@ object_generator::object_generator(size_t n_key_iterators/*= OBJECT_GENERATOR_KE
     m_key_max(0),
     m_key_stddev(0),
     m_key_median(0),
+    m_key_zipf_min(0),
+    m_key_zipf_max(0),
+    m_key_zipf_exp(1),
+    m_key_zipf_1mexp(0),
+    m_key_zipf_1mexpInv(0),
+    m_key_zipf_Hmin(0),
+    m_key_zipf_Hmax(0),
+    m_key_zipf_s(0),
     m_value_buffer(NULL),
     m_random_fd(-1),
     m_value_buffer_size(0),
@@ -172,6 +180,14 @@ object_generator::object_generator(const object_generator& copy) :
     m_key_max(copy.m_key_max),
     m_key_stddev(copy.m_key_stddev),
     m_key_median(copy.m_key_median),
+    m_key_zipf_min(copy.m_key_zipf_min),
+    m_key_zipf_max(copy.m_key_zipf_max),
+    m_key_zipf_exp(copy.m_key_zipf_exp),
+    m_key_zipf_1mexp(copy.m_key_zipf_1mexp),
+    m_key_zipf_1mexpInv(copy.m_key_zipf_1mexpInv),
+    m_key_zipf_Hmin(copy.m_key_zipf_Hmin),
+    m_key_zipf_Hmax(copy.m_key_zipf_Hmax),
+    m_key_zipf_s(copy.m_key_zipf_s),
     m_value_buffer(NULL),
     m_random_fd(-1),
     m_value_buffer_size(0),
@@ -244,20 +260,20 @@ void object_generator::alloc_value_buffer(void)
             char *d = m_value_buffer;
             int ret;
             int iter = 0;
-
             while (d - m_value_buffer < size) {
                 if (buf1_idx == sizeof(buf1)) {
                     buf1_idx = 0;
                     buf2_idx++;
+
                     if (buf2_idx >= sizeof(buf2)) {
-                        iter++;
-                        if (iter == 20) {
+                        if (iter % 20 == 0) {
                             ret = read(m_random_fd, buf1, sizeof(buf1));
                             assert(ret > -1);
                             ret = read(m_random_fd, buf2, sizeof(buf2));
                             assert(ret > -1);
-                            buf1_idx = buf2_idx = iter = 0;
                         }
+                        buf2_idx = 0;
+                        iter++;
                     }
                 }
                 *d = buf1[buf1_idx] ^ buf2[buf2_idx] ^ iter;
@@ -348,6 +364,47 @@ void object_generator::set_key_distribution(double key_stddev, double key_median
     m_key_median = key_median;
 }
 
+// should be called after set_key_range in memtier_benchmark.cpp
+void object_generator::set_key_zipf_distribution(double key_exp)
+{
+    const double eps = 1e-4;
+
+    if (key_exp < eps)
+        m_key_zipf_exp = 0.;
+    else if (fabs(key_exp - 1) < eps)
+        m_key_zipf_exp = 1.;
+    else
+        m_key_zipf_exp = key_exp;
+
+    if (m_key_min == 0)
+        m_key_zipf_min = 1;
+    else
+        m_key_zipf_min = m_key_min;
+
+    if (m_key_max <= m_key_zipf_min)
+        m_key_zipf_max = m_key_zipf_min;
+    else
+        m_key_zipf_max = m_key_max;
+
+    if (m_key_zipf_exp < eps)
+        return; // degenerated to uniform distribution
+    else if (fabs(key_exp - 1) < eps) {
+        m_key_zipf_Hmin = log(m_key_zipf_min + 0.5) - 1. / m_key_zipf_min;
+        m_key_zipf_Hmax = log(m_key_zipf_max + 0.5);
+        double t = log(m_key_zipf_min + 1.5) - 1. / (m_key_zipf_min + 1);
+        m_key_zipf_s = m_key_zipf_min + 1 - exp(t);
+    } else {
+        m_key_zipf_1mexp = 1. - m_key_zipf_exp;
+        m_key_zipf_1mexpInv = 1. / m_key_zipf_1mexp;
+        m_key_zipf_Hmin = pow(m_key_zipf_min + 0.5, m_key_zipf_1mexp) - 
+            m_key_zipf_1mexp * pow(m_key_zipf_min, -m_key_zipf_exp);
+        m_key_zipf_Hmax = pow(m_key_zipf_max + 0.5, m_key_zipf_1mexp);
+        double t = pow(m_key_zipf_min + 1.5, m_key_zipf_1mexp) - 
+            m_key_zipf_1mexp * pow(m_key_zipf_min + 1, -m_key_zipf_exp);
+        m_key_zipf_s = m_key_zipf_min + 1 - pow(t, m_key_zipf_1mexpInv);
+    }
+}
+
 // return a random number between r_min and r_max
 unsigned long long object_generator::random_range(unsigned long long r_min, unsigned long long  r_max)
 {
@@ -361,15 +418,62 @@ unsigned long long object_generator::normal_distribution(unsigned long long r_mi
     return m_random.gaussian_distribution_range(r_stddev, r_median, r_min, r_max);
 }
 
+// following sampler is based on:
+// Rejection-inversion to generate variates from monotone discrete distributions
+// ACM Transactions on Modeling and Computer Simulation.
+// Volume 6 Issue 3 July 1996 pp 169–184
+// https://doi.org/10.1145/235025.235029
+unsigned long long object_generator::zipf_distribution()
+{
+    const double eps = 1e-4;
+
+    if (m_key_zipf_exp < eps)
+        return random_range(m_key_zipf_min, m_key_zipf_max);
+    else if (fabs(m_key_zipf_exp - 1.0) < eps) {
+        while (true) {
+            double p = m_random.get_random() / (double)(m_random.get_random_max());
+            double u = p * (m_key_zipf_Hmax - m_key_zipf_Hmin) + m_key_zipf_Hmin;
+            double x = exp(u);
+            if (x < m_key_zipf_min - 0.5)
+                x = m_key_zipf_min + 0.5;
+            if (x >= m_key_zipf_max + 0.5)
+                x = m_key_zipf_max;
+            double k = floor(x + 0.5);
+            if (k - x <= m_key_zipf_s)
+                return k;
+            if (u > log(k + 0.5) - 1. / k)
+                return k;
+        }
+    } else {
+        while (true) {
+            double p = m_random.get_random() / (double)(m_random.get_random_max());
+            double u = p * (m_key_zipf_Hmax - m_key_zipf_Hmin) + m_key_zipf_Hmin;
+            double x = pow(u, m_key_zipf_1mexpInv);
+            if (x < m_key_zipf_min - 0.5)
+                x = m_key_zipf_min + 0.5;
+            if (x >= m_key_zipf_max + 0.5)
+                x = m_key_zipf_max;
+            double k = floor(x + 0.5);
+            if (k - x <= m_key_zipf_s)
+                return k;
+            double t = (u - pow(k + 0.5, m_key_zipf_1mexp));
+            if (m_key_zipf_1mexpInv * t > -pow(k, -m_key_zipf_exp))
+                return k;
+        }
+    }
+}
+
 unsigned long long object_generator::get_key_index(int iter)
 {
-    assert(iter < static_cast<int>(m_next_key.size()) && iter >= OBJECT_GENERATOR_KEY_GAUSSIAN);
+    assert(iter < static_cast<int>(m_next_key.size()) && iter >= OBJECT_GENERATOR_KEY_ZIPFIAN);
 
     unsigned long long k;
     if (iter==OBJECT_GENERATOR_KEY_RANDOM) {
         k = random_range(m_key_min, m_key_max);
     } else if(iter==OBJECT_GENERATOR_KEY_GAUSSIAN) {
         k = normal_distribution(m_key_min, m_key_max, m_key_stddev, m_key_median);
+    } else if(iter == OBJECT_GENERATOR_KEY_ZIPFIAN) {
+        k = zipf_distribution();
     } else {
         if (m_next_key[iter] < m_key_min)
             m_next_key[iter] = m_key_min;
@@ -382,37 +486,9 @@ unsigned long long object_generator::get_key_index(int iter)
     return k;
 }
 
-const char* object_generator::get_key(int iter, unsigned int *len)
-{
-    unsigned int l;
-    m_key_index = get_key_index(iter);
-
-    // format key
-    l = snprintf(m_key_buffer, sizeof(m_key_buffer)-1,
-        "%s%llu", m_key_prefix, m_key_index);
-    if (len != NULL) *len = l;
-
-    return m_key_buffer;
-}
-
-data_object* object_generator::get_object(int iter)
-{
-    // compute key
-    (void) get_key(iter, NULL);
-
-    // compute value
-    unsigned int new_size = 0;
-    get_value(m_key_index, &new_size);
-
-    // compute expiry
-    unsigned int expiry = get_expiry();
-
-    // set object
-    m_object.set_key(m_key_buffer, strlen(m_key_buffer));
-    m_object.set_value(m_value_buffer, new_size);
-    m_object.set_expiry(expiry);
-
-    return &m_object;
+void object_generator::generate_key(unsigned long long key_index) {
+    m_key_len = snprintf(m_key_buffer, sizeof(m_key_buffer)-1, "%s%llu", m_key_prefix, key_index);
+    m_key = m_key_buffer;
 }
 
 const char* object_generator::get_key_prefix() {
@@ -461,67 +537,6 @@ unsigned int object_generator::get_expiry() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-data_object::data_object() :
-    m_key(NULL), m_key_len(0),
-    m_value(NULL), m_value_len(0),
-    m_expiry(0)
-{
-}
-
-data_object::~data_object()
-{
-    clear();
-}
-
-void data_object::clear(void)
-{
-    m_key = NULL;
-    m_key_len = 0;
-    m_value = NULL;
-    m_value_len = 0;
-    m_expiry = 0;
-}
-
-void data_object::set_key(const char* key, unsigned int key_len)
-{
-    m_key = key;
-    m_key_len = key_len;
-}
-
-const char* data_object::get_key(unsigned int* key_len)
-{
-    assert(key_len != NULL);
-    *key_len = m_key_len;
-
-    return m_key;
-}
-
-void data_object::set_value(const char* value, unsigned int value_len)
-{
-    m_value = value;
-    m_value_len = value_len;
-}
-
-const char* data_object::get_value(unsigned int *value_len)
-{
-    assert(value_len != NULL);
-    *value_len = m_value_len;
-
-    return m_value;
-}
-
-void data_object::set_expiry(unsigned int expiry)
-{
-    m_expiry = expiry;
-}
-
-unsigned int data_object::get_expiry(void)
-{
-    return m_expiry;
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 imported_keylist::imported_keylist(const char *filename)
     : m_filename(filename)
 {
@@ -529,10 +544,10 @@ imported_keylist::imported_keylist(const char *filename)
 
 imported_keylist::~imported_keylist()
 {
-    while (!m_keys.empty()) {
-        free(m_keys.front());
-        m_keys.erase(m_keys.begin());
+    for (unsigned int i = 0; i < m_keys.size(); i++) {
+        free(m_keys[i]);
     }
+    m_keys.clear();
 }
 
 bool imported_keylist::read_keys(void)
@@ -623,18 +638,8 @@ import_object_generator* import_object_generator::clone(void)
     return new import_object_generator(*this);
 }
 
-const char* import_object_generator::get_key(int iter, unsigned int *len)
-{
-    if (m_keys == NULL) {
-        return object_generator::get_key(iter, len);
-    } else {
-        unsigned int k = get_key_index(iter) - 1;
-        return m_keys->get(k, len);
-    }
-}
-
-data_object* import_object_generator::get_object(int iter)
-{
+void import_object_generator::read_next_item() {
+    /* Used by SET command to read an item that includes  KEY, VALUE, EXPIRE */
     memcache_item *i = m_reader.read_item();
 
     if (i == NULL && m_reader.is_eof()) {
@@ -648,26 +653,34 @@ data_object* import_object_generator::get_object(int iter)
     }
     m_cur_item = i;
 
-    m_object.set_value(m_cur_item->get_data(), m_cur_item->get_nbytes() - 2);
-    if (m_keys != NULL) {
-        m_object.set_key(m_cur_item->get_key(), m_cur_item->get_nkey());
-    } else {
-        unsigned int tmplen;
-        const char *tmpkey = object_generator::get_key(iter, &tmplen);
-        m_object.set_key(tmpkey, tmplen);
-    }
+    m_key = m_cur_item->get_key();
+    m_key_len = m_cur_item->get_nkey();
+}
+
+void import_object_generator::read_next_key(unsigned long long key_index) {
+    /* Used by GET command that needs only a KEY */
+    m_key = m_keys->get(key_index-1, (unsigned int *)&m_key_len);
+}
+
+const char* import_object_generator::get_value(unsigned long long key_index, unsigned int *len) {
+    assert(m_cur_item != NULL);
+
+    *len = m_cur_item->get_nbytes() - 2;
+    return m_cur_item->get_data();
+}
+
+unsigned int import_object_generator::get_expiry() {
+    assert(m_cur_item != NULL);
 
     // compute expiry
-    int expiry = 0;
+    unsigned int expiry = 0;
     if (!m_no_expiry) {
         if (m_expiry_max > 0) {
             expiry = random_range(m_expiry_min, m_expiry_max);
         } else {
             expiry = m_cur_item->get_exptime();
         }
-        m_object.set_expiry(expiry);
     }
 
-    return &m_object;
+    return expiry;
 }
-

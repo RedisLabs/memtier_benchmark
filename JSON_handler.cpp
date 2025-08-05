@@ -22,7 +22,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-
+#include <cmath>  // For std::isnan
 #include "JSON_handler.h"
 
 
@@ -71,7 +71,39 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
     fprintf(m_json_file, "\"%s\": ", objectname);
     va_list argptr;
     va_start(argptr, format);
-    vfprintf(m_json_file, format, argptr);
+    // Check if format includes "%s", indicating a string is expected
+    if (strstr(format, "%s") != nullptr) {
+        // Use a temporary va_list to check the string argument without advancing the original
+        va_list tmp_argptr;
+        va_copy(tmp_argptr, argptr);
+        const char *str_arg = va_arg(tmp_argptr, const char*);
+        va_end(tmp_argptr);
+
+        if (str_arg == nullptr) {
+            // Handle NULL strings by writing "null" to the JSON file
+            fprintf(m_json_file, "null");
+        } else {
+            // Print the valid string argument
+            vfprintf(m_json_file, format, argptr);
+        }
+    }
+    // Check if the format expects a floating-point number
+    else if (strstr(format, "f") != nullptr || strstr(format, "e") != nullptr || strstr(format, "g") != nullptr) {
+        va_list tmp_argptr;
+        va_copy(tmp_argptr, argptr);
+        double value = va_arg(tmp_argptr, double);
+        va_end(tmp_argptr);
+
+        if (std::isnan(value)) {
+            fprintf(m_json_file, "null");
+        } else {
+            vfprintf(m_json_file, format, argptr);
+        }
+    }
+    else {
+        // For other format specifiers, proceed as usual
+        vfprintf(m_json_file, format, argptr);
+    }
     va_end(argptr);
     beutify();
     fprintf(m_json_file, ",");

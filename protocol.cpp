@@ -65,9 +65,9 @@ protocol_response::~protocol_response()
     clear();
 }
 
-void protocol_response::set_error(bool error)
+void protocol_response::set_error()
 {
-    m_error = error;
+    m_error = true;
 }
 
 bool protocol_response::is_error(void)
@@ -123,6 +123,50 @@ unsigned int protocol_response::get_hits(void)
     return m_hits;
 }
 
+bool protocol_response::is_cache_miss_for_command(const std::string& command_name)
+{
+    // Commands that should track cache misses when they return empty/null results
+
+    // Hash commands
+    if (command_name == "HGET" || command_name == "HGETALL" || command_name == "HMGET" ||
+        command_name == "HKEYS" || command_name == "HVALS" || command_name == "HEXISTS") {
+
+        // For bulk string responses ($-1 = null, $0 = empty but exists)
+        // For array responses (*-1 = null, *0 = empty array = miss for HGETALL/HKEYS/HVALS)
+        // For integer responses (:0 = miss for HEXISTS)
+        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 (null bulk)
+        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 (empty array)
+        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 (zero integer)
+    }
+
+    // List commands
+    else if (command_name == "LLEN" || command_name == "LINDEX" || command_name == "LRANGE") {
+        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 for LLEN
+        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 for LINDEX
+        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 for LRANGE
+    }
+
+    // Set commands
+    else if (command_name == "SCARD" || command_name == "SMEMBERS" || command_name == "SISMEMBER") {
+        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 for SCARD/SISMEMBER
+        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 for SMEMBERS
+    }
+
+    // Sorted set commands
+    else if (command_name == "ZCARD" || command_name == "ZRANGE" || command_name == "ZSCORE") {
+        if (m_status && m_status[0] == ':' && m_status[1] == '0') return true; // :0 for ZCARD
+        if (m_status && m_status[0] == '*' && m_status[1] == '0') return true; // *0 for ZRANGE
+        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 for ZSCORE
+    }
+
+    // String commands (MGET handled separately due to multiple keys)
+    else if (command_name == "GET") {
+        if (m_status && m_status[0] == '$' && m_status[1] == '-') return true; // $-1 (null bulk)
+    }
+
+    return false; // Not a miss
+}
+
 void protocol_response::clear(void)
 {
     if (m_status != NULL) {
@@ -163,12 +207,20 @@ protected:
 
     unsigned int m_total_bulks_count;
     mbulk_size_el* m_current_mbulk;
+    bool m_resp3;
+    bool m_attribute;
+
+    bool aggregate_type(char c);
+    bool blob_type(char c);
+    bool single_type(char c);
+    bool response_ended();
 
 public:
-    redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL) { }
+    redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL), m_resp3(false), m_attribute(false) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -249,6 +301,21 @@ int redis_protocol::authenticate(const char *credentials)
             user,
             strlen(password),
             password);
+    }
+    return size;
+}
+
+int redis_protocol::configure_protocol(enum PROTOCOL_TYPE type) {
+    int size = 0;
+    if (type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3) {
+        m_resp3 = type == PROTOCOL_RESP3;
+        size = evbuffer_add_printf(m_write_buf,
+                                   "*2\r\n"
+                                   "$5\r\n"
+                                   "HELLO\r\n"
+                                   "$1\r\n"
+                                   "%d\r\n",
+                                   type == PROTOCOL_RESP2 ? 2 : 3);
     }
     return size;
 }
@@ -403,6 +470,48 @@ int redis_protocol::write_command_wait(unsigned int num_slaves, unsigned int tim
     return size;
 }
 
+bool redis_protocol::aggregate_type(char c) {
+    if (c == '*')
+        return true;
+
+    if (m_resp3 && (c == '%' || c == '~' || c == '|'))
+        return true;
+
+    return false;
+}
+
+bool redis_protocol::blob_type(char c) {
+    if (c == '$')
+        return true;
+
+    if (m_resp3 && (c == '!' || c == '='))
+        return true;
+
+    return false;
+}
+
+bool redis_protocol::single_type(char c) {
+    if (c == '+' || c == '-' || c == ':')
+        return true;
+
+    if (m_resp3 && (c == '_' || c == ',' || c == '#' || c == '('))
+        return true;
+
+    return false;
+}
+
+bool redis_protocol::response_ended() {
+    if (m_total_bulks_count != 0)
+        return false;
+
+    if (m_attribute) {
+        m_attribute = false;
+        return false;
+    }
+
+    return true;
+}
+
 int redis_protocol::parse_response(void)
 {
     char *line;
@@ -415,6 +524,7 @@ int redis_protocol::parse_response(void)
                 m_last_response.clear();
                 m_response_len = 0;
                 m_total_bulks_count = 0;
+                m_attribute = 0;
                 m_response_state = rs_read_line;
 
                 break;
@@ -429,7 +539,7 @@ int redis_protocol::parse_response(void)
                 // count CRLF
                 m_response_len += res_len + 2;
 
-                if (line[0] == '*') {
+                if (aggregate_type(line[0])) {
                     int count = strtol(line + 1, NULL, 10);
 
                     // in case of nested mbulk, the mbulk is one of the total bulks
@@ -440,6 +550,18 @@ int redis_protocol::parse_response(void)
                     // from bulks counter perspective every count < 0 is equal to 0, because it's not followed by bulks.
                     if (count < 0) {
                         count = 0;
+                    }
+
+                    if (line[0] == '|') {
+                        // Nested attribute?
+                        assert(!m_attribute);
+
+                        m_attribute = true;
+                    }
+
+                    // Map or Attribute contain key-value pair
+                    if (line[0] == '%' || line[0] == '|') {
+                        count *= 2;
                     }
 
                     if (m_keep_value) {
@@ -461,12 +583,12 @@ int redis_protocol::parse_response(void)
                     m_last_response.set_status(line);
                     m_total_bulks_count += count;
 
-                    if (m_total_bulks_count == 0) {
+                    if (response_ended()) {
                         m_last_response.set_total_len(m_response_len);
                         m_response_state = rs_initial;
                         return 1;
                     }
-                } else if (line[0] == '$') {
+                } else if (blob_type(line[0])) {
                     // if it's single bulk (not part of mbulk), we count it here
                     if (m_total_bulks_count == 0) {
                         m_total_bulks_count++;
@@ -474,6 +596,9 @@ int redis_protocol::parse_response(void)
 
                     m_bulk_len = strtol(line + 1, NULL, 10);
                     m_last_response.set_status(line);
+
+                    if (line[0] == '!')
+                        m_last_response.set_error();
 
                     /*
                      * only on negative bulk, the data ends right after the first CRLF ($-1\r\n), so
@@ -484,7 +609,7 @@ int redis_protocol::parse_response(void)
                     } else {
                         m_response_state = rs_read_bulk;
                     }
-                } else if (line[0] == '+' || line[0] == '-' || line[0] == ':') {
+                } else if (single_type(line[0])) {
                     // if it's single bulk (not part of mbulk), we count it here
                     if (m_total_bulks_count == 0) {
                         m_total_bulks_count++;
@@ -505,12 +630,12 @@ int redis_protocol::parse_response(void)
                     }
 
                     if (line[0] == '-')
-                        m_last_response.set_error(true);
+                        m_last_response.set_error();
 
                     m_last_response.set_status(line);
                     m_total_bulks_count--;
 
-                    if (m_total_bulks_count == 0) {
+                    if (response_ended()) {
                         m_last_response.set_total_len(m_response_len);
                         m_response_state = rs_initial;
                         return 1;
@@ -590,7 +715,7 @@ int redis_protocol::parse_response(void)
 
                 m_total_bulks_count--;
 
-                if (m_total_bulks_count == 0) {
+                if (response_ended()) {
                     m_last_response.set_total_len(m_response_len);
                     m_response_state = rs_initial;
                     return 1;
@@ -632,17 +757,28 @@ bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
         // check arg type
         const std::size_t key_placeholder_start = current_arg->data.find(KEY_PLACEHOLDER);
         if (key_placeholder_start != std::string::npos) {
+            cmd.keys_count++;
             current_arg->type = key_type;
-            current_arg->data_prefix = "";
-            current_arg->data_suffix = "";
-            // check for prefix
-            if (key_placeholder_start > 0) {
-                current_arg->data_prefix = current_arg->data.substr(0,key_placeholder_start);
+
+            // Optimize: avoid substr() calls and use string_view-like approach
+            constexpr size_t key_placeholder_len = sizeof(KEY_PLACEHOLDER) - 1; // compile-time constant
+            const std::size_t suffix_start = key_placeholder_start + key_placeholder_len;
+
+            // Only create strings if there's actually prefix/suffix data
+            bool has_prefix = (key_placeholder_start > 0);
+            bool has_suffix = (suffix_start < current_arg->data.length());
+            current_arg->has_key_affixes = has_prefix || has_suffix;
+
+            if (has_prefix) {
+                current_arg->data_prefix.assign(current_arg->data, 0, key_placeholder_start);
+            } else {
+                current_arg->data_prefix.clear();
             }
-            // check for sufix
-            const std::size_t suffix_start = strlen(KEY_PLACEHOLDER)+key_placeholder_start;
-            if (current_arg->data.length() > suffix_start) {
-                current_arg->data_suffix = current_arg->data.substr(suffix_start,current_arg->data.length());
+
+            if (has_suffix) {
+                current_arg->data_suffix.assign(current_arg->data, suffix_start, current_arg->data.length() - suffix_start);
+            } else {
+                current_arg->data_suffix.clear();
             }
         } else if (current_arg->data.find(DATA_PLACEHOLDER) != std::string::npos) {
             if (current_arg->data.length() != strlen(DATA_PLACEHOLDER)) {
@@ -688,6 +824,7 @@ public:
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -708,6 +845,11 @@ int memcache_text_protocol::select_db(int db)
 }
 
 int memcache_text_protocol::authenticate(const char *credentials)
+{
+    assert(0);
+}
+
+int memcache_text_protocol::configure_protocol(enum PROTOCOL_TYPE type)
 {
     assert(0);
 }
@@ -833,7 +975,7 @@ int memcache_text_protocol::parse_response(void)
                     m_response_state = rs_read_end;
                     break;
                 } else {
-                    m_last_response.set_error(true);
+                    m_last_response.set_error();
                     benchmark_debug_log("unknown response: %s\n", line);
                     return -1;
                 }
@@ -904,6 +1046,7 @@ public:
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
     virtual int authenticate(const char *credentials);
+    virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
     virtual int write_command_get(const char *key, int key_len, unsigned int offset);
@@ -957,6 +1100,10 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     evbuffer_add(m_write_buf, passwd, passwd_len);
 
     return sizeof(req) + user_len + passwd_len + 2 + sizeof(mechanism) - 1;
+}
+
+int memcache_binary_protocol::configure_protocol(enum PROTOCOL_TYPE type) {
+    assert(0);
 }
 
 int memcache_binary_protocol::write_command_cluster_slots()
@@ -1093,7 +1240,7 @@ int memcache_binary_protocol::parse_response(void)
                     status == PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND ||
                     status == PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED ||
                     status == PROTOCOL_BINARY_RESPONSE_EBUSY) {
-                    m_last_response.set_error(true);
+                    m_last_response.set_error();
                 }
 
                 if (ntohl(m_response_hdr.message.header.response.bodylen) > 0) {
@@ -1161,18 +1308,16 @@ int memcache_binary_protocol::write_arbitrary_command(const char *val, int val_l
 
 /////////////////////////////////////////////////////////////////////////
 
-class abstract_protocol *protocol_factory(const char *proto_name)
+class abstract_protocol *protocol_factory(enum PROTOCOL_TYPE type)
 {
-    assert(proto_name != NULL);
-
-    if (strcmp(proto_name, "redis") == 0) {
+    if (is_redis_protocol(type)) {
         return new redis_protocol();
-    } else if (strcmp(proto_name, "memcache_text") == 0) {
+    } else if (type == PROTOCOL_MEMCACHE_TEXT) {
         return new memcache_text_protocol();
-    } else if (strcmp(proto_name, "memcache_binary") == 0) {
+    } else if (type == PROTOCOL_MEMCACHE_BINARY) {
         return new memcache_binary_protocol();
     } else {
-        benchmark_error_log("Error: unknown protocol '%s'.\n", proto_name);
+        benchmark_error_log("Error: unknown protocol type: %d.\n", type);
         return NULL;
     }
 }

@@ -225,8 +225,8 @@ const char* config_weight_list::print(char *buf, int buf_len)
 }
 
 
-server_addr::server_addr(const char *hostname, int port) :
-    m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_last_error(0)
+server_addr::server_addr(const char *hostname, int port, int resolution) :
+    m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution), m_last_error(0)
 {
     int error = resolve();
 
@@ -254,7 +254,7 @@ int server_addr::resolve(void)
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_INET;      // Don't play with IPv6 for now...
+    hints.ai_family = m_resolution;
 
     snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
     m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);
@@ -308,7 +308,7 @@ static int hex_digit_to_int(char c) {
     }
 }
 
-arbitrary_command::arbitrary_command(const char* cmd) : command(cmd), key_pattern('R'), ratio(1) {
+arbitrary_command::arbitrary_command(const char* cmd) : command(cmd), key_pattern('R'), keys_count(0), ratio(1) {
     // command name is the first word in the command
     size_t pos = command.find(" ");
     if (pos == std::string::npos) {

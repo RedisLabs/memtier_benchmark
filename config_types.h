@@ -82,11 +82,11 @@ struct connect_info {
     int ci_protocol;
     socklen_t ci_addrlen;
     struct sockaddr *ci_addr;
-    char addr_buf[sizeof(struct sockaddr_in)];
+    char addr_buf[sizeof(struct sockaddr_storage)];
 };
 
 struct server_addr {
-    server_addr(const char *hostname, int port);
+    server_addr(const char *hostname, int port, int resolution);
     virtual ~server_addr();
 
     int get_connect_info(struct connect_info *ci);
@@ -99,6 +99,7 @@ protected:
     int m_port;
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
+    int m_resolution;
     int m_last_error;
 };
 
@@ -113,12 +114,14 @@ enum command_arg_type {
 };
 
 struct command_arg {
-    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len) {;}
+    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len), has_key_affixes(false) {;}
     command_arg_type type;
     std::string data;
     // the prefix and suffix strings are used for mixed key placeholder storing of substrings
     std::string data_prefix;
     std::string data_suffix;
+    // optimization flag to avoid runtime checks
+    bool has_key_affixes;
 };
 
 struct arbitrary_command {
@@ -132,6 +135,7 @@ struct arbitrary_command {
     std::string command;
     std::string command_name;
     char key_pattern;
+    unsigned int keys_count;
     unsigned int ratio;
 };
 
@@ -163,23 +167,6 @@ public:
 
     bool is_defined() const {
         return !commands_list.empty();
-    }
-
-    const arbitrary_command* get_next_executed_command(unsigned int& ratio_count, unsigned int& executed_command_index) const {
-        while(true) {
-            const arbitrary_command* executed_command = &commands_list[executed_command_index];
-
-            if (ratio_count < executed_command->ratio) {
-                ratio_count++;
-                return executed_command;
-            } else {
-                ratio_count = 0;
-                executed_command_index++;
-                if (executed_command_index == size()) {
-                    executed_command_index = 0;
-                }
-            }
-        }
     }
 
     unsigned int get_max_command_name_length() const {

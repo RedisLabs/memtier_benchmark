@@ -32,15 +32,11 @@ protected:
     std::vector<key_index_pool*> m_key_index_pools;
     unsigned int m_slot_to_shard[16384];
 
-    char m_key_buffer[250];
-    int m_key_len;
-
     virtual int connect(void);
     virtual void disconnect(void);
 
     shard_connection* create_shard_connection(abstract_protocol* abs_protocol);
     bool connect_shard_connection(shard_connection* sc, char* address, char* port);
-    bool get_key_for_conn(unsigned int conn_id, int iter, unsigned long long* key_index);
     void handle_moved(unsigned int conn_id, struct timeval timestamp,
                       request *request, protocol_response *response);
     void handle_ask(unsigned int conn_id, struct timeval timestamp,
@@ -49,6 +45,9 @@ protected:
 public:
     cluster_client(client_group* group);
     virtual ~cluster_client();
+
+    virtual get_key_response get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index);
+    virtual bool create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id);
 
     // client manager api's
     virtual void handle_cluster_slots(protocol_response *r);

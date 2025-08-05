@@ -1,17 +1,22 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: memtier-benchmark
-Upstream-Contact: Redis Labs Open Source <oss@redislabs.com>
+Upstream-Contact: Redis Ltd. <oss@redislabs.com>
 Source: https://github.com/RedisLabs/memtier_benchmark
 
 Files: *
-Copyright: 2011-2020 Redis Labs <info@redislabs.com>
-License: GPL-2.0+
+Copyright: 2011-2020 Redis Ltd. <info@redislabs.com>
+License: GPL-2+ with OpenSSL Exception
+
+Files: deps/hdr_histogram/*
+Copyright: 2012-2014, Gil Tene
+           2014, Matt Warren
+           2014, Michael Barker
+License: CC0-1.0
 
 Files: debian/*
-Copyright: 2020 Redis Labs <oss@redislabs.com>
+Copyright: 2020 Redis Ltd. <oss@redislabs.com>
 License: GPL-2.0+
 
-License: GPL-2.0+
  This package is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation; either version 2 of the License, or
@@ -39,3 +44,6 @@ License: GPL-2.0+
  obligated to do so.  If you do not wish to do so, delete this exception
  statement from your version.  If you delete this exception statement from all
  source files in the program, then also delete it here.
+
+License: CC0-1.0
+ See "/usr/share/common-licenses/CC0-1.0".

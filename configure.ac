@@ -1,5 +1,5 @@
 dnl configure.ac for memtier_benchmark
-dnl Copyright (C) 2011-2017 Redis Labs Ltd.
+dnl Copyright (C) 2011-2024 Redis Labs Ltd.
 
 dnl This file is part of memtier_benchmark.
 
@@ -16,17 +16,21 @@ dnl You should have received a copy of the GNU General Public License
 dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 AC_PREREQ(2.59)
-AC_INIT(memtier_benchmark,1.3.0,yossigo@gmail.com)
+AC_INIT(memtier_benchmark,2.1.4,oss@redis.com)
 AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
 AM_SILENT_RULES([yes])
+AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
 
 CXXFLAGS="-O2 -g -Wall"
 
 # Checks for programs.
 AC_PROG_CXX
+
+# Coverage
+AX_CODE_COVERAGE
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -82,7 +86,7 @@ PKG_CHECK_MODULES(LIBEVENT,
 # bash completion
 PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
     [BASH_COMPLETION_DIR="`pkg-config --variable=completionsdir bash-completion`"],
-    [BASH_COMPLETION_DIR="$datadir/bash-completion/completionsss"])
+    [BASH_COMPLETION_DIR="$datadir/bash-completion/completions"])
 AC_SUBST([BASH_COMPLETION_DIR])
 
 AC_CONFIG_FILES([
