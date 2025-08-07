@@ -634,12 +634,12 @@ def test_key_placeholder(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env, memtier_ok)
+    debugPrintMemtierOnError(config, env)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
-    assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
 
 
@@ -665,12 +665,12 @@ def test_key_placeholder_togetherwithdata(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env, memtier_ok)
+    debugPrintMemtierOnError(config, env)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
     merged_command_stats = {'cmdstat_hset': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
-    assert_minimum_memtier_outcomes(config, env, memtier_ok, merged_command_stats, overall_expected_request_count,
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
 
 
@@ -853,7 +853,7 @@ def test_arbitrary_command_cache_miss_tracking(env):
 
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env, memtier_ok)
+    debugPrintMemtierOnError(config, env)
 
     # Check that the JSON output includes hit/miss statistics for arbitrary commands
     json_filename = '{0}/mb.json'.format(config.results_dir)
