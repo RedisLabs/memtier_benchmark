@@ -95,6 +95,7 @@ struct benchmark_config {
     int multi_key_get;
     const char *authenticate;
     int select_db;
+    const char *uri;
     bool no_expiry;
     bool resolve_on_connect;
     // WAIT related
