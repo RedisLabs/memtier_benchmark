@@ -94,3 +94,105 @@ def test_zipfian_exponent_effect(env):
 
         # Higher exponent should have higher concentration in top keys
         env.assertTrue(concentration2 > concentration1)
+
+
+def test_zipfian_arbitrary_command_set(env):
+    """Test that arbitrary SET command with zipfian key pattern follows Zipf's law"""
+    key_min = 1
+    key_max = 10000
+
+    # Use the helper class to run benchmark with arbitrary commands
+    runner = ZipfianBenchmarkRunner(env, key_min, key_max)
+    commands = ["SET __key__ __data__"]
+    combined_key_counts = runner.run_arbitrary_command_benchmark_and_collect_key_counting(
+        env.testName, commands
+    )
+
+    # Verify Zipfian properties using helper function
+    correlation = analyze_zipfian_correlation(combined_key_counts)
+
+    # should be close to -1 for a perfect law relationship
+    # should be negative since log(rank) is increasing and log(freq) is decreasing
+    env.assertTrue(correlation < -0.8)
+
+
+def test_zipfian_arbitrary_command_hset(env):
+    """Test that arbitrary HSET command with zipfian key pattern follows Zipf's law"""
+    key_min = 1
+    key_max = 10000
+
+    # Use the helper class to run benchmark with arbitrary commands
+    runner = ZipfianBenchmarkRunner(env, key_min, key_max)
+    commands = ["HSET __key__ field1 __data__"]
+    combined_key_counts = runner.run_arbitrary_command_benchmark_and_collect_key_counting(
+        env.testName, commands
+    )
+
+    # Verify Zipfian properties using helper function
+    correlation = analyze_zipfian_correlation(combined_key_counts)
+
+    # should be close to -1 for a perfect law relationship
+    env.assertTrue(correlation < -0.8)
+
+
+def test_zipfian_arbitrary_command_mixed_operations(env):
+    """Test multiple arbitrary commands with zipfian key pattern"""
+    key_min = 1
+    key_max = 10000
+
+    # Use the helper class to run benchmark with multiple arbitrary commands
+    runner = ZipfianBenchmarkRunner(env, key_min, key_max)
+    commands = [
+        "SET __key__ __data__",
+        "GET __key__",
+        "HSET __key__ field1 __data__"
+    ]
+    combined_key_counts = runner.run_arbitrary_command_benchmark_and_collect_key_counting(
+        env.testName, commands
+    )
+
+    # Verify Zipfian properties using helper function
+    correlation = analyze_zipfian_correlation(combined_key_counts)
+
+    # should be close to -1 for a perfect law relationship
+    env.assertTrue(correlation < -0.8)
+
+    # Verify that we have a reasonable distribution
+    env.assertTrue(len(combined_key_counts) > 100)  # Should access many different keys
+    env.assertTrue(sum(combined_key_counts.values()) > 1000)  # Should have many operations
+
+
+def test_zipfian_arbitrary_command_exponent_effect(env):
+    """Test different Zipfian exponents with arbitrary commands"""
+    key_min = 1
+    key_max = 10000
+
+    # Test with different exponents
+    zipf_exponents = [0.5, 1.0, 2.0]
+    distributions = {}
+
+    # Run benchmarks for each exponent
+    runner = ZipfianBenchmarkRunner(env, key_min, key_max)
+    commands = ["SET __key__ __data__"]
+
+    for zipf_exp in zipf_exponents:
+        test_name = f"{env.testName}_exp_{zipf_exp}"
+        combined_key_counts = runner.run_arbitrary_command_benchmark_and_collect_key_counting(
+            test_name, commands, zipf_exp=zipf_exp
+        )
+        distributions[zipf_exp] = combined_key_counts
+
+    # Verify that higher exponents lead to more skewed distributions
+    sorted_exponents = sorted(zipf_exponents)
+    for i in range(len(sorted_exponents) - 1):
+        exp1 = sorted_exponents[i]
+        exp2 = sorted_exponents[i + 1]
+
+        dist1 = distributions[exp1]
+        dist2 = distributions[exp2]
+
+        concentration1 = calculate_concentration_ratio(dist1)
+        concentration2 = calculate_concentration_ratio(dist2)
+
+        # Higher exponent should have higher concentration in top keys
+        env.assertTrue(concentration2 > concentration1)
