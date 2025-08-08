@@ -17,7 +17,7 @@ from mbdirector.runner import RunConfig
 
 
 class MonitorThread(threading.Thread):
-    """Monitor Redis commands and count key accesses"""
+    """Monitor Redis commands and count key accesses by command type"""
 
     def __init__(self, connection, stop_commands: set[str] = None):
         threading.Thread.__init__(self)
@@ -26,7 +26,8 @@ class MonitorThread(threading.Thread):
             "INFO COMMANDSTATS",
             "FLUSHALL",
         }
-        self.key_counts: Counter = Counter()
+        self.key_counts: Counter = Counter()  # Overall key counts (for backward compatibility)
+        self.key_counts_by_command: dict[str, Counter] = {}  # Key counts per command type
 
     def run(self):
         try:
@@ -41,18 +42,46 @@ class MonitorThread(threading.Thread):
                     if len(parts) >= 2:
                         cmd_name = parts[0].upper()
                         key = parts[1]
+
+                        # Track overall key counts (for backward compatibility)
                         self.key_counts[key] += 1
-                        # Handle common Redis commands that use multiplekeys
+
+                        # Track key counts by command type
+                        if cmd_name not in self.key_counts_by_command:
+                            self.key_counts_by_command[cmd_name] = Counter()
+                        self.key_counts_by_command[cmd_name][key] += 1
+
+                        # Handle common Redis commands that use multiple keys
                         if cmd_name == "MSET" and len(parts) >= 3:
                             # MSET key1 value1 key2 value2 ...
                             for i in range(1, len(parts), 2):
                                 if i < len(parts):
                                     key = parts[i]
                                     self.key_counts[key] += 1
+                                    self.key_counts_by_command[cmd_name][key] += 1
 
         except redis.ConnectionError:
             # stop monitoring: server connection was closed
             pass
+
+def get_combined_key_counts_by_command(monitor_threads):
+    """Combine key counts by command from multiple monitor threads"""
+    combined_by_command = {}
+    combined_overall = Counter()
+
+    for thread in monitor_threads:
+        thread.join()  # Wait for thread to finish
+
+        # Combine overall counts
+        combined_overall.update(thread.key_counts)
+
+        # Combine counts by command
+        for cmd_name, key_counts in thread.key_counts_by_command.items():
+            if cmd_name not in combined_by_command:
+                combined_by_command[cmd_name] = Counter()
+            combined_by_command[cmd_name].update(key_counts)
+
+    return combined_overall, combined_by_command
 
 
 class ZipfianBenchmarkRunner:
