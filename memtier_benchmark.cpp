@@ -997,7 +997,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     // command configuration always applied on last configured command
                     arbitrary_command& cmd = cfg->arbitrary_commands->get_last_command();
                     if (!cmd.set_key_pattern(optarg)) {
-                        fprintf(stderr, "error: key-pattern for command %s must be in the format of [S/R/G/P].\n", cmd.command_name.c_str());
+                        fprintf(stderr, "error: key-pattern for command %s must be in the format of [S/R/Z/G/P].\n", cmd.command_name.c_str());
                         return -1;
                     }
                     break;
@@ -1160,6 +1160,7 @@ void usage() {
             "      --command-key-pattern      Key pattern for the command (default: R):\n"
             "                                 G for Gaussian distribution.\n"
             "                                 R for uniform Random.\n"
+            "                                 Z for zipf distribution (will limit keys to positive).\n"
             "                                 S for Sequential.\n"
             "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "\n"
@@ -1790,7 +1791,21 @@ int main(int argc, char *argv[])
         obj_gen->set_key_distribution(cfg.key_stddev, cfg.key_median);
     }
     obj_gen->set_expiry_range(cfg.expiry_range.min, cfg.expiry_range.max);
-    if (cfg.key_pattern[key_pattern_set] == 'Z' || cfg.key_pattern[key_pattern_get] == 'Z') {
+
+    // Check if Zipfian distribution is needed for global key patterns or arbitrary commands
+    bool needs_zipfian = (cfg.key_pattern[key_pattern_set] == 'Z' || cfg.key_pattern[key_pattern_get] == 'Z');
+
+    // Also check if any arbitrary command uses Zipfian distribution
+    if (!needs_zipfian && cfg.arbitrary_commands->is_defined()) {
+        for (size_t i = 0; i < cfg.arbitrary_commands->size(); i++) {
+            if (cfg.arbitrary_commands->at(i).key_pattern == 'Z') {
+                needs_zipfian = true;
+                break;
+            }
+        }
+    }
+
+    if (needs_zipfian) {
         if (cfg.key_zipf_exp == 0.0) {
             // user can't specify 0.0, so 0.0 means unset
             cfg.key_zipf_exp = 1.0;
