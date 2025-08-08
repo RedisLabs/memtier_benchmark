@@ -40,11 +40,10 @@ class MonitorThread(threading.Thread):
                     parts = command.split()
                     if len(parts) >= 2:
                         cmd_name = parts[0].upper()
-                        # Handle common Redis commands that use keys
-                        if cmd_name in {"SET", "GET", "HSET", "HGET", "LPUSH", "RPUSH", "SADD", "ZADD"}:
-                            key = parts[1]
-                            self.key_counts[key] += 1
-                        elif cmd_name == "MSET" and len(parts) >= 3:
+                        key = parts[1]
+                        self.key_counts[key] += 1
+                        # Handle common Redis commands that use multiplekeys
+                        if cmd_name == "MSET" and len(parts) >= 3:
                             # MSET key1 value1 key2 value2 ...
                             for i in range(1, len(parts), 2):
                                 if i < len(parts):
