@@ -139,6 +139,8 @@ public:
     void update_wait_op(struct timeval* ts, unsigned int latency);
     void update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
                              unsigned int latency, size_t arbitrary_index);
+    void update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
+                             unsigned int latency, size_t arbitrary_index, unsigned int hits, unsigned int misses);
 
     void aggregate_average(const std::vector<run_stats>& all_stats);
     void summarize(totals& result) const;
@@ -176,6 +178,8 @@ public:
     void print_ops_sec_column(output_table &table);
     void print_hits_sec_column(output_table &table);
     void print_missess_sec_column(output_table &table);
+    void print_arbitrary_hits_sec_column(output_table &table);
+    void print_arbitrary_misses_sec_column(output_table &table);
     void print_moved_sec_column(output_table &table);
     void print_ask_sec_column(output_table &table);
     void print_avg_latency_column(output_table &table);

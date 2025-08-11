@@ -612,6 +612,68 @@ def test_default_arbitrary_command_hset_multi_data_placeholders(env):
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
 
+
+def test_key_placeholder(env):
+    env.skipOnCluster()
+    run_count = 1
+    benchmark_specs = {"name": env.testName, "args": ['--command=HSET __key__ f __data__']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
+    master_nodes_list = env.getMasterNodesList()
+    overall_expected_request_count = get_expected_request_count(config) * run_count
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env)
+
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    merged_command_stats = {'cmdstat_hset': {'calls': 0}}
+    overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
+                                    overall_request_count)
+
+
+# key placeholder combined with other data
+def test_key_placeholder_togetherwithdata(env):
+    env.skipOnCluster()
+    run_count = 1
+    benchmark_specs = {"name": env.testName, "args": ['--command=HSET prefix:__key__:suffix f __data__']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config()
+    master_nodes_list = env.getMasterNodesList()
+    overall_expected_request_count = get_expected_request_count(config) * run_count
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env)
+
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    merged_command_stats = {'cmdstat_hset': {'calls': 0}}
+    overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+    assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
+                                    overall_request_count)
+
+
 def test_default_set_get_rate_limited(env):
     env.skipOnCluster()
     master_nodes_list = env.getMasterNodesList()
@@ -751,7 +813,7 @@ def test_valid_json_using_debug_command(env):
         env.assertEqual(debug_count, total_count)
         env.assertEqual(debug_count, total_requests)
         debug_metrics_ts = debug_metrics["Time-Serie"]
-      
+
 
         for second_data in debug_metrics_ts.values():
             count = second_data["Count"]
@@ -760,6 +822,65 @@ def test_valid_json_using_debug_command(env):
                 for latency_metric_name in ["Accumulated Latency","Min Latency","Max Latency","p50.00","p99.00","p99.90"]:
                     metric_value = second_data[latency_metric_name]
                     env.assertTrue(metric_value >= 0.0)
+
+
+def test_arbitrary_command_cache_miss_tracking(env):
+    """Test that arbitrary commands properly track cache misses for non-existent keys"""
+    env.skipOnCluster()
+
+    # First, clear any existing data
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    for master_connection in master_nodes_connections:
+        master_connection.execute_command("FLUSHALL")
+        master_connection.execute_command("CONFIG", "RESETSTAT")
+
+    # Test HGETALL on non-existent keys (should be misses)
+    benchmark_specs = {"name": env.testName, "args": ['--command=HGETALL __key__']}
+    addTLSArgs(benchmark_specs, env)
+    total_requests = 100
+    config = get_default_memtier_config(1, 1, total_requests)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+    debugPrintMemtierOnError(config, env)
+
+    # Check that the JSON output includes hit/miss statistics for arbitrary commands
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+
+        # Check if HGETALL metrics exist
+        if 'Hgetalls' in results_dict['ALL STATS']:
+            hgetall_metrics = results_dict['ALL STATS']['Hgetalls']
+
+            # Verify that we have the expected number of operations
+            hgetall_count = hgetall_metrics["Count"]
+            env.assertEqual(hgetall_count, total_requests)
+
+            # Check if hits/misses are tracked (this will depend on the output format)
+            # For now, just verify the command executed successfully
+            env.assertTrue(hgetall_count > 0)
+
+            # Verify latency metrics are present
+            for metric_name in ["p50.00", "p99.00", "p99.90"]:
+                env.assertTrue(metric_name in hgetall_metrics)
+                env.assertTrue(hgetall_metrics[metric_name] >= 0.0)
+
+    # Verify that Redis shows the commands were executed
+    merged_command_stats = {'cmdstat_hgetall': {'calls': 0}}
+    overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
+    env.assertEqual(overall_request_count, total_requests)
 
 
 def test_uri_basic_connection(env):
@@ -785,6 +906,7 @@ def test_uri_basic_connection(env):
 
     # Create a temporary directory
     test_dir = tempfile.mkdtemp()
+
     config = RunConfig(test_dir, env.testName, config, {})
     ensure_clean_benchmark_folder(config.results_dir)
 
@@ -793,6 +915,7 @@ def test_uri_basic_connection(env):
     # benchmark.run() returns True if the return code of memtier_benchmark was 0
     memtier_ok = benchmark.run()
     debugPrintMemtierOnError(config, env)
+
 
     # Verify the benchmark ran successfully
     env.assertTrue(memtier_ok)

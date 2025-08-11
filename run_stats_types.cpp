@@ -202,6 +202,8 @@ totals_cmd::totals_cmd() :
         m_bytes_sec(0),
         m_bytes_sec_rx(0),
         m_bytes_sec_tx(0),
+        m_hits_sec(0),
+        m_misses_sec(0),
         m_moved_sec(0),
         m_ask_sec(0),
         m_latency(0),
@@ -211,6 +213,8 @@ totals_cmd::totals_cmd() :
 
 void totals_cmd::add(const totals_cmd& other) {
     m_ops_sec += other.m_ops_sec;
+    m_hits_sec += other.m_hits_sec;
+    m_misses_sec += other.m_misses_sec;
     m_moved_sec += other.m_moved_sec;
     m_ask_sec += other.m_ask_sec;
     m_bytes_sec += other.m_bytes_sec;
@@ -223,6 +227,8 @@ void totals_cmd::add(const totals_cmd& other) {
 
 void totals_cmd::aggregate_average(size_t stats_size) {
     m_ops_sec /= stats_size;
+    m_hits_sec /= stats_size;
+    m_misses_sec /= stats_size;
     m_moved_sec /= stats_size;
     m_ask_sec /= stats_size;
     m_bytes_sec /= stats_size;
@@ -244,6 +250,8 @@ void totals_cmd::summarize(const one_sec_cmd_stats& other, unsigned long test_du
     m_bytes_sec = ((other.m_bytes_rx + other.m_bytes_tx) / 1024.0) / test_duration_usec * 1000000;
     m_bytes_sec_rx = (other.m_bytes_rx / 1024.0) / test_duration_usec * 1000000;
     m_bytes_sec_tx = (other.m_bytes_tx / 1024.0) / test_duration_usec * 1000000;
+    m_hits_sec = (double) other.m_hits / test_duration_usec * 1000000;
+    m_misses_sec = (double) other.m_misses / test_duration_usec * 1000000;
     m_moved_sec = (double) other.m_moved / test_duration_usec * 1000000;
     m_ask_sec = (double) other.m_ask / test_duration_usec * 1000000;
 }
@@ -329,4 +337,9 @@ void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, u
     m_latency += latency;
     m_total_latency += latency;
     hdr_record_value_capped(latency_histogram,latency);
+}
+
+void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses) {
+    update_op(bytes_rx, bytes_tx, latency);
+    // Note: totals class doesn't track individual hits/misses, they're aggregated at higher levels
 }
