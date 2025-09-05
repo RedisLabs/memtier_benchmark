@@ -23,7 +23,7 @@ on:
         default: "ubuntu-22.04"
         type: string
 permissions:
-  contents: read
+  contents: write  # Required for creating releases and uploading assets
   actions: read
 jobs:
   build-source-package:
