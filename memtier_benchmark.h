@@ -20,11 +20,16 @@
 #define _MEMTIER_BENCHMARK_H
 
 #include <vector>
+#include <signal.h>
 #include "config_types.h"
 
 #ifdef USE_TLS
 #include <openssl/ssl.h>
 #endif
+
+// Global variables for signal handling
+extern volatile sig_atomic_t g_shutdown_requested;
+extern pid_t g_main_pid;
 
 #define LOGLEVEL_ERROR 0
 #define LOGLEVEL_DEBUG 1

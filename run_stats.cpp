@@ -27,6 +27,7 @@
 #include <sys/time.h>
 #include <math.h>
 #include <algorithm>
+#include <signal.h>
 
 #ifdef HAVE_ASSERT_H
 #include <assert.h>
@@ -1221,6 +1222,15 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
         jsonhandler->write_obj("Finish time","%lld", end_time_ms);
         jsonhandler->write_obj("Total duration","%lld", end_time_ms-start_time_ms);
         jsonhandler->write_obj("Time unit","\"%s\"","MILLISECONDS");
+
+        // Add benchmark completion status to Runtime section
+        extern volatile sig_atomic_t g_shutdown_requested;
+        if (g_shutdown_requested) {
+            jsonhandler->write_obj("Benchmark completion status","\"%s\"", "INTERRUPTED (stopped before full run)");
+        } else {
+            jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED");
+        }
+
         jsonhandler->close_nesting();
     }
     std::vector<unsigned int> timestamps = get_one_sec_cmd_stats_timestamp();
