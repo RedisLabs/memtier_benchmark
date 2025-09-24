@@ -60,7 +60,6 @@ brew install memtier_benchmark
 The following libraries are required for building:
 
 * libevent 2.0.10 or newer.
-* libpcre 8.x.
 * OpenSSL (unless TLS support is disabled by `./configure --disable-tls`).
 
 The following tools are required
@@ -75,7 +74,7 @@ The following tools are required
 Use the following to install prerequisites:
 ```
 $ sudo yum install autoconf automake make gcc-c++ \
-    pcre-devel zlib-devel libmemcached-devel libevent-devel openssl-devel
+    zlib-devel libmemcached-devel libevent-devel openssl-devel
 ```
 
 #### Ubuntu/Debian
@@ -83,7 +82,7 @@ $ sudo yum install autoconf automake make gcc-c++ \
 Use the following to install prerequisites:
 
 ```
-$ sudo apt-get install build-essential autoconf automake libpcre3-dev \
+$ sudo apt-get install build-essential autoconf automake \
     libevent-dev pkg-config zlib1g-dev libssl-dev
 ```
 

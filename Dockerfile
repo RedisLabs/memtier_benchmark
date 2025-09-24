@@ -3,7 +3,7 @@ RUN apt-get update
 RUN \
   DEBIAN_FRONTEND=noninteractive \
   apt-get install -y \
-    build-essential autoconf automake libpcre3-dev libevent-dev \
+    build-essential autoconf automake libevent-dev \
     pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex
 COPY . /memtier_benchmark
 WORKDIR /memtier_benchmark
