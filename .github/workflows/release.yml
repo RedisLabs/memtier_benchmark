@@ -62,7 +62,7 @@ jobs:
       run: |
           sudo apt-get update && \
           sudo apt-get install \
-            build-essential autoconf automake libpcre3-dev libevent-dev \
+            build-essential autoconf automake libevent-dev \
             pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex \
             debhelper dput
     - name: Create changelog
