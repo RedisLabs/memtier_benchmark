@@ -437,6 +437,15 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined())
         cfg->print_percentiles = config_quantiles("50,99,99.9");
+
+    // Set defaults for reconnection on error
+    if (!cfg->max_reconnect_attempts)
+        cfg->max_reconnect_attempts = 3;
+    if (cfg->reconnect_backoff_factor == 0.0)
+        cfg->reconnect_backoff_factor = 2.0;
+    if (!cfg->connection_timeout)
+        cfg->connection_timeout = 10;
+
 #ifdef USE_TLS
     if (!cfg->tls_protocols)
         cfg->tls_protocols = REDIS_TLS_PROTO_DEFAULT;
@@ -533,6 +542,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_randomize,
         o_client_stats,
         o_reconnect_interval,
+        o_reconnect_on_error,
+        o_max_reconnect_attempts,
+        o_reconnect_backoff_factor,
+        o_connection_timeout,
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
@@ -611,6 +624,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key-median",                 1, 0, o_key_median },
         { "key-zipf-exp",               1, 0, o_key_zipf_exp},
         { "reconnect-interval",         1, 0, o_reconnect_interval },
+        { "reconnect-on-error",         0, 0, o_reconnect_on_error },
+        { "max-reconnect-attempts",     1, 0, o_max_reconnect_attempts },
+        { "reconnect-backoff-factor",   1, 0, o_reconnect_backoff_factor },
+        { "connection-timeout",         1, 0, o_connection_timeout },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
@@ -921,6 +938,33 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_reconnect_on_error:
+                    cfg->reconnect_on_error = true;
+                    break;
+                case o_max_reconnect_attempts:
+                    endptr = NULL;
+                    cfg->max_reconnect_attempts = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: max-reconnect-attempts must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_reconnect_backoff_factor:
+                    endptr = NULL;
+                    cfg->reconnect_backoff_factor = strtod(optarg, &endptr);
+                    if (cfg->reconnect_backoff_factor <= 0.0 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: reconnect-backoff-factor must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_connection_timeout:
+                    endptr = NULL;
+                    cfg->connection_timeout = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!cfg->connection_timeout || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: connection-timeout must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
                 case o_generate_keys:
                     cfg->generate_keys = 1;
                     break;
@@ -1144,6 +1188,10 @@ void usage() {
             "      --ratio=RATIO              Set:Get ratio (default: 1:10)\n"
             "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
             "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
+            "      --reconnect-on-error       Enable automatic reconnection on connection errors\n"
+            "      --max-reconnect-attempts=NUM Maximum number of reconnection attempts (default: 3)\n"
+            "      --reconnect-backoff-factor=NUM Backoff factor for reconnection delays (default: 2.0)\n"
+            "      --connection-timeout=SECS  Connection timeout in seconds (default: 10)\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
@@ -1315,9 +1363,11 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     unsigned long int prev_ops = 0;
     unsigned long int prev_bytes = 0;
     unsigned long int prev_duration = 0;
+    unsigned long int prev_connection_errors = 0;
     double prev_latency = 0, cur_latency = 0;
     unsigned long int cur_ops_sec = 0;
     unsigned long int cur_bytes_sec = 0;
+    unsigned long int cur_connection_errors = 0;
 
     // provide some feedback...
     unsigned int active_threads = 0;
@@ -1330,6 +1380,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int duration = 0;
         unsigned int thread_counter = 0;
         unsigned long int total_latency = 0;
+        unsigned long int total_connection_errors = 0;
 
         for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
             if (!(*i)->m_finished)
@@ -1338,6 +1389,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             total_ops += (*i)->m_cg->get_total_ops();
             total_bytes += (*i)->m_cg->get_total_bytes();
             total_latency += (*i)->m_cg->get_total_latency();
+            total_connection_errors += (*i)->m_cg->get_total_connection_errors();
             thread_counter++;
             float factor = ((float)(thread_counter - 1) / thread_counter);
             duration =  factor * duration +  (float)(*i)->m_cg->get_duration_usec() / thread_counter ;
@@ -1347,10 +1399,12 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int cur_bytes = total_bytes-prev_bytes;
         unsigned long int cur_duration = duration-prev_duration;
         double cur_total_latency = total_latency-prev_latency;
+        cur_connection_errors = total_connection_errors-prev_connection_errors;
         prev_ops = total_ops;
         prev_bytes = total_bytes;
         prev_latency = total_latency;
         prev_duration = duration;
+        prev_connection_errors = total_connection_errors;
 
         unsigned long int ops_sec = 0;
         unsigned long int bytes_sec = 0;
@@ -1376,8 +1430,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         else
             progress = 100.0 * (duration / 1000000.0)/cfg->test_time;
 
-        fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
-            run_id, progress, (unsigned int) (duration / 1000000), active_threads, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+        fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns %lu conn errors: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
+            run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_connection_errors, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
     } while (active_threads > 0);
 
     fprintf(stderr, "\n\n");

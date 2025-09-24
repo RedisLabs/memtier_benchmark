@@ -222,6 +222,7 @@ public:
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
     unsigned long int get_duration_usec(void);
+    unsigned long int get_total_connection_errors(void);
 
     void merge_run_stats(run_stats* target);
 };
