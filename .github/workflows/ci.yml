@@ -1,5 +1,11 @@
 name: CI
 
+# CI testing includes:
+# - Debian versions: 11 (bullseye), 12 (bookworm), 13 (trixie), sid (unstable)
+# - Various smoke test images (configurable via repository variables)
+# - TLS and no-TLS builds
+# - Code coverage and static analysis
+
 on: [push, pull_request]
 
 jobs:
@@ -30,8 +36,46 @@ jobs:
       run: |
         apt-get -qq update -y
         apt-get install -y \
-        build-essential autoconf automake libpcre3-dev libevent-dev \
+        build-essential autoconf automake libevent-dev \
         pkg-config zlib1g-dev libssl-dev libboost-all-dev cmake flex
+
+    - name: Build
+      run: autoreconf -ivf && ./configure && make -j
+
+  test-debian-versions:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    strategy:
+      matrix:
+        debian_version:
+          - "debian:bullseye"    # Debian 11 (oldstable)
+          - "debian:bookworm"    # Debian 12 (stable)
+          - "debian:trixie"      # Debian 13 (testing)
+          - "debian:sid"         # Debian unstable
+    container: ${{ matrix.debian_version }}
+    name: Test ${{ matrix.debian_version }}
+    steps:
+    - name: Install git and basic tools
+      run: |
+        apt-get update -qq
+        apt-get install -y git ca-certificates
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        apt-get update -qq
+        apt-get install -y \
+          build-essential \
+          autoconf \
+          automake \
+          pkg-config \
+          libevent-dev \
+          zlib1g-dev \
+          libssl-dev
 
     - name: Build
       run: autoreconf -ivf && ./configure && make -j
@@ -43,7 +87,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -qq update
-        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev
 
     - name: Build
       run: autoreconf -ivf && ./configure --disable-tls && make -j
@@ -55,7 +99,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -qq update
-        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev
 
     - name: Build
       run: autoreconf -ivf && ./configure --disable-tls && make -j
@@ -70,7 +114,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -qq update
-        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libpcre3-dev libssl-dev
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
 
     - name: Build
       # for coverage reports we need to use Ubuntu 22.04 or lower
