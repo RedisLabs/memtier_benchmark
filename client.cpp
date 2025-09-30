@@ -40,10 +40,9 @@
 #include <limits.h>
 #endif
 
-#ifdef HAVE_ASSERT_H
-#include <assert.h>
-#endif
 
+#include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <algorithm>
 #include <arpa/inet.h>
@@ -59,7 +58,14 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     unsigned long long total_num_of_clients = config->clients*config->threads;
 
     // create main connection
-    shard_connection* conn = new shard_connection(m_connections.size(), this, m_config, m_event_base, protocol);
+    unsigned int thread_id = 0; // TODO: set actual thread id if available
+    unsigned int client_index = m_connections.size();
+    unsigned int num_clients_per_thread = config->clients;
+    unsigned int conn_id = thread_id * num_clients_per_thread + client_index;
+    shard_connection* conn = new shard_connection(
+        client_index, this, m_config, m_event_base, protocol,
+        conn_id
+    );
     m_connections.push_back(conn);
 
     m_obj_gen = objgen->clone();
@@ -99,7 +105,7 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     return true;
 }
 
-client::client(client_group* group) :
+client::client(client_group* group, unsigned int conn_id) :
         m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL),
         m_obj_gen(NULL), m_stats(group->get_config()), m_reqs_processed(0), m_reqs_generated(0),
         m_set_ratio_count(0), m_get_ratio_count(0),
@@ -108,16 +114,21 @@ client::client(client_group* group) :
 {
     m_event_base = group->get_event_base();
 
+    // Initialize conn_id string and value with prefix
+    m_conn_id_str = "user" + std::to_string(conn_id);
+    m_conn_id_value = m_conn_id_str.c_str();
+    m_conn_id_value_len = m_conn_id_str.length();
+
     if (!setup_client(group->get_config(), group->get_protocol(), group->get_obj_gen())) {
         return;
     }
 
-    benchmark_debug_log("new client %p successfully set up.\n", this);
+    benchmark_debug_log("new client %p successfully set up with conn_id: %s.\n", this, m_conn_id_value);
     m_initialized = true;
 }
 
 client::client(struct event_base *event_base, benchmark_config *config,
-               abstract_protocol *protocol, object_generator *obj_gen) :
+               abstract_protocol *protocol, object_generator *obj_gen, unsigned int conn_id) :
         m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL),
         m_obj_gen(NULL), m_stats(config), m_reqs_processed(0), m_reqs_generated(0),
         m_set_ratio_count(0), m_get_ratio_count(0),
@@ -126,11 +137,16 @@ client::client(struct event_base *event_base, benchmark_config *config,
 {
     m_event_base = event_base;
 
+    // Initialize conn_id string and value
+    m_conn_id_str = std::to_string(conn_id);
+    m_conn_id_value = m_conn_id_str.c_str();
+    m_conn_id_value_len = m_conn_id_str.length();
+
     if (!setup_client(config, protocol, obj_gen)) {
         return;
     }
 
-    benchmark_debug_log("new client %p successfully set up.\n", this);
+    benchmark_debug_log("new client %p successfully set up with conn_id: %s.\n", this, m_conn_id_value);
     m_initialized = true;
 }
 
@@ -273,7 +289,11 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
 
     const arbitrary_command& cmd = get_arbitrary_command(command_index);
 
-    benchmark_debug_log("%s: %s:\n", m_connections[conn_id]->get_readable_id(), cmd.command.c_str());
+    benchmark_debug_log("%s: %s", m_connections[conn_id]->get_readable_id(), cmd.command.c_str());
+
+    // Build final command string for debug output
+    std::string final_command = cmd.command;
+    bool has_substitutions = false;
 
     for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
         const command_arg* arg = &cmd.command_args[i];
@@ -293,7 +313,30 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
             assert(value_len > 0);
 
             cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
+        } else if (arg->type == conn_id_type) {
+            // Replace __conn_id__ placeholder with actual connection ID
+            std::string substituted_arg = arg->data;
+            size_t pos = substituted_arg.find(CONN_PLACEHOLDER);
+            if (pos != std::string::npos) {
+                substituted_arg.replace(pos, strlen(CONN_PLACEHOLDER), m_conn_id_value);
+                has_substitutions = true;
+            }
+
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, substituted_arg.c_str(), substituted_arg.length());
+
+            // Replace placeholder in final command string for debug output
+            pos = final_command.find(CONN_PLACEHOLDER);
+            if (pos != std::string::npos) {
+                final_command.replace(pos, strlen(CONN_PLACEHOLDER), m_conn_id_value);
+            }
         }
+    }
+
+    // Show final command if substitutions were made
+    if (has_substitutions) {
+        benchmark_debug_log(" -> %s\n", final_command.c_str());
+    } else {
+        benchmark_debug_log("\n");
     }
 
     m_connections[conn_id]->send_arbitrary_command_end(command_index, &timestamp, cmd_size);
@@ -581,8 +624,8 @@ bool verify_client::finished(void)
 
 ///////////////////////////////////////////////////////////////////////////
 
-client_group::client_group(benchmark_config* config, abstract_protocol *protocol, object_generator* obj_gen) :
-    m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen)
+client_group::client_group(benchmark_config* config, abstract_protocol *protocol, object_generator* obj_gen, unsigned int thread_id) :
+    m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen), m_thread_id(thread_id)
 {
     m_base = event_base_new();
     assert(m_base != NULL);
@@ -608,11 +651,12 @@ int client_group::create_clients(int num)
 {
     for (int i = 0; i < num; i++) {
         client* c;
+    unsigned int conn_id = m_thread_id * num + i + 1;
 
         if (m_config->cluster_mode)
-            c = new cluster_client(this);
+            c = new cluster_client(this, conn_id);
         else
-            c = new client(this);
+            c = new client(this, conn_id);
 
         assert(c != NULL);
 

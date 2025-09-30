@@ -63,6 +63,9 @@ protected:
     // test related
     benchmark_config* m_config;
     object_generator* m_obj_gen;
+    std::string m_conn_id_str;
+    const char* m_conn_id_value;
+    unsigned int m_conn_id_value_len;
     run_stats m_stats;
 
     unsigned long long m_reqs_processed;          // requests processed (responses received)
@@ -78,13 +81,14 @@ protected:
     keylist *m_keylist;                           // used to construct multi commands
 
 public:
-    client(client_group* group);
-    client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+    client(client_group* group, unsigned int conn_id = 0);
+    client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen, unsigned int conn_id = 0);
     virtual ~client();
     bool setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
     int prepare(void);
     bool initialized(void);
     run_stats* get_stats(void) { return &m_stats; }
+    const char* get_conn_id_value(void) { return m_conn_id_value; }
 
     virtual get_key_response get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index);
     virtual bool create_arbitrary_request(unsigned int command_index, struct timeval& timestamp, unsigned int conn_id);
@@ -203,8 +207,10 @@ protected:
     abstract_protocol* m_protocol;
     object_generator* m_obj_gen;
     std::vector<client*> m_clients;
+protected:
+    unsigned int m_thread_id;
 public:
-    client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen);
+    client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen, unsigned int thread_id);
     ~client_group();
 
     int create_clients(int count);

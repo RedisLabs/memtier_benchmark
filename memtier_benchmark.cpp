@@ -1230,7 +1230,8 @@ struct cg_thread {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);
 
-        m_cg = new client_group(m_config, m_protocol, m_obj_gen);
+        // Pass thread_id to client_group
+        m_cg = new client_group(m_config, m_protocol, m_obj_gen, m_thread_id);
     }
 
     ~cg_thread()

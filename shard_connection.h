@@ -82,7 +82,8 @@ class shard_connection {
 
 public:
     shard_connection(unsigned int id, connections_manager* conn_man, benchmark_config* config,
-                     struct event_base* event_base, abstract_protocol* abs_protocol);
+                     struct event_base* event_base, abstract_protocol* abs_protocol,
+                     unsigned int conn_id);
     ~shard_connection();
 
     void set_address_port(const char* address, const char* port);
@@ -133,12 +134,15 @@ public:
     }
 
 private:
+    unsigned int m_conn_id;
+    std::string m_conn_id_string;
+
     void setup_event(int sockfd);
     int setup_socket(struct connect_info* addr);
     void set_readable_id();
 
     bool is_conn_setup_done();
-    void send_conn_setup_commands(struct timeval timestamp);
+    void send_conn_setup_commands(struct timeval timestamp, const char* conn_id_string);
 
     request* pop_req();
     void push_req(request* req);

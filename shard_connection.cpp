@@ -50,6 +50,8 @@
 #include "connections_manager.h"
 #include "event2/bufferevent.h"
 
+#include "client.h"
+
 #ifdef USE_TLS
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -127,14 +129,20 @@ verify_request::~verify_request(void)
 }
 
 shard_connection::shard_connection(unsigned int id, connections_manager* conns_man, benchmark_config* config,
-                                   struct event_base* event_base, abstract_protocol* abs_protocol) :
-        m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
+                                   struct event_base* event_base, abstract_protocol* abs_protocol,
+                                   unsigned int conn_id)
+        : m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
         m_bev(NULL), m_event_timer(NULL), m_request_per_cur_interval(0), m_pending_resp(0), m_connection_state(conn_disconnected),
-        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done) {
+        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done)
+{
     m_id = id;
     m_conns_manager = conns_man;
     m_config = config;
     m_event_base = event_base;
+    m_conn_id = conn_id;
+
+    // Initialize connection ID string for fallback
+    m_conn_id_string = "user" + std::to_string(m_conn_id + 1);
 
     if (m_config->unix_socket) {
         m_unix_sockaddr = (struct sockaddr_un *) malloc(sizeof(struct sockaddr_un));
@@ -376,10 +384,10 @@ bool shard_connection::is_conn_setup_done() {
            m_hello == setup_done;
 }
 
-void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
+void shard_connection::send_conn_setup_commands(struct timeval timestamp, const char* conn_id_string) {
     if (m_authentication == setup_none) {
-        benchmark_debug_log("sending authentication command.\n");
-        m_protocol->authenticate(m_config->authenticate);
+        benchmark_debug_log("sending authentication command user: %s pass %s.\n",conn_id_string,m_config->authenticate);
+        m_protocol->authenticate(conn_id_string, m_config->authenticate);
         push_req(new request(rt_auth, 0, &timestamp, 0));
         m_authentication = setup_sent;
     }
@@ -521,7 +529,15 @@ void shard_connection::fill_pipeline(void)
 
     while (!m_conns_manager->finished() && m_pipeline->size() < m_config->pipeline) {
         if (!is_conn_setup_done()) {
-            send_conn_setup_commands(now);
+            // Get username from connections_manager (client object)
+            const char* conn_id_string = nullptr;
+            if (m_conns_manager) {
+                conn_id_string = static_cast<client*>(m_conns_manager)->get_conn_id_value();
+            } else {
+                // fallback: use stored connection ID string
+                conn_id_string = m_conn_id_string.c_str();
+            }
+            send_conn_setup_commands(now, conn_id_string);
             return;
         }
 
