@@ -1,3 +1,4 @@
+#include <assert.h>
 /*
  * Copyright (C) 2011-2017 Redis Labs Ltd.
  *
@@ -108,7 +109,7 @@ static uint32_t calc_hslot_crc16_cluster(const char *str, size_t length)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-cluster_client::cluster_client(client_group* group) : client(group)
+cluster_client::cluster_client(client_group* group, unsigned int conn_id) : client(group, conn_id)
 {
 }
 
@@ -159,9 +160,11 @@ void cluster_client::disconnect(void)
 }
 
 shard_connection* cluster_client::create_shard_connection(abstract_protocol* abs_protocol) {
-    shard_connection* sc = new shard_connection(m_connections.size(), this,
-                                                m_config, m_event_base,
-                                                abs_protocol);
+    unsigned int conn_id = m_connections.size();
+    shard_connection* sc = new shard_connection(
+        conn_id, this, m_config, m_event_base, abs_protocol,
+        conn_id
+    );
     assert(sc != NULL);
 
     m_connections.push_back(sc);

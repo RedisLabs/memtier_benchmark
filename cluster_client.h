@@ -43,7 +43,7 @@ protected:
                     request *request, protocol_response *response);
 
 public:
-    cluster_client(client_group* group);
+    cluster_client(client_group* group, unsigned int conn_id);
     virtual ~cluster_client();
 
     virtual get_key_response get_key_for_conn(unsigned int command_index, unsigned int conn_id, unsigned long long* key_index);

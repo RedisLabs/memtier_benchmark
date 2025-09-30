@@ -1,3 +1,4 @@
+#include <assert.h>
 /*
  * Copyright (C) 2011-2017 Redis Labs Ltd.
  *
@@ -175,7 +176,7 @@ public:
     redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL), m_resp3(false), m_attribute(false) { }
     virtual redis_protocol* clone(void) { return new redis_protocol(); }
     virtual int select_db(int db);
-    virtual int authenticate(const char *credentials);
+    virtual int authenticate(const char *user, const char *credentials);
     virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
@@ -206,7 +207,7 @@ int redis_protocol::select_db(int db)
     return size;
 }
 
-int redis_protocol::authenticate(const char *credentials)
+int redis_protocol::authenticate(const char *user, const char *credentials)
 {
     int size = 0;
     assert(credentials != NULL);
@@ -219,7 +220,6 @@ int redis_protocol::authenticate(const char *credentials)
      * contains a colon.
      */
 
-    const char *user = NULL;
     const char *password;
 
     if (credentials[0] == ':') {
@@ -229,12 +229,11 @@ int redis_protocol::authenticate(const char *credentials)
         if (!password) {
             password = credentials;
         } else {
-            user = credentials;
             password++;
         }
     }
 
-    if (!user) {
+    if (!user || strlen(user) == 0) {
         size = evbuffer_add_printf(m_write_buf,
             "*2\r\n"
             "$4\r\n"
@@ -243,17 +242,16 @@ int redis_protocol::authenticate(const char *credentials)
             "%s\r\n",
             strlen(password), password);
     } else {
-        size_t user_len = password - user - 1;
+        size_t user_len = strlen(user);
         size = evbuffer_add_printf(m_write_buf,
             "*3\r\n"
             "$4\r\n"
             "AUTH\r\n"
             "$%zu\r\n"
-            "%.*s\r\n"
+            "%s\r\n"
             "$%zu\r\n"
             "%s\r\n",
             user_len,
-            (int) user_len,
             user,
             strlen(password),
             password);
@@ -723,8 +721,10 @@ bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
                 benchmark_error_log("error: data placeholder can't combined with other data\n");
                 return false;
             }
-
             current_arg->type = data_type;
+        } else if (current_arg->data.find(CONN_PLACEHOLDER) != std::string::npos) {
+            // Allow conn_id placeholder to be combined with other text
+            current_arg->type = conn_id_type;
         }
 
         // we expect that first arg is the COMMAND name
@@ -761,7 +761,7 @@ public:
     memcache_text_protocol() : m_response_state(rs_initial), m_value_len(0), m_response_len(0) { }
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
     virtual int select_db(int db);
-    virtual int authenticate(const char *credentials);
+    virtual int authenticate(const char *user, const char *credentials);
     virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
@@ -782,7 +782,7 @@ int memcache_text_protocol::select_db(int db)
     assert(0);
 }
 
-int memcache_text_protocol::authenticate(const char *credentials)
+int memcache_text_protocol::authenticate(const char *user, const char *credentials)
 {
     assert(0);
 }
@@ -983,7 +983,7 @@ public:
     memcache_binary_protocol() : m_response_state(rs_initial), m_response_len(0) { }
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
     virtual int select_db(int db);
-    virtual int authenticate(const char *credentials);
+    virtual int authenticate(const char *user, const char *credentials);
     virtual int configure_protocol(enum PROTOCOL_TYPE type);
     virtual int write_command_cluster_slots();
     virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset);
@@ -1003,14 +1003,13 @@ int memcache_binary_protocol::select_db(int db)
     assert(0);
 }
 
-int memcache_binary_protocol::authenticate(const char *credentials)
+int memcache_binary_protocol::authenticate(const char *user, const char *credentials)
 {
     protocol_binary_request_no_extras req;
     char nullbyte = '\0';
     const char mechanism[] = "PLAIN";
     int mechanism_len = sizeof(mechanism) - 1;
     const char *colon;
-    const char *user;
     int user_len;
     const char *passwd;
     int passwd_len;
@@ -1019,8 +1018,8 @@ int memcache_binary_protocol::authenticate(const char *credentials)
     colon = strchr(credentials, ':');
     assert(colon != NULL);
 
-    user = credentials;
-    user_len = colon - user;
+    // Use the user parameter instead of extracting from credentials
+    user_len = strlen(user);
     passwd = colon + 1;
     passwd_len = strlen(passwd);
 

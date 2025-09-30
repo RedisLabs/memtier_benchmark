@@ -105,12 +105,14 @@ protected:
 
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
+#define CONN_PLACEHOLDER "__conn_id__"
 
 enum command_arg_type {
     const_type      = 0,
     key_type        = 1,
     data_type       = 2,
-    undefined_type  = 3
+    conn_id_type    = 3,
+    undefined_type  = 4
 };
 
 struct command_arg {
