@@ -148,6 +148,13 @@ public:
     void summarize(totals& result) const;
     void summarize_current_second();
     void merge(const run_stats& other, int iteration);
+
+    // Get current second's percentiles for real-time CSV export
+    const std::vector<double>& get_current_set_percentiles() const { return m_cur_stats.m_set_cmd.summarized_quantile_values; }
+    const std::vector<double>& get_current_get_percentiles() const { return m_cur_stats.m_get_cmd.summarized_quantile_values; }
+
+    // Get stats list for aggregated percentile access
+    const std::list<one_second_stats>& get_stats() const { return m_stats; }
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_get();
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_set();
     std::vector<one_sec_cmd_stats> get_one_sec_cmd_stats_wait();
@@ -174,7 +181,8 @@ public:
     bool save_csv(const char *filename, benchmark_config *config);
     static bool write_csv_header(FILE *f, benchmark_config *config);
     static bool write_csv_realtime_data(FILE *f, unsigned int second, unsigned int active_connections, unsigned int connection_errors,
-                                       unsigned long int cur_ops, unsigned long int cur_bytes, double cur_latency, benchmark_config *config);
+                                       unsigned long int cur_ops, unsigned long int cur_bytes, double cur_latency, benchmark_config *config,
+                                       const std::vector<double>* set_percentiles = nullptr, const std::vector<double>* get_percentiles = nullptr);
     void debug_dump(void);
 
     // function to handle the results output

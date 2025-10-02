@@ -227,6 +227,14 @@ public:
     unsigned long int get_total_connection_errors(void);
 
     void merge_run_stats(run_stats* target);
+
+    // Get individual client stats for real-time percentile access
+    run_stats* get_client_stats(int index) {
+        if (index >= 0 && index < (int)m_clients.size()) {
+            return m_clients[index]->get_stats();
+        }
+        return nullptr;
+    }
 };
 
 

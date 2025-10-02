@@ -1519,9 +1519,35 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             // Calculate active connections (threads * clients)
             unsigned int active_connections = active_threads * cfg->clients;
 
-            // Use the simplified approach with the per-second aggregate data we already have
+            // Merge all threads for this second to get accurate aggregated percentiles
+            std::vector<double> set_percentiles;
+            std::vector<double> get_percentiles;
+
+            if (cfg->print_percentiles.quantile_list.size() > 0) {
+                // Create temporary stats and merge all threads for this second
+                run_stats temp_stats(cfg);
+                unsigned int iteration_counter = 1;
+                for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                    if (!(*i)->m_finished) {
+                        (*i)->m_cg->merge_run_stats(&temp_stats);
+                        iteration_counter++;
+                    }
+                }
+
+                // Get the most recent completed second's percentiles from the merged stats
+                const std::list<one_second_stats>& stats_list = temp_stats.get_stats();
+                if (!stats_list.empty()) {
+                    const one_second_stats& latest_second = stats_list.back();
+                    set_percentiles = latest_second.m_set_cmd.summarized_quantile_values;
+                    get_percentiles = latest_second.m_get_cmd.summarized_quantile_values;
+                }
+            }
+
+            // Use the properly aggregated percentile data!
             run_stats::write_csv_realtime_data(csv_file, second_counter, active_connections, cur_connection_errors,
-                                             cur_ops, cur_bytes, cur_latency, cfg);
+                                             cur_ops, cur_bytes, cur_latency, cfg,
+                                             set_percentiles.empty() ? nullptr : &set_percentiles,
+                                             get_percentiles.empty() ? nullptr : &get_percentiles);
         }
     } while (active_threads > 0);
 
