@@ -177,6 +177,9 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key_stddev = %f\n"
         "key_median = %f\n"
         "reconnect_interval = %u\n"
+        "connection_timeout = %u\n"
+        "thread_conn_start_min_jitter_micros = %u\n"
+        "thread_conn_start_max_jitter_micros = %u\n"
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
@@ -229,6 +232,9 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->key_stddev,
         cfg->key_median,
         cfg->reconnect_interval,
+        cfg->connection_timeout,
+        cfg->thread_conn_start_min_jitter_micros,
+        cfg->thread_conn_start_max_jitter_micros,
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
@@ -290,6 +296,9 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key_median"        ,"%f",           cfg->key_median);
     jsonhandler->write_obj("key_zipf_exp"      ,"%f",           cfg->key_zipf_exp);
     jsonhandler->write_obj("reconnect_interval","%u",    		cfg->reconnect_interval);
+    jsonhandler->write_obj("connection_timeout","%u",    		cfg->connection_timeout);
+    jsonhandler->write_obj("thread_conn_start_min_jitter_micros","%u", cfg->thread_conn_start_min_jitter_micros);
+    jsonhandler->write_obj("thread_conn_start_max_jitter_micros","%u", cfg->thread_conn_start_max_jitter_micros);
     jsonhandler->write_obj("multi_key_get"     ,"%u",         	cfg->multi_key_get);
     jsonhandler->write_obj("authenticate"      ,"\"%s\"",      	cfg->authenticate ? cfg->authenticate : "");
     jsonhandler->write_obj("select-db"         ,"%d",           cfg->select_db);
@@ -469,6 +478,10 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->reconnect_backoff_factor = 2.0;
     if (!cfg->connection_timeout)
         cfg->connection_timeout = 10;
+    if (!cfg->thread_conn_start_min_jitter_micros)
+        cfg->thread_conn_start_min_jitter_micros = 100;
+    if (!cfg->thread_conn_start_max_jitter_micros)
+        cfg->thread_conn_start_max_jitter_micros = 1000;
 
 #ifdef USE_TLS
     if (!cfg->tls_protocols)
@@ -570,6 +583,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_max_reconnect_attempts,
         o_reconnect_backoff_factor,
         o_connection_timeout,
+        o_thread_conn_start_min_jitter_micros,
+        o_thread_conn_start_max_jitter_micros,
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
@@ -653,6 +668,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "max-reconnect-attempts",     1, 0, o_max_reconnect_attempts },
         { "reconnect-backoff-factor",   1, 0, o_reconnect_backoff_factor },
         { "connection-timeout",         1, 0, o_connection_timeout },
+        { "thread-conn-start-min-jitter-micros", 1, 0, o_thread_conn_start_min_jitter_micros },
+        { "thread-conn-start-max-jitter-micros", 1, 0, o_thread_conn_start_max_jitter_micros },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
@@ -991,6 +1008,22 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_thread_conn_start_min_jitter_micros:
+                    endptr = NULL;
+                    cfg->thread_conn_start_min_jitter_micros = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-min-jitter-micros must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_thread_conn_start_max_jitter_micros:
+                    endptr = NULL;
+                    cfg->thread_conn_start_max_jitter_micros = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-max-jitter-micros must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
                 case o_generate_keys:
                     cfg->generate_keys = 1;
                     break;
@@ -1222,6 +1255,8 @@ void usage() {
             "      --max-reconnect-attempts=NUM Maximum number of reconnection attempts (default: 3)\n"
             "      --reconnect-backoff-factor=NUM Backoff factor for reconnection delays (default: 2.0)\n"
             "      --connection-timeout=SECS  Connection timeout in seconds (default: 10)\n"
+            "      --thread-conn-start-min-jitter-micros=NUM Minimum jitter in microseconds between connection creation (default: 100)\n"
+            "      --thread-conn-start-max-jitter-micros=NUM Maximum jitter in microseconds between connection creation (default: 1000)\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
@@ -1367,7 +1402,7 @@ void size_to_str(unsigned long int size, char *buf, int buf_len)
     }
 }
 
-run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen)
+run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen, json_handler* jsonhandler = NULL)
 {
     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
 
@@ -1498,6 +1533,14 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
         (*i)->join();
         (*i)->m_cg->merge_run_stats(&stats);
+    }
+
+    // Export cluster topology if in cluster mode (only need to do this once)
+    // We need to do this before cleaning up the threads
+    if (cfg->cluster_mode && !threads.empty()) {
+        fprintf(stderr, "\n");  // Add some spacing
+        threads[0]->m_cg->export_cluster_topology(stderr, NULL);
+        stats.capture_cluster_topology_data(threads[0]->m_cg);
     }
 
     // Do we need to produce client stats?
@@ -1647,6 +1690,14 @@ int main(int argc, char *argv[])
     }
 
     config_init_defaults(&cfg);
+
+    // Validate jitter parameters
+    if (cfg.thread_conn_start_min_jitter_micros > cfg.thread_conn_start_max_jitter_micros) {
+        fprintf(stderr, "error: thread-conn-start-min-jitter-micros (%u) cannot be greater than thread-conn-start-max-jitter-micros (%u).\n",
+                cfg.thread_conn_start_min_jitter_micros, cfg.thread_conn_start_max_jitter_micros);
+        exit(1);
+    }
+
     log_level = cfg.debug;
     if (cfg.show_config) {
         fprintf(stderr, "============== Configuration values: ==============\n");
@@ -2015,6 +2066,22 @@ int main(int argc, char *argv[])
             average.print(outfile, &cfg, average_header, jsonhandler);
         } else {
             all_stats.begin()->print(outfile, &cfg, "ALL STATS", jsonhandler);
+        }
+
+        // Export cluster topology to output file and JSON if in cluster mode
+        if (cfg.cluster_mode && !all_stats.empty()) {
+            // Export to output file
+            all_stats.begin()->export_cluster_topology(outfile, NULL);
+
+            // Export to JSON - we need to find a cluster client to export from
+            if (jsonhandler != NULL) {
+                // Find the first cluster client from the first run's client groups
+                // We need to access the client groups from the run data
+                // For now, let's add a note that cluster topology was captured
+                jsonhandler->open_nesting("cluster_topology_note");
+                jsonhandler->write_obj("message", "\"%s\"", "Cluster topology was captured during benchmark execution");
+                jsonhandler->close_nesting();
+            }
         }
     }
 

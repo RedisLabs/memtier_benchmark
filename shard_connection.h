@@ -86,6 +86,7 @@ public:
     ~shard_connection();
 
     void set_address_port(const char* address, const char* port);
+    void set_resolved_ip(const char* resolved_ip);
     const char* get_readable_id();
 
     int connect(struct connect_info* addr);
@@ -128,6 +129,10 @@ public:
         return m_port;
     }
 
+    const char* get_resolved_ip() {
+        return m_resolved_ip;
+    }
+
     enum connection_state get_connection_state() {
         return m_connection_state;
     }
@@ -160,6 +165,7 @@ private:
 
     char* m_address;
     char* m_port;
+    char* m_resolved_ip;  // Store the resolved IP address
     std::string m_readable_id;
 
     struct sockaddr_un* m_unix_sockaddr;

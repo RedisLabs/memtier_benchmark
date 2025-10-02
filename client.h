@@ -45,6 +45,7 @@ class client;
 class client_group;
 struct benchmark_config;
 class object_generator;
+class json_handler;
 
 #define SET_CMD_IDX 0
 #define GET_CMD_IDX 2
@@ -212,11 +213,12 @@ public:
     void run(void);
 
     void write_client_stats(const char *prefix);
+    void export_cluster_topology(FILE* outfile, json_handler* jsonhandler);
 
     struct event_base *get_event_base(void) { return m_base; }
     benchmark_config *get_config(void) { return m_config; }
     abstract_protocol* get_protocol(void) { return m_protocol; }
-    object_generator* get_obj_gen(void) { return m_obj_gen; }    
+    object_generator* get_obj_gen(void) { return m_obj_gen; }
 
     unsigned long int get_total_bytes(void);
     unsigned long int get_total_ops(void);

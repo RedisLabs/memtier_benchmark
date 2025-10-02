@@ -90,6 +90,8 @@ protected:
     friend bool one_second_stats_predicate(const one_second_stats& a, const one_second_stats& b);
 
     benchmark_config *m_config;
+    std::string m_cluster_topology_stdout;  // Stored cluster topology for stdout
+    std::string m_cluster_topology_json;    // Stored cluster topology for JSON
 
     struct timeval m_start_time;
     struct timeval m_end_time;
@@ -190,6 +192,10 @@ public:
     void print_histogram(FILE *out, json_handler* jsonhandler, arbitrary_command_list& command_list);
     void print(FILE *file, benchmark_config *config,
                const char* header = NULL, json_handler* jsonhandler = NULL);
+
+    // Cluster topology methods
+    void capture_cluster_topology_data(class client_group *cg);
+    void export_cluster_topology(FILE *file, json_handler* jsonhandler);
 
     unsigned int get_duration(void);
     unsigned long int get_duration_usec(void);

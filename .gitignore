@@ -34,9 +34,17 @@ tests/tls/*
 !/tests/test_requirements.txt
 __pycache__
 *.csv
+*.json
 
 # Code coverage with lcov/gcov
 *.gcno
 *.gcov
 *.gcda
 *.info
+
+# redis related
+*.rdb
+*.aof
+appendonlydir/
+*.conf
+

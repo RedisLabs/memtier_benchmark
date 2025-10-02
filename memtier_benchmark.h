@@ -97,6 +97,8 @@ struct benchmark_config {
     unsigned int max_reconnect_attempts;
     double reconnect_backoff_factor;
     unsigned int connection_timeout;
+    unsigned int thread_conn_start_min_jitter_micros;
+    unsigned int thread_conn_start_max_jitter_micros;
     int multi_key_get;
     const char *authenticate;
     int select_db;
