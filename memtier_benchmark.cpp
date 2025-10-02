@@ -1522,6 +1522,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             // Merge all threads for this second to get accurate aggregated percentiles
             std::vector<double> set_percentiles;
             std::vector<double> get_percentiles;
+            std::vector<double> total_percentiles;
 
             if (cfg->print_percentiles.quantile_list.size() > 0) {
                 // Create temporary stats and merge all threads for this second
@@ -1540,6 +1541,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
                     const one_second_stats& latest_second = stats_list.back();
                     set_percentiles = latest_second.m_set_cmd.summarized_quantile_values;
                     get_percentiles = latest_second.m_get_cmd.summarized_quantile_values;
+                    total_percentiles = latest_second.m_total_cmd.summarized_quantile_values;
                 }
             }
 
@@ -1547,7 +1549,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             run_stats::write_csv_realtime_data(csv_file, second_counter, active_connections, cur_connection_errors,
                                              cur_ops, cur_bytes, cur_latency, cfg,
                                              set_percentiles.empty() ? nullptr : &set_percentiles,
-                                             get_percentiles.empty() ? nullptr : &get_percentiles);
+                                             get_percentiles.empty() ? nullptr : &get_percentiles,
+                                             total_percentiles.empty() ? nullptr : &total_percentiles);
         }
     } while (active_threads > 0);
 

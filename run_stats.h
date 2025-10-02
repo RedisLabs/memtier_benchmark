@@ -182,7 +182,8 @@ public:
     static bool write_csv_header(FILE *f, benchmark_config *config);
     static bool write_csv_realtime_data(FILE *f, unsigned int second, unsigned int active_connections, unsigned int connection_errors,
                                        unsigned long int cur_ops, unsigned long int cur_bytes, double cur_latency, benchmark_config *config,
-                                       const std::vector<double>* set_percentiles = nullptr, const std::vector<double>* get_percentiles = nullptr);
+                                       const std::vector<double>* set_percentiles = nullptr, const std::vector<double>* get_percentiles = nullptr,
+                                       const std::vector<double>* total_percentiles = nullptr);
     void debug_dump(void);
 
     // function to handle the results output

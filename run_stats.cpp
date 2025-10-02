@@ -406,6 +406,15 @@ void run_stats::save_csv_one_sec(FILE *f,
         fprintf(f, ",WAIT p%.1f Latency", quantile);
     }
 
+    // Add TOTAL columns (matching JSON structure)
+    fprintf(f, ",TOTAL Requests,TOTAL Average Latency,TOTAL Total Bytes,TOTAL Total Bytes TX,TOTAL Total Bytes RX");
+
+    // Add TOTAL percentile columns
+    for (std::size_t i = 0; i < m_config->print_percentiles.quantile_list.size(); i++) {
+        float quantile = m_config->print_percentiles.quantile_list[i];
+        fprintf(f, ",TOTAL p%.1f Latency", quantile);
+    }
+
     fprintf(f, ",Active Connections,Connection Errors\n");
 
     total_get_ops = 0;
@@ -451,6 +460,19 @@ void run_stats::save_csv_one_sec(FILE *f,
         // Write WAIT percentiles
         for (std::size_t p = 0; p < i->m_wait_cmd.summarized_quantile_values.size(); p++) {
             fprintf(f, ",%.3f", i->m_wait_cmd.summarized_quantile_values[p]);
+        }
+
+        // Write TOTAL data (SET + GET combined)
+        fprintf(f, ",%lu,%u.%06u,%lu,%lu,%lu",
+                i->m_total_cmd.m_ops,
+                USEC_FORMAT(AVERAGE(i->m_total_cmd.m_total_latency, i->m_total_cmd.m_ops)),
+                i->m_total_cmd.m_bytes_rx + i->m_total_cmd.m_bytes_tx,
+                i->m_total_cmd.m_bytes_tx,
+                i->m_total_cmd.m_bytes_rx);
+
+        // Write TOTAL percentiles
+        for (std::size_t p = 0; p < i->m_total_cmd.summarized_quantile_values.size(); p++) {
+            fprintf(f, ",%.3f", i->m_total_cmd.summarized_quantile_values[p]);
         }
 
         // Write connection data
@@ -838,6 +860,15 @@ bool run_stats::write_csv_header(FILE *f, benchmark_config *config)
         fprintf(f, ",WAIT p%.1f Latency", quantile);
     }
 
+    // Add TOTAL columns (matching JSON structure)
+    fprintf(f, ",TOTAL Requests,TOTAL Average Latency,TOTAL Total Bytes,TOTAL Total Bytes TX,TOTAL Total Bytes RX");
+
+    // Add TOTAL percentile columns
+    for (std::size_t i = 0; i < config->print_percentiles.quantile_list.size(); i++) {
+        float quantile = config->print_percentiles.quantile_list[i];
+        fprintf(f, ",TOTAL p%.1f Latency", quantile);
+    }
+
     fprintf(f, ",Active Connections,Connection Errors\n");
     fflush(f);
     return true;
@@ -845,7 +876,8 @@ bool run_stats::write_csv_header(FILE *f, benchmark_config *config)
 
 bool run_stats::write_csv_realtime_data(FILE *f, unsigned int second, unsigned int active_connections, unsigned int connection_errors,
                                        unsigned long int cur_ops, unsigned long int cur_bytes, double cur_latency, benchmark_config *config,
-                                       const std::vector<double>* set_percentiles, const std::vector<double>* get_percentiles)
+                                       const std::vector<double>* set_percentiles, const std::vector<double>* get_percentiles,
+                                       const std::vector<double>* total_percentiles)
 {
     if (!f) return false;
 
@@ -906,6 +938,20 @@ bool run_stats::write_csv_realtime_data(FILE *f, unsigned int second, unsigned i
     // Write WAIT percentiles (zeros since no WAIT operations in real-time)
     for (std::size_t i = 0; i < config->print_percentiles.quantile_list.size(); i++) {
         fprintf(f, ",0.000");
+    }
+
+    // Write TOTAL data (SET + GET combined)
+    unsigned long int total_ops = cur_ops;
+    unsigned long int total_bytes = cur_bytes;
+    fprintf(f, ",%lu,%.6f,%lu,%lu,0", total_ops, cur_latency, total_bytes, total_bytes);
+
+    // Write TOTAL percentiles (use actual TOTAL percentiles if available)
+    for (std::size_t i = 0; i < config->print_percentiles.quantile_list.size(); i++) {
+        if (total_percentiles && i < total_percentiles->size()) {
+            fprintf(f, ",%.3f", (*total_percentiles)[i]);
+        } else {
+            fprintf(f, ",%.3f", cur_latency);
+        }
     }
 
     // Write connection data
