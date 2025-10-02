@@ -170,7 +170,8 @@ one_second_stats::one_second_stats(unsigned int second) :
         m_wait_cmd(),
         m_total_cmd(),
         m_ar_commands(),
-        m_connection_errors(0)
+        m_connection_errors(0),
+        m_active_connections(0)
         {
     reset(second);
 }
@@ -187,6 +188,7 @@ void one_second_stats::reset(unsigned int second) {
     m_total_cmd.reset();
     m_ar_commands.reset();
     m_connection_errors = 0;
+    m_active_connections = 0;
 }
 
 void one_second_stats::merge(const one_second_stats& other) {
@@ -196,6 +198,7 @@ void one_second_stats::merge(const one_second_stats& other) {
     m_total_cmd.merge(other.m_total_cmd);
     m_ar_commands.merge(other.m_ar_commands);
     m_connection_errors += other.m_connection_errors;
+    m_active_connections += other.m_active_connections;
 }
 
 ///////////////////////////////////////////////////////////////////////////

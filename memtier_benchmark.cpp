@@ -92,6 +92,30 @@ void benchmark_log(int level, const char *fmt, ...)
     va_end(args);
 }
 
+void benchmark_log_with_timestamp(int level, const char *fmt, ...)
+{
+    if (level > log_level)
+        return;
+
+    // Get current time
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    // Convert to human readable format
+    struct tm *tm_info = localtime(&tv.tv_sec);
+    char timestamp_str[64];
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    // Print timestamp prefix: [YYYY-MM-DD HH:MM:SS.microseconds] [unix_timestamp]
+    fprintf(stderr, "[%s.%06ld] [%ld] ", timestamp_str, tv.tv_usec, tv.tv_sec);
+
+    // Print the actual log message
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
 bool is_redis_protocol(enum PROTOCOL_TYPE type) {
     return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3);
 }
@@ -554,6 +578,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_num_slaves,
         o_wait_timeout,
         o_json_out_file,
+        o_csv_file,
         o_cluster_mode,
         o_command,
         o_command_key_pattern,
@@ -636,6 +661,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
+        { "csv-file",                   1, 0, o_csv_file },
         { "cluster-mode",               0, 0, o_cluster_mode },
         { "help",                       0, 0, o_help },
         { "version",                    0, 0, 'v' },
@@ -1017,6 +1043,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_json_out_file:
                     cfg->json_out_file = optarg;
                     break;
+                case o_csv_file:
+                    cfg->csv_file = optarg;
+                    break;
                 case o_cluster_mode:
                     cfg->cluster_mode = true;
                     break;
@@ -1168,6 +1197,7 @@ void usage() {
             "      --client-stats=FILE        Produce per-client stats file\n"
             "  -o, --out-file=FILE            Name of output file (default: stdout)\n"
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
+            "      --csv-file=FILE            Name of CSV output file for real-time per-second data\n"
             "      --hdr-file-prefix=FILE     Prefix of HDR Latency Histogram output files, if not set, will not save latency histogram files\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
@@ -1369,8 +1399,23 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     unsigned long int cur_bytes_sec = 0;
     unsigned long int cur_connection_errors = 0;
 
+    // Open CSV file for real-time writing if specified
+    FILE *csv_file = NULL;
+    run_stats csv_stats(cfg);
+    run_stats prev_stats(cfg);
+    if (cfg->csv_file != NULL) {
+        csv_file = fopen(cfg->csv_file, "w");
+        if (!csv_file) {
+            perror(cfg->csv_file);
+            fprintf(stderr, "warning: failed to open CSV file, continuing without CSV output\n");
+        } else {
+            run_stats::write_csv_header(csv_file, cfg);
+        }
+    }
+
     // provide some feedback...
     unsigned int active_threads = 0;
+    unsigned int second_counter = 0;
     do {
         active_threads = 0;
         sleep(1);
@@ -1432,6 +1477,17 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 
         fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns %lu conn errors: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
             run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_connection_errors, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+
+        // Write CSV data for this second if CSV file is open
+        if (csv_file != NULL && active_threads == cfg->threads) {
+            second_counter++;
+            // Calculate active connections (threads * clients)
+            unsigned int active_connections = active_threads * cfg->clients;
+
+            // Use the simplified approach with the per-second aggregate data we already have
+            run_stats::write_csv_realtime_data(csv_file, second_counter, active_connections, cur_connection_errors,
+                                             cur_ops, cur_bytes, cur_latency, cfg);
+        }
     } while (active_threads > 0);
 
     fprintf(stderr, "\n\n");
@@ -1462,6 +1518,11 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         cg_thread* t = *threads.begin();
         threads.erase(threads.begin());
         delete t;
+    }
+
+    // Close CSV file if it was opened
+    if (csv_file != NULL) {
+        fclose(csv_file);
     }
 
     return stats;

@@ -126,6 +126,7 @@ public:
     void update_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
     void update_connection_error(struct timeval* ts);
+    void update_active_connections(struct timeval* ts, unsigned int active_connections);
 
     void update_moved_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
     void update_moved_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
@@ -169,6 +170,9 @@ public:
     bool save_hdr_arbitrary_commands(benchmark_config *config,int run_number);
 
     bool save_csv(const char *filename, benchmark_config *config);
+    static bool write_csv_header(FILE *f, benchmark_config *config);
+    static bool write_csv_realtime_data(FILE *f, unsigned int second, unsigned int active_connections, unsigned int connection_errors,
+                                       unsigned long int cur_ops, unsigned long int cur_bytes, double cur_latency, benchmark_config *config);
     void debug_dump(void);
 
     // function to handle the results output

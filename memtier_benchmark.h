@@ -33,7 +33,7 @@
     benchmark_log_file_line(LOGLEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
 
 #define benchmark_error_log(...) \
-    benchmark_log(LOGLEVEL_ERROR, __VA_ARGS__)
+    benchmark_log_with_timestamp(LOGLEVEL_ERROR, __VA_ARGS__)
 
 enum key_pattern_index {
     key_pattern_set       = 0,
@@ -57,6 +57,7 @@ struct benchmark_config {
     int resolution;
     enum PROTOCOL_TYPE protocol;
     const char *out_file;
+    const char *csv_file;
     const char *client_stats;
     unsigned int run_count;
     int debug;
@@ -129,6 +130,7 @@ struct benchmark_config {
 
 extern void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...);
 extern void benchmark_log(int level, const char *fmt, ...);
+extern void benchmark_log_with_timestamp(int level, const char *fmt, ...);
 bool is_redis_protocol(enum PROTOCOL_TYPE type);
 
 #endif /* _MEMTIER_BENCHMARK_H */
