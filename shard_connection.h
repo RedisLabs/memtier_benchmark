@@ -86,6 +86,7 @@ public:
     ~shard_connection();
 
     void set_address_port(const char* address, const char* port);
+    void set_resolved_ip(const char* resolved_ip);
     const char* get_readable_id();
 
     int connect(struct connect_info* addr);
@@ -128,9 +129,16 @@ public:
         return m_port;
     }
 
+    const char* get_resolved_ip() {
+        return m_resolved_ip;
+    }
+
     enum connection_state get_connection_state() {
         return m_connection_state;
     }
+
+    void handle_reconnect_timer_event();
+    void handle_connection_timeout_event();
 
 private:
     void setup_event(int sockfd);
@@ -157,6 +165,7 @@ private:
 
     char* m_address;
     char* m_port;
+    char* m_resolved_ip;  // Store the resolved IP address
     std::string m_readable_id;
 
     struct sockaddr_un* m_unix_sockaddr;
@@ -176,6 +185,15 @@ private:
     enum setup_state m_authentication;
     enum setup_state m_db_selection;
     enum setup_state m_cluster_slots;
+
+    // Reconnection state tracking
+    unsigned int m_reconnect_attempts;
+    double m_current_backoff_delay;
+    struct event* m_reconnect_timer;
+    bool m_reconnecting;
+
+    // Connection timeout tracking
+    struct event* m_connection_timeout_timer;
 };
 
 #endif //MEMTIER_BENCHMARK_SHARD_CONNECTION_H

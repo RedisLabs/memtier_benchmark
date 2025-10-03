@@ -129,11 +129,14 @@ public:
 class one_second_stats {
 public:
     unsigned int m_second;        // from start of test
+    time_t m_timestamp;          // actual unix timestamp when this second was measured
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
     one_sec_cmd_stats m_total_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
+    unsigned int m_connection_errors;
+    unsigned int m_active_connections;  // active connections during this second
     one_second_stats(unsigned int second);
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
@@ -200,6 +203,8 @@ public:
     // number of bytes sent
     unsigned long int m_bytes_tx;
     unsigned long int m_ops;
+    unsigned long int m_connection_errors;
+    double m_connection_errors_sec;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);

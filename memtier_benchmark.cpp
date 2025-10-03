@@ -56,11 +56,20 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <signal.h>
+#include <sys/time.h>
+#include <pthread.h>
 
 #include "client.h"
 #include "JSON_handler.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+
+// Global variables for signal handling
+volatile sig_atomic_t g_shutdown_requested = 0;
+static volatile sig_atomic_t g_sigint_count = 0;
+static struct timeval g_benchmark_start_time;
+pid_t g_main_pid;
 
 
 static int log_level = 0;
@@ -80,6 +89,40 @@ void benchmark_log_file_line(int level, const char *filename, unsigned int line,
     va_end(args);
 }
 
+// Signal handler for graceful shutdown
+void sigint_handler(int sig)
+{
+    g_sigint_count++;
+
+    if (g_sigint_count == 1) {
+        // First Ctrl+C: schedule graceful shutdown
+        g_shutdown_requested = 1;
+        fprintf(stderr, "\nReceived SIGINT scheduling shutdown...\n");
+        fprintf(stderr, "Saving benchmark results and printing summary before exiting.\n");
+    } else if (g_sigint_count >= 2) {
+        // Second Ctrl+C: immediate exit
+        fprintf(stderr,"Immediate shutdown requested, bye bye...\n");
+        exit(1);
+    }
+}
+
+// Setup signal handlers
+void setup_signal_handlers()
+{
+    g_main_pid = getpid();
+    gettimeofday(&g_benchmark_start_time, NULL);
+
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
+}
+
 void benchmark_log(int level, const char *fmt, ...)
 {
     if (level > log_level)
@@ -87,6 +130,30 @@ void benchmark_log(int level, const char *fmt, ...)
 
     va_list args;
 
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
+void benchmark_log_with_timestamp(int level, const char *fmt, ...)
+{
+    if (level > log_level)
+        return;
+
+    // Get current time
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    // Convert to human readable format
+    struct tm *tm_info = localtime(&tv.tv_sec);
+    char timestamp_str[64];
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    // Print timestamp prefix: [YYYY-MM-DD HH:MM:SS.microseconds] [unix_timestamp]
+    fprintf(stderr, "[%s.%06ld] [%ld] ", timestamp_str, tv.tv_usec, tv.tv_sec);
+
+    // Print the actual log message
+    va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
@@ -153,6 +220,9 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key_stddev = %f\n"
         "key_median = %f\n"
         "reconnect_interval = %u\n"
+        "connection_timeout = %u\n"
+        "thread_conn_start_min_jitter_micros = %u\n"
+        "thread_conn_start_max_jitter_micros = %u\n"
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
@@ -205,6 +275,9 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->key_stddev,
         cfg->key_median,
         cfg->reconnect_interval,
+        cfg->connection_timeout,
+        cfg->thread_conn_start_min_jitter_micros,
+        cfg->thread_conn_start_max_jitter_micros,
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
@@ -266,6 +339,9 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key_median"        ,"%f",           cfg->key_median);
     jsonhandler->write_obj("key_zipf_exp"      ,"%f",           cfg->key_zipf_exp);
     jsonhandler->write_obj("reconnect_interval","%u",    		cfg->reconnect_interval);
+    jsonhandler->write_obj("connection_timeout","%u",    		cfg->connection_timeout);
+    jsonhandler->write_obj("thread_conn_start_min_jitter_micros","%u", cfg->thread_conn_start_min_jitter_micros);
+    jsonhandler->write_obj("thread_conn_start_max_jitter_micros","%u", cfg->thread_conn_start_max_jitter_micros);
     jsonhandler->write_obj("multi_key_get"     ,"%u",         	cfg->multi_key_get);
     jsonhandler->write_obj("authenticate"      ,"\"%s\"",      	cfg->authenticate ? cfg->authenticate : "");
     jsonhandler->write_obj("select-db"         ,"%d",           cfg->select_db);
@@ -437,6 +513,19 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined())
         cfg->print_percentiles = config_quantiles("50,99,99.9");
+
+    // Set defaults for reconnection on error
+    if (!cfg->max_reconnect_attempts)
+        cfg->max_reconnect_attempts = 3;
+    if (cfg->reconnect_backoff_factor == 0.0)
+        cfg->reconnect_backoff_factor = 2.0;
+    if (!cfg->connection_timeout)
+        cfg->connection_timeout = 10;
+    if (!cfg->thread_conn_start_min_jitter_micros)
+        cfg->thread_conn_start_min_jitter_micros = 100;
+    if (!cfg->thread_conn_start_max_jitter_micros)
+        cfg->thread_conn_start_max_jitter_micros = 1000;
+
 #ifdef USE_TLS
     if (!cfg->tls_protocols)
         cfg->tls_protocols = REDIS_TLS_PROTO_DEFAULT;
@@ -533,6 +622,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_randomize,
         o_client_stats,
         o_reconnect_interval,
+        o_reconnect_on_error,
+        o_max_reconnect_attempts,
+        o_reconnect_backoff_factor,
+        o_connection_timeout,
+        o_thread_conn_start_min_jitter_micros,
+        o_thread_conn_start_max_jitter_micros,
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
@@ -541,6 +636,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_num_slaves,
         o_wait_timeout,
         o_json_out_file,
+        o_csv_file,
         o_cluster_mode,
         o_command,
         o_command_key_pattern,
@@ -611,6 +707,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key-median",                 1, 0, o_key_median },
         { "key-zipf-exp",               1, 0, o_key_zipf_exp},
         { "reconnect-interval",         1, 0, o_reconnect_interval },
+        { "reconnect-on-error",         0, 0, o_reconnect_on_error },
+        { "max-reconnect-attempts",     1, 0, o_max_reconnect_attempts },
+        { "reconnect-backoff-factor",   1, 0, o_reconnect_backoff_factor },
+        { "connection-timeout",         1, 0, o_connection_timeout },
+        { "thread-conn-start-min-jitter-micros", 1, 0, o_thread_conn_start_min_jitter_micros },
+        { "thread-conn-start-max-jitter-micros", 1, 0, o_thread_conn_start_max_jitter_micros },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
@@ -619,6 +721,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "num-slaves",                 1, 0, o_num_slaves },
         { "wait-timeout",               1, 0, o_wait_timeout },
         { "json-out-file",              1, 0, o_json_out_file },
+        { "csv-file",                   1, 0, o_csv_file },
         { "cluster-mode",               0, 0, o_cluster_mode },
         { "help",                       0, 0, o_help },
         { "version",                    0, 0, 'v' },
@@ -921,6 +1024,49 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_reconnect_on_error:
+                    cfg->reconnect_on_error = true;
+                    break;
+                case o_max_reconnect_attempts:
+                    endptr = NULL;
+                    cfg->max_reconnect_attempts = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: max-reconnect-attempts must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_reconnect_backoff_factor:
+                    endptr = NULL;
+                    cfg->reconnect_backoff_factor = strtod(optarg, &endptr);
+                    if (cfg->reconnect_backoff_factor <= 0.0 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: reconnect-backoff-factor must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_connection_timeout:
+                    endptr = NULL;
+                    cfg->connection_timeout = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!cfg->connection_timeout || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: connection-timeout must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_thread_conn_start_min_jitter_micros:
+                    endptr = NULL;
+                    cfg->thread_conn_start_min_jitter_micros = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-min-jitter-micros must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_thread_conn_start_max_jitter_micros:
+                    endptr = NULL;
+                    cfg->thread_conn_start_max_jitter_micros = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-max-jitter-micros must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
                 case o_generate_keys:
                     cfg->generate_keys = 1;
                     break;
@@ -972,6 +1118,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_json_out_file:
                     cfg->json_out_file = optarg;
+                    break;
+                case o_csv_file:
+                    cfg->csv_file = optarg;
                     break;
                 case o_cluster_mode:
                     cfg->cluster_mode = true;
@@ -1124,6 +1273,7 @@ void usage() {
             "      --client-stats=FILE        Produce per-client stats file\n"
             "  -o, --out-file=FILE            Name of output file (default: stdout)\n"
             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
+            "      --csv-file=FILE            Name of CSV output file for real-time per-second data\n"
             "      --hdr-file-prefix=FILE     Prefix of HDR Latency Histogram output files, if not set, will not save latency histogram files\n"
             "      --show-config              Print detailed configuration before running\n"
             "      --hide-histogram           Don't print detailed latency histogram\n"
@@ -1144,6 +1294,12 @@ void usage() {
             "      --ratio=RATIO              Set:Get ratio (default: 1:10)\n"
             "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
             "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
+            "      --reconnect-on-error       Enable automatic reconnection on connection errors\n"
+            "      --max-reconnect-attempts=NUM Maximum number of reconnection attempts (default: 3)\n"
+            "      --reconnect-backoff-factor=NUM Backoff factor for reconnection delays (default: 2.0)\n"
+            "      --connection-timeout=SECS  Connection timeout in seconds (default: 10)\n"
+            "      --thread-conn-start-min-jitter-micros=NUM Minimum jitter in microseconds between connection creation (default: 100)\n"
+            "      --thread-conn-start-max-jitter-micros=NUM Maximum jitter in microseconds between connection creation (default: 1000)\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
@@ -1289,7 +1445,7 @@ void size_to_str(unsigned long int size, char *buf, int buf_len)
     }
 }
 
-run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen)
+run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen, json_handler* jsonhandler = NULL)
 {
     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
 
@@ -1315,21 +1471,50 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     unsigned long int prev_ops = 0;
     unsigned long int prev_bytes = 0;
     unsigned long int prev_duration = 0;
+    unsigned long int prev_connection_errors = 0;
     double prev_latency = 0, cur_latency = 0;
     unsigned long int cur_ops_sec = 0;
     unsigned long int cur_bytes_sec = 0;
+    unsigned long int cur_connection_errors = 0;
+
+    // Open CSV file for real-time writing if specified
+    FILE *csv_file = NULL;
+    run_stats csv_stats(cfg);
+    run_stats prev_stats(cfg);
+    if (cfg->csv_file != NULL) {
+        csv_file = fopen(cfg->csv_file, "w");
+        if (!csv_file) {
+            perror(cfg->csv_file);
+            fprintf(stderr, "warning: failed to open CSV file, continuing without CSV output\n");
+        } else {
+            run_stats::write_csv_header(csv_file, cfg);
+        }
+    }
 
     // provide some feedback...
     unsigned int active_threads = 0;
+    unsigned int second_counter = 0;
     do {
         active_threads = 0;
         sleep(1);
+
+        // Check for shutdown request
+        if (g_shutdown_requested) {
+            // Signal all threads to stop by breaking their event loops
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                if (!(*i)->m_finished) {
+                    event_base_loopbreak((*i)->m_cg->get_event_base());
+                }
+            }
+            break;
+        }
 
         unsigned long int total_ops = 0;
         unsigned long int total_bytes = 0;
         unsigned long int duration = 0;
         unsigned int thread_counter = 0;
         unsigned long int total_latency = 0;
+        unsigned long int total_connection_errors = 0;
 
         for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
             if (!(*i)->m_finished)
@@ -1338,6 +1523,7 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             total_ops += (*i)->m_cg->get_total_ops();
             total_bytes += (*i)->m_cg->get_total_bytes();
             total_latency += (*i)->m_cg->get_total_latency();
+            total_connection_errors += (*i)->m_cg->get_total_connection_errors();
             thread_counter++;
             float factor = ((float)(thread_counter - 1) / thread_counter);
             duration =  factor * duration +  (float)(*i)->m_cg->get_duration_usec() / thread_counter ;
@@ -1347,10 +1533,12 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int cur_bytes = total_bytes-prev_bytes;
         unsigned long int cur_duration = duration-prev_duration;
         double cur_total_latency = total_latency-prev_latency;
+        cur_connection_errors = total_connection_errors-prev_connection_errors;
         prev_ops = total_ops;
         prev_bytes = total_bytes;
         prev_latency = total_latency;
         prev_duration = duration;
+        prev_connection_errors = total_connection_errors;
 
         unsigned long int ops_sec = 0;
         unsigned long int bytes_sec = 0;
@@ -1376,8 +1564,49 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         else
             progress = 100.0 * (duration / 1000000.0)/cfg->test_time;
 
-        fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
-            run_id, progress, (unsigned int) (duration / 1000000), active_threads, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+        fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns %lu conn errors: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
+            run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_connection_errors, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+
+        // Write CSV data for this second if CSV file is open
+        if (csv_file != NULL && active_threads == cfg->threads) {
+            second_counter++;
+            // Calculate active connections (threads * clients)
+            unsigned int active_connections = active_threads * cfg->clients;
+
+            // Merge all threads for this second to get accurate aggregated percentiles
+            std::vector<double> set_percentiles;
+            std::vector<double> get_percentiles;
+            std::vector<double> total_percentiles;
+
+            if (cfg->print_percentiles.quantile_list.size() > 0) {
+                // Create temporary stats and merge all threads for this second
+                run_stats temp_stats(cfg);
+                unsigned int iteration_counter = 1;
+                for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                    if (!(*i)->m_finished) {
+                        (*i)->m_cg->merge_run_stats(&temp_stats);
+                        iteration_counter++;
+                    }
+                }
+
+                // Get the most recent completed second's percentiles from the merged stats
+                const std::list<one_second_stats>& stats_list = temp_stats.get_stats();
+                if (!stats_list.empty()) {
+                    const one_second_stats& latest_second = stats_list.back();
+                    set_percentiles = latest_second.m_set_cmd.summarized_quantile_values;
+                    get_percentiles = latest_second.m_get_cmd.summarized_quantile_values;
+                    total_percentiles = latest_second.m_total_cmd.summarized_quantile_values;
+                }
+            }
+
+            // Use the properly aggregated percentile data!
+            run_stats::write_csv_realtime_data(csv_file, second_counter, active_connections, cur_connection_errors,
+                                             cur_ops, cur_bytes, cur_latency, cfg,
+                                             set_percentiles.empty() ? nullptr : &set_percentiles,
+                                             get_percentiles.empty() ? nullptr : &get_percentiles,
+                                             total_percentiles.empty() ? nullptr : &total_percentiles,
+                                             g_benchmark_start_time.tv_sec);
+        }
     } while (active_threads > 0);
 
     fprintf(stderr, "\n\n");
@@ -1388,6 +1617,14 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
         (*i)->join();
         (*i)->m_cg->merge_run_stats(&stats);
+    }
+
+    // Export cluster topology if in cluster mode (only need to do this once)
+    // We need to do this before cleaning up the threads
+    if (cfg->cluster_mode && !threads.empty()) {
+        fprintf(stderr, "\n");  // Add some spacing
+        threads[0]->m_cg->export_cluster_topology(stderr, NULL);
+        stats.capture_cluster_topology_data(threads[0]->m_cg);
     }
 
     // Do we need to produce client stats?
@@ -1408,6 +1645,11 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         cg_thread* t = *threads.begin();
         threads.erase(threads.begin());
         delete t;
+    }
+
+    // Close CSV file if it was opened
+    if (csv_file != NULL) {
+        fclose(csv_file);
     }
 
     return stats;
@@ -1532,6 +1774,14 @@ int main(int argc, char *argv[])
     }
 
     config_init_defaults(&cfg);
+
+    // Validate jitter parameters
+    if (cfg.thread_conn_start_min_jitter_micros > cfg.thread_conn_start_max_jitter_micros) {
+        fprintf(stderr, "error: thread-conn-start-min-jitter-micros (%u) cannot be greater than thread-conn-start-max-jitter-micros (%u).\n",
+                cfg.thread_conn_start_min_jitter_micros, cfg.thread_conn_start_max_jitter_micros);
+        exit(1);
+    }
+
     log_level = cfg.debug;
     if (cfg.show_config) {
         fprintf(stderr, "============== Configuration values: ==============\n");
@@ -1614,6 +1864,9 @@ int main(int argc, char *argv[])
                 NULL);
     }
 #endif
+
+    // Setup signal handlers for graceful shutdown
+    setup_signal_handlers();
 
     // JSON file initiation
     json_handler *jsonhandler = NULL;
@@ -1851,12 +2104,53 @@ int main(int argc, char *argv[])
                (unsigned long long)(cfg.requests > 0 ? cfg.requests : cfg.test_time),
                cfg.requests > 0 ? "Requests per client"  : "Seconds");
 
+        // Print benchmark duration information
+        struct timeval end_time;
+        gettimeofday(&end_time, NULL);
+
+        // Calculate actual duration in seconds
+        double actual_duration_sec = ((end_time.tv_sec - g_benchmark_start_time.tv_sec) * 1000000 +
+                                     (end_time.tv_usec - g_benchmark_start_time.tv_usec)) / 1000000.0;
+
+        fprintf(outfile, "%-9.2f Actual benchmark duration (seconds)\n", actual_duration_sec);
+
+        // If test_time was specified, show requested vs actual and completion status
+        if (cfg.test_time > 0) {
+            fprintf(outfile, "%-9u Requested test time (seconds)\n", cfg.test_time);
+            if (g_shutdown_requested) {
+                fprintf(outfile, "%-9s Benchmark completion status: INTERRUPTED (stopped before full run)\n", "");
+            } else if (actual_duration_sec < cfg.test_time * 0.95) {  // Allow 5% tolerance
+                fprintf(outfile, "%-9s Benchmark completion status: COMPLETED EARLY\n", "");
+            } else {
+                fprintf(outfile, "%-9s Benchmark completion status: COMPLETED\n", "");
+            }
+        } else if (g_shutdown_requested) {
+            fprintf(outfile, "%-9s Benchmark completion status: INTERRUPTED (stopped before full run)\n", "");
+        } else {
+            fprintf(outfile, "%-9s Benchmark completion status: COMPLETED\n", "");
+        }
+
         if (jsonhandler != NULL){
             jsonhandler->open_nesting("run information");
             jsonhandler->write_obj("Threads","%u",cfg.threads);
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
             jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%llu",
                                    cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
+            jsonhandler->write_obj("Actual benchmark duration (seconds)","%.2f", actual_duration_sec);
+            if (cfg.test_time > 0) {
+                jsonhandler->write_obj("Requested test time (seconds)","%u", cfg.test_time);
+                if (g_shutdown_requested) {
+                    jsonhandler->write_obj("Benchmark completion status","\"%s\"", "INTERRUPTED (stopped before full run)");
+                } else if (actual_duration_sec < cfg.test_time * 0.95) {
+                    jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED EARLY");
+                } else {
+                    jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED");
+                }
+            } else if (g_shutdown_requested) {
+                jsonhandler->write_obj("Benchmark completion status","\"%s\"", "INTERRUPTED (stopped before full run)");
+            } else {
+                jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED");
+            }
             jsonhandler->write_obj("Format version","%d",2);
             jsonhandler->close_nesting();
         }
@@ -1901,6 +2195,22 @@ int main(int argc, char *argv[])
         } else {
             all_stats.begin()->print(outfile, &cfg, "ALL STATS", jsonhandler);
         }
+
+        // Export cluster topology to output file and JSON if in cluster mode
+        if (cfg.cluster_mode && !all_stats.empty()) {
+            // Export to output file
+            all_stats.begin()->export_cluster_topology(outfile, NULL);
+
+            // Export to JSON - we need to find a cluster client to export from
+            if (jsonhandler != NULL) {
+                // Find the first cluster client from the first run's client groups
+                // We need to access the client groups from the run data
+                // For now, let's add a note that cluster topology was captured
+                jsonhandler->open_nesting("cluster_topology_note");
+                jsonhandler->write_obj("message", "\"%s\"", "Cluster topology was captured during benchmark execution");
+                jsonhandler->close_nesting();
+            }
+        }
     }
 
     // If needed, data verification is done now...
@@ -1935,6 +2245,9 @@ int main(int argc, char *argv[])
     }
 
     if (outfile != stdout) {
+        // Log message for saving output file
+        fprintf(stderr, "Saving output file: %s\n", cfg.out_file);
+
         fclose(outfile);
     }
 
@@ -1944,6 +2257,28 @@ int main(int argc, char *argv[])
     }
 
     if (jsonhandler != NULL) {
+        // Log message for saving JSON file
+        fprintf(stderr, "Saving JSON output file: %s\n", cfg.json_out_file);
+
+        // Add benchmark completion information
+        struct timeval end_time;
+        gettimeofday(&end_time, NULL);
+
+        // Calculate actual duration in milliseconds
+        long duration_ms = ((end_time.tv_sec - g_benchmark_start_time.tv_sec) * 1000) +
+                          ((end_time.tv_usec - g_benchmark_start_time.tv_usec) / 1000);
+
+        jsonhandler->open_nesting("benchmark_completion");
+        jsonhandler->write_obj("full_run", "%s", g_shutdown_requested ? "false" : "true");
+        jsonhandler->write_obj("actual_duration_ms", "%ld", duration_ms);
+        jsonhandler->write_obj("interrupted_by_signal", "%s", g_shutdown_requested ? "true" : "false");
+        jsonhandler->write_obj("sigint_count", "%d", (int)g_sigint_count);
+        if (cfg.test_time > 0) {
+            jsonhandler->write_obj("requested_test_time_sec", "%u", cfg.test_time);
+            jsonhandler->write_obj("actual_duration_sec", "%.2f", duration_ms / 1000.0);
+        }
+        jsonhandler->close_nesting();
+
         // closing the JSON
         delete jsonhandler;
     }

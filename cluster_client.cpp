@@ -36,18 +36,19 @@
 #ifdef HAVE_NETINET_TCP_H
 #include <netinet/tcp.h>
 #endif
+#include <arpa/inet.h>
+#include <netdb.h>
 #ifdef HAVE_LIMITS_H
 #include <limits.h>
 #endif
 
-#ifdef HAVE_ASSERT_H
 #include <assert.h>
-#endif
 
 #include "cluster_client.h"
 #include "memtier_benchmark.h"
 #include "obj_gen.h"
 #include "shard_connection.h"
+#include "JSON_handler.h"
 
 #define KEY_INDEX_QUEUE_MAX_SIZE 1000000
 
@@ -209,6 +210,20 @@ bool cluster_client::connect_shard_connection(shard_connection* sc, char* addres
     memcpy(ci.addr_buf, addr_info->ai_addr, addr_info->ai_addrlen);
     ci.ci_addr = (struct sockaddr *) ci.addr_buf;
     ci.ci_addrlen = addr_info->ai_addrlen;
+
+    // Extract and store the resolved IP address
+    char resolved_ip[INET6_ADDRSTRLEN];
+    if (addr_info->ai_family == AF_INET) {
+        struct sockaddr_in* sin = (struct sockaddr_in*)addr_info->ai_addr;
+        inet_ntop(AF_INET, &sin->sin_addr, resolved_ip, INET_ADDRSTRLEN);
+    } else if (addr_info->ai_family == AF_INET6) {
+        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)addr_info->ai_addr;
+        inet_ntop(AF_INET6, &sin6->sin6_addr, resolved_ip, INET6_ADDRSTRLEN);
+    } else {
+        strcpy(resolved_ip, "unknown");
+    }
+    sc->set_resolved_ip(resolved_ip);
+
     freeaddrinfo(addr_info);
 
     // call connect
@@ -496,5 +511,133 @@ void cluster_client::handle_response(unsigned int conn_id, struct timeval timest
 
     // continue with base class
     client::handle_response(conn_id, timestamp, request, response);
+}
+
+void cluster_client::print_cluster_topology(FILE* outfile) {
+    fprintf(outfile, "\nCLUSTER TOPOLOGY\n");
+    fprintf(outfile, "================\n");
+
+    // Create a map to group slots by connection
+    std::map<unsigned int, std::vector<std::pair<int, int>>> conn_slots;
+
+    // Group consecutive slots by connection
+    int start_slot = -1;
+    int end_slot = -1;
+    unsigned int current_conn = m_slot_to_shard[0];
+
+    for (int slot = 0; slot <= 16383; slot++) {
+        if (m_slot_to_shard[slot] == current_conn) {
+            if (start_slot == -1) {
+                start_slot = slot;
+            }
+            end_slot = slot;
+        } else {
+            // Connection changed, save the range
+            if (start_slot != -1) {
+                conn_slots[current_conn].push_back(std::make_pair(start_slot, end_slot));
+            }
+            current_conn = m_slot_to_shard[slot];
+            start_slot = slot;
+            end_slot = slot;
+        }
+    }
+    // Don't forget the last range
+    if (start_slot != -1) {
+        conn_slots[current_conn].push_back(std::make_pair(start_slot, end_slot));
+    }
+
+    // Print the topology
+    for (auto& conn_entry : conn_slots) {
+        unsigned int conn_id = conn_entry.first;
+        if (conn_id < m_connections.size()) {
+            shard_connection* sc = m_connections[conn_id];
+            fprintf(outfile, "Connection %u: %s:%s", conn_id,
+                   sc->get_address() ? sc->get_address() : "unknown",
+                   sc->get_port() ? sc->get_port() : "unknown");
+
+            if (sc->get_resolved_ip()) {
+                fprintf(outfile, " (resolved: %s)", sc->get_resolved_ip());
+            }
+            fprintf(outfile, "\n");
+
+            fprintf(outfile, "  Slots: ");
+            bool first = true;
+            for (auto& range : conn_entry.second) {
+                if (!first) fprintf(outfile, ", ");
+                if (range.first == range.second) {
+                    fprintf(outfile, "%d", range.first);
+                } else {
+                    fprintf(outfile, "%d-%d", range.first, range.second);
+                }
+                first = false;
+            }
+            fprintf(outfile, "\n\n");
+        }
+    }
+}
+
+void cluster_client::export_cluster_topology_to_json(json_handler* jsonhandler) {
+    if (jsonhandler == NULL) return;
+
+    jsonhandler->open_nesting("cluster_topology");
+    jsonhandler->open_nesting("connections", NESTED_ARRAY);
+
+    // Create a map to group slots by connection
+    std::map<unsigned int, std::vector<std::pair<int, int>>> conn_slots;
+
+    // Group consecutive slots by connection
+    int start_slot = -1;
+    int end_slot = -1;
+    unsigned int current_conn = m_slot_to_shard[0];
+
+    for (int slot = 0; slot <= 16383; slot++) {
+        if (m_slot_to_shard[slot] == current_conn) {
+            if (start_slot == -1) {
+                start_slot = slot;
+            }
+            end_slot = slot;
+        } else {
+            // Connection changed, save the range
+            if (start_slot != -1) {
+                conn_slots[current_conn].push_back(std::make_pair(start_slot, end_slot));
+            }
+            current_conn = m_slot_to_shard[slot];
+            start_slot = slot;
+            end_slot = slot;
+        }
+    }
+    // Don't forget the last range
+    if (start_slot != -1) {
+        conn_slots[current_conn].push_back(std::make_pair(start_slot, end_slot));
+    }
+
+    // Export each connection
+    for (auto& conn_entry : conn_slots) {
+        unsigned int conn_id = conn_entry.first;
+        if (conn_id < m_connections.size()) {
+            shard_connection* sc = m_connections[conn_id];
+
+            jsonhandler->open_nesting(NULL);
+            jsonhandler->write_obj("connection_id", "%u", conn_id);
+            jsonhandler->write_obj("address", "\"%s\"", sc->get_address() ? sc->get_address() : "unknown");
+            jsonhandler->write_obj("port", "\"%s\"", sc->get_port() ? sc->get_port() : "unknown");
+            jsonhandler->write_obj("resolved_ip", "\"%s\"", sc->get_resolved_ip() ? sc->get_resolved_ip() : "unknown");
+
+            // Export slot ranges
+            jsonhandler->open_nesting("slot_ranges", NESTED_ARRAY);
+            for (auto& range : conn_entry.second) {
+                jsonhandler->open_nesting(NULL);
+                jsonhandler->write_obj("start", "%d", range.first);
+                jsonhandler->write_obj("end", "%d", range.second);
+                jsonhandler->close_nesting();
+            }
+            jsonhandler->close_nesting(); // slot_ranges
+
+            jsonhandler->close_nesting(); // connection object
+        }
+    }
+
+    jsonhandler->close_nesting(); // connections array
+    jsonhandler->close_nesting(); // cluster_topology
 }
 

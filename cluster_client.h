@@ -20,12 +20,14 @@
 #define MEMTIER_BENCHMARK_CLUSTER_CLIENT_H
 
 #include <set>
+#include <map>
 #include "client.h"
 
 typedef std::queue<unsigned long long> key_index_pool;
 
 // forward decleration
 class shard_connection;
+class json_handler;
 
 class cluster_client : public client {
 protected:
@@ -55,6 +57,10 @@ public:
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
                                  request *request, protocol_response *response);
+
+    // Cluster topology export methods
+    void print_cluster_topology(FILE* outfile);
+    void export_cluster_topology_to_json(json_handler* jsonhandler);
 };
 
 

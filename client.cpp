@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
@@ -208,6 +209,10 @@ int client::connect(void)
 
 bool client::finished(void)
 {
+    // Check for external shutdown request (from signal handler)
+    if (g_shutdown_requested)
+        return true;
+
     if (m_config->requests > 0 && m_reqs_processed >= m_config->requests)
         return true;
     if (m_config->test_time > 0 && m_stats.get_duration() >= m_config->test_time)
@@ -622,6 +627,18 @@ int client_group::create_clients(int num)
         }
 
         m_clients.push_back(c);
+
+        // Add jitter between connection creation (except for the last connection)
+        if (i < num - 1 && m_config->thread_conn_start_max_jitter_micros > 0) {
+            unsigned int jitter_range = m_config->thread_conn_start_max_jitter_micros - m_config->thread_conn_start_min_jitter_micros;
+            unsigned int jitter_micros = m_config->thread_conn_start_min_jitter_micros;
+
+            if (jitter_range > 0) {
+                jitter_micros += rand() % (jitter_range + 1);
+            }
+
+            usleep(jitter_micros);
+        }
     }
 
     return num;
@@ -688,6 +705,16 @@ unsigned long int client_group::get_duration_usec(void)
     return duration;
 }
 
+unsigned long int client_group::get_total_connection_errors(void)
+{
+    unsigned long int total_errors = 0;
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        total_errors += (*i)->get_stats()->get_total_connection_errors();
+    }
+
+    return total_errors;
+}
+
 void client_group::merge_run_stats(run_stats* target)
 {
     assert(target != NULL);
@@ -707,6 +734,32 @@ void client_group::write_client_stats(const char *prefix)
         snprintf(filename, sizeof(filename)-1, "%s-%u.csv", prefix, client_id++);
         if (!(*i)->get_stats()->save_csv(filename, m_config)) {
             fprintf(stderr, "error: %s: failed to write client stats.\n", filename);
+        }
+    }
+}
+
+void client_group::export_cluster_topology(FILE* outfile, json_handler* jsonhandler)
+{
+    if (!m_config->cluster_mode) {
+        return; // Only export topology in cluster mode
+    }
+
+    // Find the first cluster_client to export topology from
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        cluster_client* cc = dynamic_cast<cluster_client*>(*i);
+        if (cc != NULL) {
+            // Export to stdout
+            if (outfile != NULL) {
+                cc->print_cluster_topology(outfile);
+            }
+
+            // Export to JSON
+            if (jsonhandler != NULL) {
+                cc->export_cluster_topology_to_json(jsonhandler);
+            }
+
+            // Only need to export from one client since they all have the same topology
+            break;
         }
     }
 }
