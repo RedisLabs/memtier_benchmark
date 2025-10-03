@@ -908,3 +908,130 @@ def test_uri_invalid_database(env):
     # benchmark.run() should return False for invalid database number
     memtier_ok = benchmark.run()
     env.assertFalse(memtier_ok)
+
+
+def test_signal_handling_graceful_shutdown(env):
+    """Test graceful shutdown with SIGINT (Ctrl+C) signal handling"""
+    import subprocess
+    import signal
+    import time
+    import os
+
+    # Create a temporary directory and JSON output file
+    test_dir = tempfile.mkdtemp()
+    json_output_file = os.path.join(test_dir, 'signal_test.json')
+
+    # Get master nodes for connection
+    master_nodes_list = env.getMasterNodesList()
+    if not master_nodes_list:
+        env.skip("No master nodes available for signal handling test")
+        return
+
+    # Use the first master node
+    master_node = master_nodes_list[0]
+    host = master_node['host']
+    port = master_node['port']
+
+    # Build memtier_benchmark command with long test time
+    cmd = [
+        './memtier_benchmark',
+        '--host={}'.format(host),
+        '--port={}'.format(port),
+        '--test-time=30',  # Long test time to ensure we can interrupt it
+        '--clients=2',
+        '--threads=1',
+        '--requests=0',  # Unlimited requests within test time
+        '--json-out-file={}'.format(json_output_file)
+    ]
+
+    # Add TLS arguments if needed
+    if env.isCluster() and env.isTLS():
+        cmd.extend(['--tls', '--cert={}'.format(env.tlsCertFile), '--key={}'.format(env.tlsKeyFile), '--cacert={}'.format(env.tlsCaCertFile)])
+    elif env.isTLS():
+        cmd.extend(['--tls', '--cert={}'.format(env.tlsCertFile), '--key={}'.format(env.tlsKeyFile), '--cacert={}'.format(env.tlsCaCertFile)])
+
+    # Start memtier_benchmark process
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              preexec_fn=os.setsid)  # Create new process group
+
+    try:
+        # Wait 3 seconds to let the benchmark start
+        time.sleep(3)
+
+        # Send SIGINT to the process group (simulating Ctrl+C)
+        os.killpg(os.getpgid(process.pid), signal.SIGINT)
+
+        # Wait for the process to finish gracefully (max 10 seconds)
+        _, stderr = process.communicate(timeout=10)
+
+        # Check that the process exited (should be 0 for graceful shutdown)
+        env.assertTrue(process.returncode is not None, "Process should have exited after SIGINT")
+
+        # Check that JSON file was created
+        env.assertTrue(os.path.exists(json_output_file), "JSON output file should be created")
+
+        # Parse and validate JSON content
+        with open(json_output_file, 'r') as f:
+            json_data = json.load(f)
+
+        # Check for benchmark_completion section
+        env.assertIn('benchmark_completion', json_data, "JSON should contain benchmark_completion section")
+
+        completion_data = json_data['benchmark_completion']
+
+        # Validate completion fields
+        env.assertEqual(completion_data['full_run'], 'false', "full_run should be false for interrupted benchmark")
+        env.assertEqual(completion_data['interrupted_by_signal'], 'true', "interrupted_by_signal should be true")
+        env.assertEqual(completion_data['sigint_count'], '1', "sigint_count should be 1 for single SIGINT")
+
+        # Check that actual_duration_ms is present and reasonable (should be less than 30 seconds)
+        env.assertIn('actual_duration_ms', completion_data, "actual_duration_ms should be present")
+        actual_duration = int(completion_data['actual_duration_ms'])
+        env.assertLess(actual_duration, 30000, "Actual duration should be less than 30 seconds (30000ms)")
+        env.assertGreater(actual_duration, 1000, "Actual duration should be at least 1 second (1000ms)")
+
+        # Check for requested vs actual test time fields
+        env.assertIn('requested_test_time_sec', completion_data, "requested_test_time_sec should be present")
+        env.assertEqual(int(completion_data['requested_test_time_sec']), 30, "requested_test_time_sec should be 30")
+        env.assertIn('actual_duration_sec', completion_data, "actual_duration_sec should be present")
+        actual_duration_sec = float(completion_data['actual_duration_sec'])
+        env.assertLess(actual_duration_sec, 30.0, "Actual duration should be less than 30 seconds")
+        env.assertGreater(actual_duration_sec, 1.0, "Actual duration should be at least 1 second")
+
+        # Check run information section for duration and completion status
+        env.assertIn('run information', json_data, "JSON should contain run information section")
+        run_info = json_data['run information']
+        env.assertIn('Actual benchmark duration (seconds)', run_info, "Should contain actual duration")
+        env.assertIn('Requested test time (seconds)', run_info, "Should contain requested test time")
+        env.assertIn('Benchmark completion status', run_info, "Should contain completion status")
+        env.assertEqual(run_info['Benchmark completion status'], 'INTERRUPTED (stopped before full run)',
+                      "Completion status should indicate interruption")
+
+        # Check that stderr contains the expected Redis-style log messages
+        stderr_str = stderr.decode('utf-8')
+        env.assertIn('Received SIGINT scheduling shutdown', stderr_str, "Should log SIGINT reception")
+        env.assertIn('User requested shutdown', stderr_str, "Should log user shutdown request")
+        env.assertIn('Saving benchmark results', stderr_str, "Should log results saving")
+        env.assertIn('Printing benchmark results summary', stderr_str, "Should log results summary printing")
+        env.assertIn('Saving JSON output file', stderr_str, "Should log JSON file saving")
+
+    except subprocess.TimeoutExpired:
+        # If process doesn't finish in time, kill it and fail the test
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        process.wait()
+        env.fail("Process did not finish gracefully within timeout")
+
+    except Exception as e:
+        # Clean up process if test fails
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            process.wait()
+        except:
+            pass
+        raise e
+
+    finally:
+        # Clean up temporary files
+        if os.path.exists(json_output_file):
+            os.remove(json_output_file)
+        os.rmdir(test_dir)

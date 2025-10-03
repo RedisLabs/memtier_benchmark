@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
@@ -208,6 +209,10 @@ int client::connect(void)
 
 bool client::finished(void)
 {
+    // Check for external shutdown request (from signal handler)
+    if (g_shutdown_requested)
+        return true;
+
     if (m_config->requests > 0 && m_reqs_processed >= m_config->requests)
         return true;
     if (m_config->test_time > 0 && m_stats.get_duration() >= m_config->test_time)

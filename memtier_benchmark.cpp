@@ -56,11 +56,20 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <signal.h>
+#include <sys/time.h>
+#include <pthread.h>
 
 #include "client.h"
 #include "JSON_handler.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+
+// Global variables for signal handling
+volatile sig_atomic_t g_shutdown_requested = 0;
+static volatile sig_atomic_t g_sigint_count = 0;
+static struct timeval g_benchmark_start_time;
+pid_t g_main_pid;
 
 
 static int log_level = 0;
@@ -78,6 +87,40 @@ void benchmark_log_file_line(int level, const char *filename, unsigned int line,
     va_start(args, fmt);
     vfprintf(stderr, fmtbuf, args);
     va_end(args);
+}
+
+// Signal handler for graceful shutdown
+void sigint_handler(int sig)
+{
+    g_sigint_count++;
+
+    if (g_sigint_count == 1) {
+        // First Ctrl+C: schedule graceful shutdown
+        g_shutdown_requested = 1;
+        fprintf(stderr, "\nReceived SIGINT scheduling shutdown...\n");
+        fprintf(stderr, "Saving benchmark results and printing summary before exiting.\n");
+    } else if (g_sigint_count >= 2) {
+        // Second Ctrl+C: immediate exit
+        fprintf(stderr,"Immediate shutdown requested, bye bye...\n");
+        exit(1);
+    }
+}
+
+// Setup signal handlers
+void setup_signal_handlers()
+{
+    g_main_pid = getpid();
+    gettimeofday(&g_benchmark_start_time, NULL);
+
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
 }
 
 void benchmark_log(int level, const char *fmt, ...)
@@ -1455,6 +1498,17 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         active_threads = 0;
         sleep(1);
 
+        // Check for shutdown request
+        if (g_shutdown_requested) {
+            // Signal all threads to stop by breaking their event loops
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                if (!(*i)->m_finished) {
+                    event_base_loopbreak((*i)->m_cg->get_event_base());
+                }
+            }
+            break;
+        }
+
         unsigned long int total_ops = 0;
         unsigned long int total_bytes = 0;
         unsigned long int duration = 0;
@@ -1810,6 +1864,9 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    // Setup signal handlers for graceful shutdown
+    setup_signal_handlers();
+
     // JSON file initiation
     json_handler *jsonhandler = NULL;
     if (cfg.json_out_file != NULL){
@@ -2046,12 +2103,53 @@ int main(int argc, char *argv[])
                (unsigned long long)(cfg.requests > 0 ? cfg.requests : cfg.test_time),
                cfg.requests > 0 ? "Requests per client"  : "Seconds");
 
+        // Print benchmark duration information
+        struct timeval end_time;
+        gettimeofday(&end_time, NULL);
+
+        // Calculate actual duration in seconds
+        double actual_duration_sec = ((end_time.tv_sec - g_benchmark_start_time.tv_sec) * 1000000 +
+                                     (end_time.tv_usec - g_benchmark_start_time.tv_usec)) / 1000000.0;
+
+        fprintf(outfile, "%-9.2f Actual benchmark duration (seconds)\n", actual_duration_sec);
+
+        // If test_time was specified, show requested vs actual and completion status
+        if (cfg.test_time > 0) {
+            fprintf(outfile, "%-9u Requested test time (seconds)\n", cfg.test_time);
+            if (g_shutdown_requested) {
+                fprintf(outfile, "%-9s Benchmark completion status: INTERRUPTED (stopped before full run)\n", "");
+            } else if (actual_duration_sec < cfg.test_time * 0.95) {  // Allow 5% tolerance
+                fprintf(outfile, "%-9s Benchmark completion status: COMPLETED EARLY\n", "");
+            } else {
+                fprintf(outfile, "%-9s Benchmark completion status: COMPLETED\n", "");
+            }
+        } else if (g_shutdown_requested) {
+            fprintf(outfile, "%-9s Benchmark completion status: INTERRUPTED (stopped before full run)\n", "");
+        } else {
+            fprintf(outfile, "%-9s Benchmark completion status: COMPLETED\n", "");
+        }
+
         if (jsonhandler != NULL){
             jsonhandler->open_nesting("run information");
             jsonhandler->write_obj("Threads","%u",cfg.threads);
             jsonhandler->write_obj("Connections per thread","%u",cfg.clients);
             jsonhandler->write_obj(cfg.requests > 0 ? "Requests per client"  : "Seconds","%llu",
                                    cfg.requests > 0 ? cfg.requests : (unsigned long long)cfg.test_time);
+            jsonhandler->write_obj("Actual benchmark duration (seconds)","%.2f", actual_duration_sec);
+            if (cfg.test_time > 0) {
+                jsonhandler->write_obj("Requested test time (seconds)","%u", cfg.test_time);
+                if (g_shutdown_requested) {
+                    jsonhandler->write_obj("Benchmark completion status","\"%s\"", "INTERRUPTED (stopped before full run)");
+                } else if (actual_duration_sec < cfg.test_time * 0.95) {
+                    jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED EARLY");
+                } else {
+                    jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED");
+                }
+            } else if (g_shutdown_requested) {
+                jsonhandler->write_obj("Benchmark completion status","\"%s\"", "INTERRUPTED (stopped before full run)");
+            } else {
+                jsonhandler->write_obj("Benchmark completion status","\"%s\"", "COMPLETED");
+            }
             jsonhandler->write_obj("Format version","%d",2);
             jsonhandler->close_nesting();
         }
@@ -2146,6 +2244,9 @@ int main(int argc, char *argv[])
     }
 
     if (outfile != stdout) {
+        // Log message for saving output file
+        fprintf(stderr, "Saving output file: %s\n", cfg.out_file);
+
         fclose(outfile);
     }
 
@@ -2155,6 +2256,28 @@ int main(int argc, char *argv[])
     }
 
     if (jsonhandler != NULL) {
+        // Log message for saving JSON file
+        fprintf(stderr, "Saving JSON output file: %s\n", cfg.json_out_file);
+
+        // Add benchmark completion information
+        struct timeval end_time;
+        gettimeofday(&end_time, NULL);
+
+        // Calculate actual duration in milliseconds
+        long duration_ms = ((end_time.tv_sec - g_benchmark_start_time.tv_sec) * 1000) +
+                          ((end_time.tv_usec - g_benchmark_start_time.tv_usec) / 1000);
+
+        jsonhandler->open_nesting("benchmark_completion");
+        jsonhandler->write_obj("full_run", "%s", g_shutdown_requested ? "false" : "true");
+        jsonhandler->write_obj("actual_duration_ms", "%ld", duration_ms);
+        jsonhandler->write_obj("interrupted_by_signal", "%s", g_shutdown_requested ? "true" : "false");
+        jsonhandler->write_obj("sigint_count", "%d", (int)g_sigint_count);
+        if (cfg.test_time > 0) {
+            jsonhandler->write_obj("requested_test_time_sec", "%u", cfg.test_time);
+            jsonhandler->write_obj("actual_duration_sec", "%.2f", duration_ms / 1000.0);
+        }
+        jsonhandler->close_nesting();
+
         // closing the JSON
         delete jsonhandler;
     }
