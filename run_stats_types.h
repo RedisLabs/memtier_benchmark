@@ -129,6 +129,7 @@ public:
 class one_second_stats {
 public:
     unsigned int m_second;        // from start of test
+    time_t m_timestamp;          // actual unix timestamp when this second was measured
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;

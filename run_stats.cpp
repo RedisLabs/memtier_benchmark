@@ -383,7 +383,7 @@ void run_stats::save_csv_one_sec(FILE *f,
                                  unsigned long int& total_set_ops,
                                  unsigned long int& total_wait_ops) {
     fprintf(f, "Per-Second Benchmark Data\n");
-    fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,SET Total Bytes TX,SET Total Bytes RX");
+    fprintf(f, "Timestamp,Unix Timestamp,Test Time,Second,SET Requests,SET Average Latency,SET Total Bytes,SET Total Bytes TX,SET Total Bytes RX");
 
     // Add SET percentile columns
     for (std::size_t i = 0; i < m_config->print_percentiles.quantile_list.size(); i++) {
@@ -424,9 +424,16 @@ void run_stats::save_csv_one_sec(FILE *f,
     for (std::list<one_second_stats>::iterator i = m_stats.begin();
          i != m_stats.end(); i++) {
 
-        // Write basic SET data
-        fprintf(f, "%u,%lu,%u.%06u,%lu,%lu,%lu",
-                i->m_second,
+        // Use the real timestamp captured when this second was measured
+        time_t real_timestamp = i->m_timestamp;
+        time_t test_time = i->m_second;  // Test time is just the second counter
+        struct tm* tm_info = localtime(&real_timestamp);
+        char timestamp_str[32];
+        strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+        // Write timestamp data first, then basic SET data
+        fprintf(f, "%s,%ld,%ld,%u,%lu,%u.%06u,%lu,%lu,%lu",
+                timestamp_str, real_timestamp, test_time, i->m_second,
                 i->m_set_cmd.m_ops,
                 USEC_FORMAT(AVERAGE(i->m_set_cmd.m_total_latency, i->m_set_cmd.m_ops)),
                 i->m_set_cmd.m_bytes_rx + i->m_set_cmd.m_bytes_tx,
@@ -837,7 +844,7 @@ bool run_stats::write_csv_header(FILE *f, benchmark_config *config)
     if (!f) return false;
 
     fprintf(f, "Per-Second Benchmark Data\n");
-    fprintf(f, "Second,SET Requests,SET Average Latency,SET Total Bytes,SET Total Bytes TX,SET Total Bytes RX");
+    fprintf(f, "Timestamp,Unix Timestamp,Test Time,Second,SET Requests,SET Average Latency,SET Total Bytes,SET Total Bytes TX,SET Total Bytes RX");
 
     // Add SET percentile columns
     for (std::size_t i = 0; i < config->print_percentiles.quantile_list.size(); i++) {
@@ -878,9 +885,21 @@ bool run_stats::write_csv_header(FILE *f, benchmark_config *config)
 bool run_stats::write_csv_realtime_data(FILE *f, unsigned int second, unsigned int active_connections, unsigned int connection_errors,
                                        unsigned long int cur_ops, unsigned long int cur_bytes, double cur_latency, benchmark_config *config,
                                        const std::vector<double>* set_percentiles, const std::vector<double>* get_percentiles,
-                                       const std::vector<double>* total_percentiles)
+                                       const std::vector<double>* total_percentiles, time_t start_time)
 {
     if (!f) return false;
+
+    // Calculate current timestamp
+    time_t current_time = time(nullptr);
+    time_t test_time = start_time > 0 ? (current_time - start_time) : second;
+
+    // Format human readable timestamp
+    struct tm* tm_info = localtime(&current_time);
+    char timestamp_str[32];
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    // Write timestamp data first
+    fprintf(f, "%s,%ld,%ld,", timestamp_str, current_time, test_time);
 
     // For now, write simplified per-second data with the aggregate values
     // We'll distribute operations between SET and GET based on the ratio

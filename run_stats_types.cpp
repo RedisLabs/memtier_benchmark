@@ -21,6 +21,7 @@
 #endif
 
 #include <stdio.h>
+#include <ctime>
 
 #include "run_stats_types.h"
 #include <limits>
@@ -165,6 +166,7 @@ size_t ar_one_sec_cmd_stats::size() const {
 
 
 one_second_stats::one_second_stats(unsigned int second) :
+        m_timestamp(0),
         m_set_cmd(),
         m_get_cmd(),
         m_wait_cmd(),
@@ -182,6 +184,7 @@ void one_second_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
 
 void one_second_stats::reset(unsigned int second) {
     m_second = second;
+    m_timestamp = time(nullptr);  // Capture real current timestamp
     m_get_cmd.reset();
     m_set_cmd.reset();
     m_wait_cmd.reset();
@@ -199,6 +202,10 @@ void one_second_stats::merge(const one_second_stats& other) {
     m_ar_commands.merge(other.m_ar_commands);
     m_connection_errors += other.m_connection_errors;
     m_active_connections += other.m_active_connections;
+    // Use the earlier timestamp when merging (or current if not set)
+    if (m_timestamp == 0 || (other.m_timestamp > 0 && other.m_timestamp < m_timestamp)) {
+        m_timestamp = other.m_timestamp;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -1604,7 +1604,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
                                              cur_ops, cur_bytes, cur_latency, cfg,
                                              set_percentiles.empty() ? nullptr : &set_percentiles,
                                              get_percentiles.empty() ? nullptr : &get_percentiles,
-                                             total_percentiles.empty() ? nullptr : &total_percentiles);
+                                             total_percentiles.empty() ? nullptr : &total_percentiles,
+                                             g_benchmark_start_time.tv_sec);
         }
     } while (active_threads > 0);
 
