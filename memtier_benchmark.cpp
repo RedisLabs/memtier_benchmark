@@ -1379,9 +1379,12 @@ struct cg_thread {
     abstract_protocol* m_protocol;
     pthread_t m_thread;
     bool m_finished;
+    bool m_restart_requested;
+    unsigned int m_restart_count;
 
     cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen) :
-        m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false)
+        m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL),
+        m_finished(false), m_restart_requested(false), m_restart_count(0)
     {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);
@@ -1420,13 +1423,57 @@ struct cg_thread {
         assert(ret == 0);
     }
 
+    int restart(void)
+    {
+        // Clean up existing client group
+        if (m_cg != NULL) {
+            delete m_cg;
+        }
+
+        // Create new client group
+        m_cg = new client_group(m_config, m_protocol, m_obj_gen);
+
+        // Prepare new clients
+        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients)
+            return -1;
+        if (m_cg->prepare() < 0)
+            return -1;
+
+        // Reset state
+        m_finished = false;
+        m_restart_requested = false;
+        m_restart_count++;
+
+        // Start new thread
+        return pthread_create(&m_thread, NULL, cg_thread_start, (void *)this);
+    }
+
 };
 
 static void* cg_thread_start(void *t)
 {
     cg_thread* thread = (cg_thread*) t;
-    thread->m_cg->run();
-    thread->m_finished = true;
+
+    try {
+        thread->m_cg->run();
+
+        // Check if we should restart due to connection failures
+        // If the thread finished but still has time left and connection errors, request restart
+        if (!g_shutdown_requested && thread->m_cg->get_total_connection_errors() > 0) {
+            benchmark_error_log("Thread %u finished due to connection failures, requesting restart.\n", thread->m_thread_id);
+            thread->m_restart_requested = true;
+        }
+
+        thread->m_finished = true;
+    } catch (const std::exception& e) {
+        benchmark_error_log("Thread %u caught exception: %s\n", thread->m_thread_id, e.what());
+        thread->m_finished = true;
+        thread->m_restart_requested = true;
+    } catch (...) {
+        benchmark_error_log("Thread %u caught unknown exception\n", thread->m_thread_id);
+        thread->m_finished = true;
+        thread->m_restart_requested = true;
+    }
 
     return t;
 }
@@ -1517,6 +1564,22 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int total_connection_errors = 0;
 
         for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+            // Check if thread needs restart
+            if ((*i)->m_finished && (*i)->m_restart_requested && (*i)->m_restart_count < 5) {
+                benchmark_error_log("Restarting thread %u (restart #%u)...\n",
+                                  (*i)->m_thread_id, (*i)->m_restart_count + 1);
+
+                // Join the failed thread first
+                (*i)->join();
+
+                // Attempt to restart
+                if ((*i)->restart() == 0) {
+                    benchmark_error_log("Thread %u restarted successfully.\n", (*i)->m_thread_id);
+                } else {
+                    benchmark_error_log("Failed to restart thread %u.\n", (*i)->m_thread_id);
+                }
+            }
+
             if (!(*i)->m_finished)
                 active_threads++;
 

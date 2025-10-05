@@ -692,7 +692,11 @@ void shard_connection::handle_event(short events)
             event_add(m_reconnect_timer, &delay);
             m_reconnecting = true;
         } else {
+            benchmark_error_log("Maximum reconnection attempts (%u) exceeded for connection error, triggering thread restart.\n",
+                              m_config->max_reconnect_attempts);
             disconnect();
+            // Break the event loop to trigger thread restart
+            event_base_loopbreak(m_event_base);
         }
 
         return;
@@ -727,7 +731,11 @@ void shard_connection::handle_event(short events)
             event_add(m_reconnect_timer, &delay);
             m_reconnecting = true;
         } else {
+            benchmark_error_log("Maximum reconnection attempts (%u) exceeded for connection drop, triggering thread restart.\n",
+                              m_config->max_reconnect_attempts);
             disconnect();
+            // Break the event loop to trigger thread restart
+            event_base_loopbreak(m_event_base);
         }
 
         return;
@@ -768,11 +776,14 @@ void shard_connection::handle_reconnect_timer_event() {
             event_add(m_reconnect_timer, &delay);
             m_reconnecting = true;
         } else {
-            benchmark_error_log("Maximum reconnection attempts (%u) exceeded, giving up.\n",
+            benchmark_error_log("Maximum reconnection attempts (%u) exceeded, triggering thread restart.\n",
                               m_config->max_reconnect_attempts);
             // Reset for potential future reconnections
             m_reconnect_attempts = 0;
             m_current_backoff_delay = 1.0;
+
+            // Break the event loop to trigger thread restart
+            event_base_loopbreak(m_event_base);
         }
     } else {
         benchmark_error_log("Reconnection successful after %u attempts.\n", m_reconnect_attempts);
@@ -817,7 +828,11 @@ void shard_connection::handle_connection_timeout_event() {
         event_add(m_reconnect_timer, &delay);
         m_reconnecting = true;
     } else {
+        benchmark_error_log("Maximum reconnection attempts (%u) exceeded for connection timeout, triggering thread restart.\n",
+                          m_config->max_reconnect_attempts);
         disconnect();
+        // Break the event loop to trigger thread restart
+        event_base_loopbreak(m_event_base);
     }
 }
 
