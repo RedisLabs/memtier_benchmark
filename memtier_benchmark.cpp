@@ -112,6 +112,10 @@ void setup_signal_handlers()
     g_main_pid = getpid();
     gettimeofday(&g_benchmark_start_time, NULL);
 
+    // Ignore SIGPIPE to prevent exit when writing to closed TLS sockets
+    // This allows the application to handle connection errors gracefully
+    signal(SIGPIPE, SIG_IGN);
+
     struct sigaction sa;
     sa.sa_handler = sigint_handler;
     sigemptyset(&sa.sa_mask);
