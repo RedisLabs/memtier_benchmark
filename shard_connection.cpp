@@ -367,6 +367,9 @@ void shard_connection::disconnect() {
 
     m_connection_state = conn_disconnected;
 
+    // Reset rate limiting state during disconnection
+    m_request_per_cur_interval = 0;
+
     // by default no need to send any setup request
     m_authentication = setup_done;
     m_db_selection = setup_done;
@@ -421,8 +424,13 @@ void shard_connection::push_req(request* req) {
     m_pipeline->push(req);
     m_pending_resp++;
     if (m_config->request_rate) {
-        assert(m_request_per_cur_interval > 0);
-        m_request_per_cur_interval--;
+        // Handle race condition during reconnection - don't assert if interval is 0
+        if (m_request_per_cur_interval > 0) {
+            m_request_per_cur_interval--;
+        } else {
+            // Rate limit exceeded, but don't crash - just log debug info
+            benchmark_debug_log("Rate limit interval exhausted during request push (connection %u)\n", m_id);
+        }
     }
 }
 

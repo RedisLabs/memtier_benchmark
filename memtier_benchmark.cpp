@@ -1568,8 +1568,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         unsigned long int total_connection_errors = 0;
 
         for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
-            // Check if thread needs restart
-            if ((*i)->m_finished && (*i)->m_restart_requested && (*i)->m_restart_count < 5) {
+            // Check if thread needs restart (but only if shutdown is not requested)
+            if (!g_shutdown_requested && (*i)->m_finished && (*i)->m_restart_requested && (*i)->m_restart_count < 5) {
                 benchmark_error_log("Restarting thread %u (restart #%u)...\n",
                                   (*i)->m_thread_id, (*i)->m_restart_count + 1);
 
