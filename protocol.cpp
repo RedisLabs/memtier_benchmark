@@ -123,6 +123,39 @@ unsigned int protocol_response::get_hits(void)
     return m_hits;
 }
 
+bool protocol_response::is_cache_miss()
+{
+    // Protocol-based miss detection - works for ALL Redis commands
+    // Based on Redis protocol response patterns, not specific commands
+
+    if (!m_status) return false; // No status means no response yet
+
+    // Check Redis protocol response types that indicate "empty" or "not found"
+    switch (m_status[0]) {
+        case '$': // Bulk string response
+            // $-1 = null bulk string (key doesn't exist)
+            if (m_status[1] == '-') return true;
+            // $0 = empty string (key exists but empty) - this is a HIT, not a miss
+            return false;
+
+        case '*': // Array response
+            // *-1 = null array (shouldn't happen in practice)
+            // *0 = empty array (no elements found) - typically a miss
+            if (m_status[1] == '-' || m_status[1] == '0') return true;
+            return false;
+
+        case ':': // Integer response
+            // :0 = zero (count/length is zero) - typically a miss
+            if (m_status[1] == '0') return true;
+            return false;
+
+        case '+': // Simple string (OK, etc.) - not a miss
+        case '-': // Error response - not a miss
+        default:
+            return false;
+    }
+}
+
 void protocol_response::clear(void)
 {
     if (m_status != NULL) {
@@ -711,13 +744,31 @@ bool redis_protocol::format_arbitrary_command(arbitrary_command &cmd) {
         current_arg->type = const_type;
 
         // check arg type
-        if (current_arg->data.find(KEY_PLACEHOLDER) != std::string::npos) {
-            if (current_arg->data.length() != strlen(KEY_PLACEHOLDER)) {
-                benchmark_error_log("error: key placeholder can't combined with other data\n");
-                return false;
-            }
+        const std::size_t key_placeholder_start = current_arg->data.find(KEY_PLACEHOLDER);
+        if (key_placeholder_start != std::string::npos) {
             cmd.keys_count++;
             current_arg->type = key_type;
+
+            // Optimize: avoid substr() calls and use string_view-like approach
+            constexpr size_t key_placeholder_len = sizeof(KEY_PLACEHOLDER) - 1; // compile-time constant
+            const std::size_t suffix_start = key_placeholder_start + key_placeholder_len;
+
+            // Only create strings if there's actually prefix/suffix data
+            bool has_prefix = (key_placeholder_start > 0);
+            bool has_suffix = (suffix_start < current_arg->data.length());
+            current_arg->has_key_affixes = has_prefix || has_suffix;
+
+            if (has_prefix) {
+                current_arg->data_prefix.assign(current_arg->data, 0, key_placeholder_start);
+            } else {
+                current_arg->data_prefix.clear();
+            }
+
+            if (has_suffix) {
+                current_arg->data_suffix.assign(current_arg->data, suffix_start, current_arg->data.length() - suffix_start);
+            } else {
+                current_arg->data_suffix.clear();
+            }
         } else if (current_arg->data.find(DATA_PLACEHOLDER) != std::string::npos) {
             if (current_arg->data.length() != strlen(DATA_PLACEHOLDER)) {
                 benchmark_error_log("error: data placeholder can't combined with other data\n");

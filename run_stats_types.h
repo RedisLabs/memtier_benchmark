@@ -147,6 +147,8 @@ public:
     double m_bytes_sec;
     double m_bytes_sec_rx;
     double m_bytes_sec_tx;
+    double m_hits_sec;
+    double m_misses_sec;
     double m_moved_sec;
     double m_ask_sec;
     double m_latency;
@@ -204,6 +206,7 @@ public:
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
     void update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency);
+    void update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses);
 };
 
 
