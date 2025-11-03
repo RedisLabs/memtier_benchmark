@@ -245,7 +245,7 @@ void benchmark_log(int level, const char *fmt, ...)
 
 bool is_redis_protocol(enum PROTOCOL_TYPE type)
 {
-    return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3);
+    return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3 || type == PROTOCOL_REDIS_FAST_HEADER);
 }
 
 static const char *get_protocol_name(enum PROTOCOL_TYPE type)
@@ -256,6 +256,8 @@ static const char *get_protocol_name(enum PROTOCOL_TYPE type)
         return "resp2";
     else if (type == PROTOCOL_RESP3)
         return "resp3";
+    else if (type == PROTOCOL_REDIS_FAST_HEADER)
+        return "redis-fast-header";
     else if (type == PROTOCOL_MEMCACHE_TEXT)
         return "memcache_text";
     else if (type == PROTOCOL_MEMCACHE_BINARY)
@@ -540,7 +542,14 @@ static void config_init_defaults(struct benchmark_config *cfg)
     if (!cfg->clients) cfg->clients = 50;
     if (!cfg->threads) cfg->threads = 4;
     if (!cfg->ratio.is_defined()) cfg->ratio = config_ratio("1:10");
-    if (!cfg->pipeline) cfg->pipeline = 1;
+    if (!cfg->pipeline) {
+        // If bulk_size > 1, set pipeline to match bulk_size to allow accumulating all commands
+        if (cfg->bulk_size > 1) {
+            cfg->pipeline = cfg->bulk_size;
+        } else {
+            cfg->pipeline = 1;
+        }
+    }
     if (!cfg->data_size && !cfg->data_size_list.is_defined() && !cfg->data_size_range.is_defined() && !cfg->data_import)
         cfg->data_size = 32;
     if (cfg->generate_keys || !cfg->data_import) {
@@ -558,7 +567,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
     if (!cfg->hdr_prefix) cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined()) cfg->print_percentiles = config_quantiles("50,99,99.9");
     if (!cfg->monitor_pattern) cfg->monitor_pattern = 'S';
-
+    if (!cfg->bulk_size) cfg->bulk_size = 1;
+    if (!cfg->bulk_slots) cfg->bulk_slots = 16384;
 #ifdef USE_TLS
     if (!cfg->tls_protocols) cfg->tls_protocols = REDIS_TLS_PROTO_DEFAULT;
 #endif
@@ -688,6 +698,11 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_hdr_file_prefix,
         o_rate_limiting,
         o_uri,
+        o_bulk_size,
+        o_bulk_slots,
+        o_no_header,
+        o_key_slot_part_size,
+        o_key_rest_size,
         o_help
     };
 
@@ -769,6 +784,11 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         {"command-stats-breakdown", 1, 0, o_command_stats_breakdown},
         {"rate-limiting", 1, 0, o_rate_limiting},
         {"uri", 1, 0, o_uri},
+        {"bulk-size", 1, 0, o_bulk_size},
+        {"bulk-slots", 1, 0, o_bulk_slots},
+        {"no-header", 0, 0, o_no_header},
+        {"key-slot-part-size", 1, 0, o_key_slot_part_size},
+        {"key-rest-size", 1, 0, o_key_rest_size},
         {NULL, 0, 0, 0}};
 
     int option_index;
@@ -838,6 +858,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 cfg->protocol = PROTOCOL_RESP2;
             } else if (strcmp(optarg, "resp3") == 0) {
                 cfg->protocol = PROTOCOL_RESP3;
+            } else if (strcmp(optarg, "redis-fast-header") == 0) {
+                cfg->protocol = PROTOCOL_REDIS_FAST_HEADER;
             } else if (strcmp(optarg, "memcache_text") == 0) {
                 cfg->protocol = PROTOCOL_MEMCACHE_TEXT;
             } else if (strcmp(optarg, "memcache_binary") == 0) {
@@ -1268,6 +1290,41 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
             }
             break;
         }
+        case o_bulk_size:
+            endptr = NULL;
+            cfg->bulk_size = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!cfg->bulk_size || !endptr || *endptr != '\0') {
+                fprintf(stderr, "error: bulk-size must be greater than zero.\n");
+                return -1;
+            }
+            break;
+        case o_bulk_slots:
+            endptr = NULL;
+            cfg->bulk_slots = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!cfg->bulk_slots || !endptr || *endptr != '\0') {
+                fprintf(stderr, "error: bulk-slots must be greater than zero.\n");
+                return -1;
+            }
+            break;
+        case o_no_header:
+            cfg->no_header = true;
+            break;
+        case o_key_slot_part_size:
+            endptr = NULL;
+            cfg->key_slot_part_size = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!endptr || *endptr != '\0') {
+                fprintf(stderr, "error: key-slot-part-size must be a valid number.\n");
+                return -1;
+            }
+            break;
+        case o_key_rest_size:
+            endptr = NULL;
+            cfg->key_rest_size = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!endptr || *endptr != '\0') {
+                fprintf(stderr, "error: key-rest-size must be a valid number.\n");
+                return -1;
+            }
+            break;
 #ifdef USE_TLS
         case o_tls:
             cfg->tls = true;
@@ -1328,6 +1385,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         return -1;
     }
 
+    // Validate --no-header is only used with redis-fast-header protocol
+    if (cfg->no_header && cfg->protocol != PROTOCOL_REDIS_FAST_HEADER) {
+        fprintf(stderr, "error: --no-header is only supported with --protocol=redis-fast-header.\n");
+        return -1;
+    }
+
     return 0;
 }
 
@@ -1346,7 +1409,7 @@ void usage()
         "  -4, --ipv4                     Force IPv4 address resolution.\n"
         "  -6  --ipv6                     Force IPv6 address resolution.\n"
         "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).\n"
-        "                                 other supported protocols are resp2, resp3, memcache_text and "
+        "                                 other supported protocols are resp2, resp3, redis-fast-header, memcache_text and "
         "memcache_binary.\n"
         "                                 when using one of resp2 or resp3 the redis protocol version will be set via "
         "HELLO command.\n"
@@ -1479,6 +1542,14 @@ void usage()
         "                                 Higher exponents result in higher concentration in top keys\n"
         "                                 (default is 1, though any number >2 seems insane)\n"
         "\n"
+        "Bulk Support Options (for redis-fast-header protocol with DMC):\n"
+        "      --bulk-size=NUMBER         Number of commands to accumulate in one bulk (default: 1)\n"
+        "                                 When > 1, enables bulk command support with single header per bulk\n"
+        "      --bulk-slots=NUMBER        Number of different slots to cycle through (default: 16384)\n"
+        "                                 Must be <= 16384 (Redis cluster slots)\n"
+        "      --no-header                Send bulk commands without headers (only with redis-fast-header protocol)\n"
+        "                                 When used, accumulated commands are sent as raw RESP3 without fast headers\n"
+        "\n"
         "WAIT Options:\n"
         "      --wait-ratio=RATIO         Set:Wait ratio (default is no WAIT commands - 1:0)\n"
         "      --num-slaves=RANGE         WAIT for a random number of slaves in the specified range\n"
@@ -1515,6 +1586,10 @@ struct cg_thread
     {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);
+
+        // Set bulk size for fast-header protocol
+        m_protocol->set_bulk_size(m_config->bulk_size);
+        m_protocol->set_no_header(m_config->no_header);
 
         m_cg = new client_group(m_config, m_protocol, m_obj_gen);
     }
@@ -2157,6 +2232,10 @@ int main(int argc, char *argv[])
                 "error: thread-conn-start-min-jitter-micros (%u) cannot be greater than "
                 "thread-conn-start-max-jitter-micros (%u).\n",
                 cfg.thread_conn_start_min_jitter_micros, cfg.thread_conn_start_max_jitter_micros);
+
+    // Validate that pipeline >= bulk_size when bulk_size > 1
+    if (cfg.bulk_size > 1 && cfg.pipeline < cfg.bulk_size) {
+        fprintf(stderr, "Error: pipeline size (%u) must be >= bulk_size (%u)\n", cfg.pipeline, cfg.bulk_size);
         exit(1);
     }
 
@@ -2183,6 +2262,10 @@ int main(int argc, char *argv[])
 
         abstract_protocol *tmp_protocol = protocol_factory(cfg.protocol);
         assert(tmp_protocol != NULL);
+
+        // Set bulk size for fast-header protocol
+        tmp_protocol->set_bulk_size(cfg.bulk_size);
+        tmp_protocol->set_no_header(cfg.no_header);
 
         if (!tmp_protocol->format_arbitrary_command(cmd)) {
             exit(1);
@@ -2403,10 +2486,81 @@ int main(int argc, char *argv[])
         usage();
     }
 
+    // Validate bulk configuration - only allowed with fast-header protocol
+    // Note: bulk_size > 1 is the feature flag (default is 1), bulk_slots has a default of 16384
+    // so we only check bulk_size > 1 and the padding parameters which default to 0
+    if (cfg.bulk_size > 1 || cfg.key_slot_part_size > 0 || cfg.key_rest_size > 0) {
+        if (cfg.protocol != PROTOCOL_REDIS_FAST_HEADER) {
+            fprintf(stderr, "error: --bulk-size, --key-slot-part-size, and --key-rest-size can only be used with --protocol redis-fast-header.\n");
+            usage();
+        }
+    }
+
+    if (cfg.bulk_slots > 16384) {
+        fprintf(stderr, "error: bulk-slots cannot exceed 16384 (Redis cluster slots).\n");
+        usage();
+    }
+
+    if (cfg.bulk_size > 1) {
+        // Validate key count limit
+        unsigned long long total_keys = cfg.key_maximum - cfg.key_minimum + 1;
+        unsigned long long keys_per_slot = total_keys / cfg.bulk_slots;
+
+        if (keys_per_slot < cfg.bulk_size) {
+            fprintf(stderr, "error: with bulk-size=%u and bulk-slots=%u, need at least %u keys per slot, but only have %llu.\n",
+                    cfg.bulk_size, cfg.bulk_slots, cfg.bulk_size, keys_per_slot);
+            fprintf(stderr, "       Increase key range (key-maximum - key-minimum + 1) or decrease bulk-slots.\n");
+            usage();
+        }
+
+        // Validate data-size-range incompatibility
+        if (cfg.data_size_range.is_defined()) {
+            fprintf(stderr, "error: --data-size-range is not compatible with --bulk-size > 1. Use --data-size for fixed value size.\n");
+            usage();
+        }
+
+        // Validate data-size-list incompatibility
+        if (cfg.data_size_list.is_defined()) {
+            fprintf(stderr, "error: --data-size-list is not compatible with --bulk-size > 1. Use --data-size for fixed value size.\n");
+            usage();
+        }
+
+        // Validate data-import incompatibility
+        if (cfg.data_import) {
+            fprintf(stderr, "error: --data-import is not compatible with --bulk-size > 1. Imported data has variable sizes.\n");
+            usage();
+        }
+    }
+
     if (!cfg.data_import || cfg.generate_keys) {
         obj_gen->set_key_prefix(cfg.key_prefix);
         obj_gen->set_key_range(cfg.key_minimum, cfg.key_maximum);
     }
+
+    // Configure bulk key generation if using fast-header protocol (including bulk_size=1)
+    if (cfg.protocol == PROTOCOL_REDIS_FAST_HEADER) {
+        obj_gen->set_bulk_slots(cfg.bulk_slots);
+        obj_gen->set_bulk_size(cfg.bulk_size);
+        obj_gen->set_use_bulk_key_format(true);
+
+        // Validate and set key padding sizes
+        if (cfg.key_slot_part_size > 0) {
+            if (!obj_gen->set_key_slot_part_size(cfg.key_slot_part_size)) {
+                fprintf(stderr, "error: key-slot-part-size=%u is too small for bulk-slots=%u.\n",
+                        cfg.key_slot_part_size, cfg.bulk_slots);
+                exit(1);
+            }
+        }
+
+        if (cfg.key_rest_size > 0) {
+            if (!obj_gen->set_key_rest_size(cfg.key_rest_size)) {
+                fprintf(stderr, "error: key-rest-size=%u is too small for the key range.\n",
+                        cfg.key_rest_size);
+                exit(1);
+            }
+        }
+    }
+
     if (cfg.key_stddev > 0 || cfg.key_median > 0) {
         if (cfg.key_pattern[key_pattern_set] != 'G' && cfg.key_pattern[key_pattern_get] != 'G') {
             fprintf(stderr, "error: key-stddev and key-median are only allowed together with key-pattern set to G.\n");
@@ -2533,6 +2687,11 @@ int main(int argc, char *argv[])
     if (cfg.data_verify) {
         struct event_base *verify_event_base = event_base_new();
         abstract_protocol *verify_protocol = protocol_factory(cfg.protocol);
+
+        // Set bulk size for fast-header protocol
+        verify_protocol->set_bulk_size(cfg.bulk_size);
+        verify_protocol->set_no_header(cfg.no_header);
+
         verify_client *client = new verify_client(verify_event_base, &cfg, verify_protocol, obj_gen);
 
         fprintf(outfile, "\n\nPerforming data verification...\n");

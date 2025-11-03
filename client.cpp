@@ -75,6 +75,9 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
         m_obj_gen->set_random_seed(config->next_client_idx);
 
     m_obj_gen->fill_value_buffer();
+    // Randomize bulk initial values after setting random seed
+    // This ensures each client gets different random starting slot_id and key_suffix
+    m_obj_gen->randomize_bulk_initial_values();
 
     // Setup first arbitrary command
     if (config->arbitrary_commands->is_defined()) advance_arbitrary_command_index();
