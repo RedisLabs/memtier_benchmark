@@ -118,6 +118,17 @@ protected:
     unsigned int m_value_buffer_size;
     unsigned int m_value_buffer_mutation_pos;
 
+    // Bulk key generation support
+    bool m_use_bulk_key_format;
+    unsigned int m_bulk_slots;
+    unsigned int m_bulk_size;
+    unsigned long long m_current_command_count;
+    unsigned long long m_initial_slot_id;
+    unsigned long long m_initial_key_suffix;
+    int m_key_suffix_width;
+    unsigned int m_key_slot_part_size;  // Size to pad the slot_id part inside {}
+    unsigned int m_key_rest_size;       // Size to pad the key_suffix part after {}
+
     void alloc_value_buffer(void);
     void random_init(void);
 
@@ -144,6 +155,12 @@ public:
     void set_key_zipf_distribution(double key_exp);
     void set_random_seed(int seed);
     void fill_value_buffer();
+    void set_bulk_slots(unsigned int bulk_slots);
+    void set_bulk_size(unsigned int bulk_size);
+    void set_use_bulk_key_format(bool use_bulk_key_format);
+    bool set_key_slot_part_size(unsigned int size);
+    bool set_key_rest_size(unsigned int size);
+    void randomize_bulk_initial_values();
     unsigned long long get_key_index(int iter);
     void generate_key(unsigned long long key_index);
     const char *get_key() { return m_key; }
