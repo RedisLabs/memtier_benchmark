@@ -1958,7 +1958,7 @@ int main(int argc, char *argv[])
 
     // Clean up dynamically allocated strings from URI parsing
     if (cfg.uri) {
-        if (cfg.server && strcmp(cfg.server, "localhost") != 0) {
+        if (cfg.server) {
             free((void*)cfg.server);
         }
         if (cfg.authenticate) {
