@@ -12,8 +12,7 @@ from include import (
     assert_minimum_memtier_outcomes,
     get_expected_request_count,
 )
-from mbdirector.benchmark import Benchmark
-from mbdirector.runner import RunConfig
+from mb import Benchmark, RunConfig
 
 
 class MonitorThread(threading.Thread):

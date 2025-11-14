@@ -1,8 +1,7 @@
 import tempfile
 import json
 from include import *
-from mbdirector.benchmark import Benchmark
-from mbdirector.runner import RunConfig
+from mb import Benchmark, RunConfig
 
 
 def test_preload_and_set_get(env):

@@ -69,6 +69,16 @@ AS_IF([test "x$enable_tls" != "xno"], [
                          AC_SUBST(LIBCRYPTO_CFLAGS) AC_SUBST(LIBCRYPTO_LIBS))
        ], [])
 
+# Sanitizers support (ASAN/LSAN) is optional.
+AC_ARG_ENABLE([sanitizers],
+  [AS_HELP_STRING([--enable-sanitizers],
+                  [Enable AddressSanitizer and LeakSanitizer for memory error detection])])
+AS_IF([test "x$enable_sanitizers" = "xyes"], [
+       AC_MSG_NOTICE([Enabling AddressSanitizer and LeakSanitizer])
+       CXXFLAGS="$CXXFLAGS -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -O1"
+       LDFLAGS="$LDFLAGS -fsanitize=address -fsanitize=leak"
+       ], [])
+
 # clock_gettime requires -lrt on old glibc only.
 AC_SEARCH_LIBS([clock_gettime], [rt], , AC_MSG_ERROR([rt is required libevent.]))
 

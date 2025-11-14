@@ -136,6 +136,27 @@ To understand what test options are available simply run:
 
     $ ./tests/run_tests.sh --help
 
+
+**Memory leak detection with sanitizers**
+
+
+memtier_benchmark supports building with AddressSanitizer (ASAN) and LeakSanitizer (LSAN) to detect memory errors and leaks during testing.
+
+To build with sanitizers enabled:
+
+    $ ./configure --enable-sanitizers
+    $ make
+
+To run tests with leak detection:
+
+    $ ASAN_OPTIONS=detect_leaks=1 ./tests/run_tests.sh
+
+If memory leaks or errors are detected, tests will fail with detailed error messages showing the location of the issue.
+
+To verify ASAN is enabled:
+
+    $ ldd ./memtier_benchmark | grep asan
+
 ## Using Docker
 
 Use available images on Docker Hub:
