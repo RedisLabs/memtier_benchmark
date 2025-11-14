@@ -1956,6 +1956,16 @@ int main(int argc, char *argv[])
         delete cfg.arbitrary_commands;
     }
 
+    // Clean up dynamically allocated strings from URI parsing
+    if (cfg.uri) {
+        if (cfg.server) {
+            free((void*)cfg.server);
+        }
+        if (cfg.authenticate) {
+            free((void*)cfg.authenticate);
+        }
+    }
+
 #ifdef USE_TLS
     if(cfg.tls) {
         if (cfg.openssl_ctx) {
