@@ -14,8 +14,6 @@ from include import (
     assert_minimum_memtier_outcomes
 )
 from mb import Benchmark, RunConfig
-from mbdirector.benchmark import Benchmark
-from mbdirector.runner import RunConfig
 
 
 def correlation_coeficient(x: list[float], y: list[float]) -> float:
