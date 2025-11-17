@@ -93,6 +93,7 @@ protected:
 
     struct timeval m_start_time;
     struct timeval m_end_time;
+    bool m_interrupted;
 
     totals m_totals;
 
@@ -122,6 +123,8 @@ public:
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void set_start_time(struct timeval* start_time);
     void set_end_time(struct timeval* end_time);
+    void set_interrupted(bool interrupted) { m_interrupted = interrupted; }
+    bool get_interrupted() const { return m_interrupted; }
 
     void update_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
