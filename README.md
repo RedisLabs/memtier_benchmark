@@ -157,6 +157,28 @@ To verify ASAN is enabled:
 
     $ ldd ./memtier_benchmark | grep asan
 
+
+**Undefined behavior detection with UBSan**
+
+
+memtier_benchmark supports building with UndefinedBehaviorSanitizer (UBSan) to detect undefined behavior such as integer overflows, null pointer dereferences, and alignment issues.
+
+To build with UBSan enabled:
+
+    $ ./configure --enable-ubsan
+    $ make
+
+To run tests with undefined behavior detection:
+
+    $ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./tests/run_tests.sh
+
+UBSan can be combined with ASAN for comprehensive testing:
+
+    $ ./configure --enable-sanitizers --enable-ubsan
+    $ make
+
+**Note:** UBSan can be used together with ASAN/LSAN, but not with ThreadSanitizer (TSAN).
+
 ## Using Docker
 
 Use available images on Docker Hub:

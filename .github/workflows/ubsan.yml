@@ -1,0 +1,90 @@
+name: UBSan (UndefinedBehaviorSanitizer)
+
+# Undefined behavior detection using UndefinedBehaviorSanitizer
+# This workflow builds memtier_benchmark with UBSan enabled and runs
+# the full test suite to detect undefined behavior issues.
+
+on: [push, pull_request]
+
+jobs:
+  test-with-ubsan:
+    runs-on: ubuntu-latest
+    name: Undefined behavior detection (UBSan)
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install -y \
+          build-essential \
+          autoconf \
+          automake \
+          pkg-config \
+          libevent-dev \
+          zlib1g-dev \
+          libssl-dev
+
+    - name: Build with UBSan
+      run: |
+        autoreconf -ivf
+        ./configure --enable-ubsan
+        make -j
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
+
+    - name: Install Python test dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
+      run: |
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Increase connection limit
+      run: |
+        sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+        sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+        ulimit -n 40960
+
+    - name: Generate TLS test certificates
+      run: ./tests/gen-test-certs.sh
+
+    - name: Test OSS TCP with UBSan
+      timeout-minutes: 10
+      run: |
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS with UBSan
+      timeout-minutes: 10
+      run: |
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS v1.2 with UBSan
+      timeout-minutes: 10
+      run: |
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 TLS_PROTOCOLS='TLSv1.2' TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS TCP TLS v1.3 with UBSan
+      timeout-minutes: 10
+      run: |
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 TLS_PROTOCOLS='TLSv1.3' TLS=1 ./tests/run_tests.sh
+
+    - name: Test OSS-CLUSTER TCP with UBSan
+      timeout-minutes: 10
+      run: |
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 OSS_STANDALONE=0 OSS_CLUSTER=1 ./tests/run_tests.sh
+
+    - name: Test OSS-CLUSTER TCP TLS with UBSan
+      timeout-minutes: 10
+      run: |
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 ./tests/run_tests.sh
+
