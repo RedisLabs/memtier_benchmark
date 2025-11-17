@@ -1352,17 +1352,9 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             }
             fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, stopping threads...\n",
                     run_id, (float)elapsed_duration / 1000000);
-            // Mark all clients as interrupted
+            // Interrupt all threads (marks clients as interrupted, breaks event loops, and finalizes stats)
             for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
-                (*i)->m_cg->set_all_clients_interrupted();
-            }
-            // Stop all worker threads by breaking their event loops
-            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
-                event_base_loopbreak((*i)->m_cg->get_event_base());
-            }
-            // Finalize statistics for all clients in all threads
-            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
-                (*i)->m_cg->finalize_all_clients();
+                (*i)->m_cg->interrupt();
             }
             break;
         }
