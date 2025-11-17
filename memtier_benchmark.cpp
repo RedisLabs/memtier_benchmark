@@ -57,6 +57,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <atomic>
 
 #include "client.h"
 #include "JSON_handler.h"
@@ -1233,7 +1234,7 @@ struct cg_thread {
     client_group* m_cg;
     abstract_protocol* m_protocol;
     pthread_t m_thread;
-    bool m_finished;
+    std::atomic<bool> m_finished;  // Atomic to prevent data race between worker thread write and main thread read
 
     cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen) :
         m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false)
@@ -1331,6 +1332,9 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     unsigned long int cur_bytes_sec = 0;
 
     // provide some feedback...
+    // NOTE: Reading stats from worker threads without synchronization is a benign race.
+    // These stats are only for progress display and are approximate. Final results are
+    // collected after pthread_join() when all threads have finished (race-free).
     unsigned int active_threads = 0;
     do {
         active_threads = 0;
