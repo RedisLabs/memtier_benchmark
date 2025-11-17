@@ -79,6 +79,16 @@ AS_IF([test "x$enable_sanitizers" = "xyes"], [
        LDFLAGS="$LDFLAGS -fsanitize=address -fsanitize=leak"
        ], [])
 
+# UndefinedBehaviorSanitizer (UBSan) is optional and can be combined with ASAN.
+AC_ARG_ENABLE([ubsan],
+  [AS_HELP_STRING([--enable-ubsan],
+                  [Enable UndefinedBehaviorSanitizer for undefined behavior detection])])
+AS_IF([test "x$enable_ubsan" = "xyes"], [
+       AC_MSG_NOTICE([Enabling UndefinedBehaviorSanitizer])
+       CXXFLAGS="$CXXFLAGS -fsanitize=undefined -fno-omit-frame-pointer"
+       LDFLAGS="$LDFLAGS -fsanitize=undefined"
+       ], [])
+
 # Thread Sanitizer (TSAN) is optional and mutually exclusive with ASAN.
 AC_ARG_ENABLE([thread-sanitizer],
   [AS_HELP_STRING([--enable-thread-sanitizer],
