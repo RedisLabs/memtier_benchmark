@@ -176,7 +176,7 @@ To verify TSAN is enabled:
 
     $ ldd ./memtier_benchmark | grep tsan
 
-**Note:** TSAN and ASAN are mutually exclusive and cannot be used together. A suppression file (`tsan_suppressions.txt`) is provided to ignore known benign data races that do not affect correctness. All critical threading bugs have been fixed.
+**Note:** TSAN and ASAN are mutually exclusive and cannot be used together. A suppression file (`tsan_suppressions.txt`) is provided to ignore known benign data races that do not affect correctness.
 
 
 ## Using Docker
