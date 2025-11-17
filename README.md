@@ -157,6 +157,28 @@ To verify ASAN is enabled:
 
     $ ldd ./memtier_benchmark | grep asan
 
+
+**Data race detection with Thread Sanitizer**
+
+
+memtier_benchmark supports building with ThreadSanitizer (TSAN) to detect data races and threading issues.
+
+To build with Thread Sanitizer enabled:
+
+    $ ./configure --enable-thread-sanitizer
+    $ make
+
+To run tests with race detection (requires disabling ASLR on kernel 6.6+):
+
+    $ TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt" setarch `uname -m` -R ./tests/run_tests.sh
+
+To verify TSAN is enabled:
+
+    $ ldd ./memtier_benchmark | grep tsan
+
+**Note:** TSAN and ASAN are mutually exclusive and cannot be used together. A suppression file (`tsan_suppressions.txt`) is provided to ignore known benign data races that do not affect correctness.
+
+
 ## Using Docker
 
 Use available images on Docker Hub:
