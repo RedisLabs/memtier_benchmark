@@ -27,6 +27,7 @@
 
 #include <vector>
 #include <string>
+#include <atomic>
 
 struct config_range {
     int min;
@@ -100,7 +101,7 @@ protected:
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
     int m_resolution;
-    int m_last_error;
+    std::atomic<int> m_last_error;  // Atomic to prevent data race between resolve() and get_connect_info()
 };
 
 #define KEY_PLACEHOLDER "__key__"
