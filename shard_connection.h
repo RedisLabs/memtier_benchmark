@@ -153,6 +153,7 @@ private:
 
     void handle_event(short evtype);
     void handle_timer_event();
+    void attempt_reconnect(const char* error_context);
 
     unsigned int m_id;
     connections_manager* m_conns_manager;

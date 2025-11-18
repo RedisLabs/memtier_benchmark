@@ -6,6 +6,7 @@ config.h.in~
 config.h
 config.sub
 configure
+configure~
 compile
 depcomp
 install-sh

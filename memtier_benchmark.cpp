@@ -76,6 +76,7 @@ static void sigint_handler(int signum)
     (void)signum;  // unused parameter
     g_interrupted = 1;
 }
+
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
 {
     if (level > log_level)
@@ -458,10 +459,6 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined())
         cfg->print_percentiles = config_quantiles("50,99,99.9");
-
-    // Set defaults for reconnection on error
-    // Note: These defaults are only applied when reconnect_on_error is enabled
-    // connection_timeout defaults to 0 (disabled) for backwards compatibility
 
 #ifdef USE_TLS
     if (!cfg->tls_protocols)
