@@ -210,6 +210,9 @@ public:
     int create_clients(int count);
     int prepare(void);
     void run(void);
+    void interrupt(void);
+    void finalize_all_clients(void);
+    void set_all_clients_interrupted(void);
 
     void write_client_stats(const char *prefix);
 
