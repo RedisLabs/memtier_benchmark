@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <signal.h>
 
 #ifdef USE_TLS
 #include <openssl/crypto.h>
@@ -65,6 +66,16 @@
 
 
 static int log_level = 0;
+
+// Global flag for signal handling
+static volatile sig_atomic_t g_interrupted = 0;
+
+// Signal handler for Ctrl+C
+static void sigint_handler(int signum)
+{
+    (void)signum;  // unused parameter
+    g_interrupted = 1;
+}
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
 {
     if (level > log_level)
@@ -1329,6 +1340,25 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         active_threads = 0;
         sleep(1);
 
+        // Check for Ctrl+C interrupt
+        if (g_interrupted) {
+            // Calculate elapsed time before interrupting
+            unsigned long int elapsed_duration = 0;
+            unsigned int thread_counter = 0;
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                thread_counter++;
+                float factor = ((float)(thread_counter - 1) / thread_counter);
+                elapsed_duration = factor * elapsed_duration + (float)(*i)->m_cg->get_duration_usec() / thread_counter;
+            }
+            fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, stopping threads...\n",
+                    run_id, (float)elapsed_duration / 1000000);
+            // Interrupt all threads (marks clients as interrupted, breaks event loops, and finalizes stats)
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                (*i)->m_cg->interrupt();
+            }
+            break;
+        }
+
         unsigned long int total_ops = 0;
         unsigned long int total_bytes = 0;
         unsigned long int duration = 0;
@@ -1496,6 +1526,9 @@ static void cleanup_openssl(void)
 
 int main(int argc, char *argv[])
 {
+    // Install signal handler for Ctrl+C
+    signal(SIGINT, sigint_handler);
+
     benchmark_config cfg = benchmark_config();
     cfg.arbitrary_commands = new arbitrary_command_list();
 

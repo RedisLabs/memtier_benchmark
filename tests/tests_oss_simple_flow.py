@@ -1,5 +1,9 @@
 import tempfile
 import json
+import time
+import signal
+import subprocess
+import os
 from include import *
 from mb import Benchmark, RunConfig
 
@@ -907,3 +911,88 @@ def test_uri_invalid_database(env):
     # benchmark.run() should return False for invalid database number
     memtier_ok = benchmark.run()
     env.assertFalse(memtier_ok)
+
+
+def test_interrupt_signal_handling(env):
+    """Test that Ctrl+C (SIGINT) properly stops the benchmark and outputs correct statistics"""
+    # Use a large number of requests so the test doesn't finish before we interrupt it
+    benchmark_specs = {"name": env.testName, "args": ['--requests=1000000', '--hide-histogram']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config(threads=4, clients=50, requests=1000000)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # Start the benchmark process manually so we can send SIGINT
+    import logging
+    logging.debug('  Command: %s', ' '.join(benchmark.args))
+
+    stderr_file = open(os.path.join(config.results_dir, 'mb.stderr'), 'wb')
+    process = subprocess.Popen(
+        stdin=None, stdout=subprocess.PIPE, stderr=stderr_file,
+        executable=benchmark.binary, args=benchmark.args)
+
+    # Wait 3 seconds then send SIGINT
+    time.sleep(3)
+    process.send_signal(signal.SIGINT)
+
+    # Wait for process to finish
+    _stdout, _ = process.communicate()
+    stderr_file.close()
+
+    # Write stdout to file
+    benchmark.write_file('mb.stdout', _stdout)
+
+    # Read stderr to check for interrupt message
+    with open(os.path.join(config.results_dir, 'mb.stderr'), 'r') as stderr:
+        stderr_content = stderr.read()
+        # Check that the interrupt message is present and shows elapsed time
+        env.assertTrue("Interrupted by user (Ctrl+C) after" in stderr_content)
+        env.assertTrue("secs, stopping threads..." in stderr_content)
+
+    # Check JSON output
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    env.assertTrue(os.path.isfile(json_filename))
+
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+
+        # Check that Runtime section exists and has Interrupted flag
+        env.assertTrue("ALL STATS" in results_dict)
+        env.assertTrue("Runtime" in results_dict["ALL STATS"])
+        runtime = results_dict["ALL STATS"]["Runtime"]
+
+        # Verify interrupted flag is set to "true"
+        env.assertTrue("Interrupted" in runtime)
+        env.assertEqual(runtime["Interrupted"], "true")
+
+        # Verify duration is reasonable (should be around 3 seconds, give or take)
+        env.assertTrue("Total duration" in runtime)
+        duration_ms = runtime["Total duration"]
+        env.assertTrue(duration_ms >= 2000)  # At least 2 seconds
+        env.assertTrue(duration_ms <= 5000)  # At most 5 seconds
+
+        # Verify that throughput metrics are NOT zero
+        totals_metrics = results_dict["ALL STATS"]["Totals"]
+
+        # Check ops/sec is not zero
+        env.assertTrue("Ops/sec" in totals_metrics)
+        total_ops_sec = totals_metrics["Ops/sec"]
+        env.assertTrue(total_ops_sec > 0)
+
+        # Check latency metrics are not zero
+        env.assertTrue("Latency" in totals_metrics)
+        total_latency = totals_metrics["Latency"]
+        env.assertTrue(total_latency > 0)
+
+        # Check that we actually processed some operations
+        env.assertTrue("Count" in totals_metrics)
+        total_count = totals_metrics["Count"]
+        env.assertTrue(total_count > 0)

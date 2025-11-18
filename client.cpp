@@ -646,6 +646,32 @@ void client_group::run(void)
     event_base_dispatch(m_base);
 }
 
+void client_group::interrupt(void)
+{
+    // Mark all clients as interrupted
+    set_all_clients_interrupted();
+    // Break the event loop to stop processing
+    event_base_loopbreak(m_base);
+    // Set end time for all clients as close as possible to the loop break
+    finalize_all_clients();
+}
+
+void client_group::finalize_all_clients(void)
+{
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        client* c = *i;
+        c->set_end_time();
+    }
+}
+
+void client_group::set_all_clients_interrupted(void)
+{
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        client* c = *i;
+        c->get_stats()->set_interrupted(true);
+    }
+}
+
 unsigned long int client_group::get_total_bytes(void)
 {
     unsigned long int total_bytes = 0;

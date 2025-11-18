@@ -112,6 +112,7 @@ inline timeval timeval_factorial_average(timeval a, timeval b, unsigned int weig
 
 run_stats::run_stats(benchmark_config *config) :
            m_config(config),
+           m_interrupted(false),
            m_totals(),
            m_cur_stats(0)
 {
@@ -792,6 +793,11 @@ void run_stats::merge(const run_stats& other, int iteration)
     m_start_time = timeval_factorial_average( m_start_time, other.m_start_time, iteration );
     m_end_time =   timeval_factorial_average( m_end_time,   other.m_end_time,   iteration );
 
+    // If any run was interrupted, mark the merged result as interrupted
+    if (other.m_interrupted) {
+        m_interrupted = true;
+    }
+
     // aggregate the one_second_stats vectors. this is not efficient
     // but it's not really important (small numbers, not realtime)
     for (std::list<one_second_stats>::const_iterator other_i = other.m_stats.begin();
@@ -1221,6 +1227,7 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
         jsonhandler->write_obj("Finish time","%lld", end_time_ms);
         jsonhandler->write_obj("Total duration","%lld", end_time_ms-start_time_ms);
         jsonhandler->write_obj("Time unit","\"%s\"","MILLISECONDS");
+        jsonhandler->write_obj("Interrupted","\"%s\"", m_interrupted ? "true" : "false");
         jsonhandler->close_nesting();
     }
     std::vector<unsigned int> timestamps = get_one_sec_cmd_stats_timestamp();
