@@ -132,6 +132,9 @@ public:
         return m_connection_state;
     }
 
+    void handle_reconnect_timer_event();
+    void handle_connection_timeout_event();
+
 private:
     void setup_event(int sockfd);
     int setup_socket(struct connect_info* addr);
@@ -176,6 +179,15 @@ private:
     enum setup_state m_authentication;
     enum setup_state m_db_selection;
     enum setup_state m_cluster_slots;
+
+    // Reconnection state tracking
+    unsigned int m_reconnect_attempts;
+    double m_current_backoff_delay;
+    struct event* m_reconnect_timer;
+    bool m_reconnecting;
+
+    // Connection timeout tracking
+    struct event* m_connection_timeout_timer;
 };
 
 #endif //MEMTIER_BENCHMARK_SHARD_CONNECTION_H

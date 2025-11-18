@@ -48,6 +48,7 @@
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
 #include "connections_manager.h"
+#include "client.h"
 #include "event2/bufferevent.h"
 
 #ifdef USE_TLS
@@ -61,6 +62,20 @@ void cluster_client_timer_handler(evutil_socket_t fd, short what, void *ctx)
     shard_connection *sc = (shard_connection *) ctx;
     assert(sc != NULL);
     sc->handle_timer_event();
+}
+
+void cluster_client_reconnect_timer_handler(evutil_socket_t fd, short what, void *ctx)
+{
+    shard_connection *sc = (shard_connection *) ctx;
+    assert(sc != NULL);
+    sc->handle_reconnect_timer_event();
+}
+
+void cluster_client_connection_timeout_handler(evutil_socket_t fd, short what, void *ctx)
+{
+    shard_connection *sc = (shard_connection *) ctx;
+    assert(sc != NULL);
+    sc->handle_connection_timeout_event();
 }
 
 void cluster_client_read_handler(bufferevent *bev, void *ctx)
@@ -130,7 +145,9 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
         m_bev(NULL), m_event_timer(NULL), m_request_per_cur_interval(0), m_pending_resp(0), m_connection_state(conn_disconnected),
-        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done) {
+        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done),
+        m_reconnect_attempts(0), m_current_backoff_delay(1.0), m_reconnect_timer(NULL), m_reconnecting(false),
+        m_connection_timeout_timer(NULL) {
     m_id = id;
     m_conns_manager = conns_man;
     m_config = config;
@@ -177,6 +194,16 @@ shard_connection::~shard_connection() {
     if (m_event_timer != NULL) {
         event_free(m_event_timer);
         m_event_timer = NULL;
+    }
+
+    if (m_reconnect_timer != NULL) {
+        event_free(m_reconnect_timer);
+        m_reconnect_timer = NULL;
+    }
+
+    if (m_connection_timeout_timer != NULL) {
+        event_free(m_connection_timeout_timer);
+        m_connection_timeout_timer = NULL;
     }
 
     if (m_protocol != NULL) {
@@ -297,6 +324,16 @@ int shard_connection::connect(struct connect_info* addr) {
         return -1;
     }
 
+    // Start connection timeout timer (only if enabled)
+    if (m_config->connection_timeout > 0) {
+        struct timeval timeout;
+        timeout.tv_sec = m_config->connection_timeout;
+        timeout.tv_usec = 0;
+
+        m_connection_timeout_timer = event_new(m_event_base, -1, 0, cluster_client_connection_timeout_handler, (void *)this);
+        event_add(m_connection_timeout_timer, &timeout);
+    }
+
     return 0;
 }
 
@@ -311,11 +348,24 @@ void shard_connection::disconnect() {
         m_event_timer = NULL;
     }
 
+    if (m_reconnect_timer != NULL) {
+        event_free(m_reconnect_timer);
+        m_reconnect_timer = NULL;
+    }
+
+    if (m_connection_timeout_timer != NULL) {
+        event_free(m_connection_timeout_timer);
+        m_connection_timeout_timer = NULL;
+    }
+
     // empty pipeline
     while (m_pending_resp)
         delete pop_req();
 
     m_connection_state = conn_disconnected;
+
+    // Reset rate limiting state during disconnection
+    m_request_per_cur_interval = 0;
 
     // by default no need to send any setup request
     m_authentication = setup_done;
@@ -364,8 +414,13 @@ void shard_connection::push_req(request* req) {
     m_pipeline->push(req);
     m_pending_resp++;
     if (m_config->request_rate) {
-        assert(m_request_per_cur_interval > 0);
-        m_request_per_cur_interval--;
+        // Handle race condition during reconnection - don't assert if interval is 0
+        if (m_request_per_cur_interval > 0) {
+            m_request_per_cur_interval--;
+        } else {
+            // Rate limit exceeded, but don't crash - just log debug info
+            benchmark_debug_log("Rate limit interval exhausted during request push (connection %u)\n", m_id);
+        }
     }
 }
 
@@ -563,6 +618,20 @@ void shard_connection::handle_event(short events)
         m_connection_state = conn_connected;
         bufferevent_enable(m_bev, EV_READ|EV_WRITE);
 
+        // Cancel connection timeout timer on successful connection
+        if (m_connection_timeout_timer != NULL) {
+            event_free(m_connection_timeout_timer);
+            m_connection_timeout_timer = NULL;
+        }
+
+        // Reset reconnection state on successful connection
+        if (m_reconnect_attempts > 0) {
+            benchmark_debug_log("Connection established successfully after %u reconnection attempts.\n", m_reconnect_attempts);
+        }
+        m_reconnect_attempts = 0;
+        m_current_backoff_delay = 1.0;
+        m_reconnecting = false;
+
         if (!m_conns_manager->get_reqs_processed()) {
             /* Set timer for request rate */
             if (m_config->request_rate) {
@@ -594,14 +663,92 @@ void shard_connection::handle_event(short events)
         if (!ssl_error && errno) {
             benchmark_error_log("Connection error: %s\n", strerror(errno));
         }
-        disconnect();
+
+        // Update connection error statistics
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        client* c = static_cast<client*>(m_conns_manager);
+        c->get_stats()->update_connection_error(&now);
+
+        // Attempt reconnection if enabled and not already reconnecting
+        if (m_config->reconnect_on_error && !m_reconnecting &&
+            (m_config->max_reconnect_attempts == 0 || m_reconnect_attempts < m_config->max_reconnect_attempts)) {
+
+            disconnect();
+            m_reconnect_attempts++;
+            if (m_config->reconnect_backoff_factor > 0.0) {
+                m_current_backoff_delay *= m_config->reconnect_backoff_factor;
+            }
+
+            if (m_config->max_reconnect_attempts == 0) {
+                benchmark_error_log("Connection error, attempting reconnection %u (unlimited) in %.2f seconds...\n",
+                                  m_reconnect_attempts, m_current_backoff_delay);
+            } else {
+                benchmark_error_log("Connection error, attempting reconnection %u/%u in %.2f seconds...\n",
+                                  m_reconnect_attempts, m_config->max_reconnect_attempts, m_current_backoff_delay);
+            }
+
+            // Schedule reconnection attempt
+            struct timeval delay;
+            delay.tv_sec = (long)m_current_backoff_delay;
+            delay.tv_usec = (long)((m_current_backoff_delay - delay.tv_sec) * 1000000);
+
+            m_reconnect_timer = event_new(m_event_base, -1, 0, cluster_client_reconnect_timer_handler, (void *)this);
+            event_add(m_reconnect_timer, &delay);
+            m_reconnecting = true;
+        } else {
+            benchmark_error_log("Maximum reconnection attempts (%u) exceeded for connection error, triggering thread restart.\n",
+                              m_config->max_reconnect_attempts);
+            disconnect();
+            // Break the event loop to trigger thread restart
+            event_base_loopbreak(m_event_base);
+        }
 
         return;
     }
 
     if (events & BEV_EVENT_EOF) {
         benchmark_error_log("connection dropped.\n");
-        disconnect();
+
+        // Update connection error statistics
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        client* c = static_cast<client*>(m_conns_manager);
+        c->get_stats()->update_connection_error(&now);
+
+        // Attempt reconnection if enabled and not already reconnecting
+        if (m_config->reconnect_on_error && !m_reconnecting &&
+            (m_config->max_reconnect_attempts == 0 || m_reconnect_attempts < m_config->max_reconnect_attempts)) {
+
+            disconnect();
+            m_reconnect_attempts++;
+            if (m_config->reconnect_backoff_factor > 0.0) {
+                m_current_backoff_delay *= m_config->reconnect_backoff_factor;
+            }
+
+            if (m_config->max_reconnect_attempts == 0) {
+                benchmark_error_log("Connection dropped, attempting reconnection %u (unlimited) in %.2f seconds...\n",
+                                  m_reconnect_attempts, m_current_backoff_delay);
+            } else {
+                benchmark_error_log("Connection dropped, attempting reconnection %u/%u in %.2f seconds...\n",
+                                  m_reconnect_attempts, m_config->max_reconnect_attempts, m_current_backoff_delay);
+            }
+
+            // Schedule reconnection attempt
+            struct timeval delay;
+            delay.tv_sec = (long)m_current_backoff_delay;
+            delay.tv_usec = (long)((m_current_backoff_delay - delay.tv_sec) * 1000000);
+
+            m_reconnect_timer = event_new(m_event_base, -1, 0, cluster_client_reconnect_timer_handler, (void *)this);
+            event_add(m_reconnect_timer, &delay);
+            m_reconnecting = true;
+        } else {
+            benchmark_error_log("Maximum reconnection attempts (%u) exceeded for connection drop, triggering thread restart.\n",
+                              m_config->max_reconnect_attempts);
+            disconnect();
+            // Break the event loop to trigger thread restart
+            event_base_loopbreak(m_event_base);
+        }
 
         return;
     }
@@ -610,6 +757,104 @@ void shard_connection::handle_event(short events)
 void shard_connection::handle_timer_event() {
     m_request_per_cur_interval = m_config->request_per_interval;
     fill_pipeline();
+}
+
+void shard_connection::handle_reconnect_timer_event() {
+    // Clean up the timer
+    if (m_reconnect_timer != NULL) {
+        event_free(m_reconnect_timer);
+        m_reconnect_timer = NULL;
+    }
+
+    m_reconnecting = false;
+
+    // Attempt to reconnect
+    int ret = m_conns_manager->connect();
+    if (ret != 0) {
+        // Reconnection failed, try again if we haven't exceeded max attempts
+        if (m_config->max_reconnect_attempts == 0 || m_reconnect_attempts < m_config->max_reconnect_attempts) {
+            m_reconnect_attempts++;
+            if (m_config->reconnect_backoff_factor > 0.0) {
+                m_current_backoff_delay *= m_config->reconnect_backoff_factor;
+            }
+
+            benchmark_error_log("Reconnection attempt %u failed, retrying in %.2f seconds...\n",
+                              m_reconnect_attempts, m_current_backoff_delay);
+
+            // Schedule next reconnection attempt
+            struct timeval delay;
+            delay.tv_sec = (long)m_current_backoff_delay;
+            delay.tv_usec = (long)((m_current_backoff_delay - delay.tv_sec) * 1000000);
+
+            m_reconnect_timer = event_new(m_event_base, -1, 0, cluster_client_reconnect_timer_handler, (void *)this);
+            event_add(m_reconnect_timer, &delay);
+            m_reconnecting = true;
+        } else {
+            benchmark_error_log("Maximum reconnection attempts (%u) exceeded, triggering thread restart.\n",
+                              m_config->max_reconnect_attempts);
+            // Reset for potential future reconnections
+            m_reconnect_attempts = 0;
+            m_current_backoff_delay = 1.0;
+
+            // Break the event loop to trigger thread restart
+            event_base_loopbreak(m_event_base);
+        }
+    } else {
+        benchmark_error_log("Reconnection successful after %u attempts.\n", m_reconnect_attempts);
+        // Reset reconnection state
+        m_reconnect_attempts = 0;
+        m_current_backoff_delay = 1.0;
+    }
+}
+
+void shard_connection::handle_connection_timeout_event() {
+    // Clean up the timer
+    if (m_connection_timeout_timer != NULL) {
+        event_free(m_connection_timeout_timer);
+        m_connection_timeout_timer = NULL;
+    }
+
+    benchmark_error_log("Connection timeout after %u seconds.\n", m_config->connection_timeout);
+
+    // Update connection error statistics
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    client* c = static_cast<client*>(m_conns_manager);
+    c->get_stats()->update_connection_error(&now);
+
+    // Treat timeout as a connection error and attempt reconnection if enabled
+    if (m_config->reconnect_on_error && !m_reconnecting &&
+        (m_config->max_reconnect_attempts == 0 || m_reconnect_attempts < m_config->max_reconnect_attempts)) {
+
+        disconnect();
+        m_reconnect_attempts++;
+        if (m_config->reconnect_backoff_factor > 0.0) {
+            m_current_backoff_delay *= m_config->reconnect_backoff_factor;
+        }
+
+        if (m_config->max_reconnect_attempts == 0) {
+            benchmark_error_log("Connection timeout, attempting reconnection %u (unlimited) in %.2f seconds...\n",
+                              m_reconnect_attempts, m_current_backoff_delay);
+        } else {
+            benchmark_error_log("Connection timeout, attempting reconnection %u/%u in %.2f seconds...\n",
+                              m_reconnect_attempts, m_config->max_reconnect_attempts, m_current_backoff_delay);
+        }
+
+        // Schedule reconnection attempt
+        struct timeval delay;
+        delay.tv_sec = (long)m_current_backoff_delay;
+        delay.tv_usec = (long)((m_current_backoff_delay - delay.tv_sec) * 1000000);
+
+        m_reconnect_timer = event_new(m_event_base, -1, 0, cluster_client_reconnect_timer_handler, (void *)this);
+        event_add(m_reconnect_timer, &delay);
+        m_reconnecting = true;
+    } else {
+        benchmark_error_log("Maximum reconnection attempts (%u) exceeded for connection timeout, triggering thread restart.\n",
+                          m_config->max_reconnect_attempts);
+        disconnect();
+        // Break the event loop to trigger thread restart
+        event_base_loopbreak(m_event_base);
+    }
 }
 
 void shard_connection::send_wait_command(struct timeval* sent_time,

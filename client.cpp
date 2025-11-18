@@ -622,6 +622,18 @@ int client_group::create_clients(int num)
         }
 
         m_clients.push_back(c);
+
+        // Add jitter between connection creation (except for the last connection)
+        if (i < num - 1 && m_config->thread_conn_start_max_jitter_micros > 0) {
+            unsigned int jitter_range = m_config->thread_conn_start_max_jitter_micros - m_config->thread_conn_start_min_jitter_micros;
+            unsigned int jitter_micros = m_config->thread_conn_start_min_jitter_micros;
+
+            if (jitter_range > 0) {
+                jitter_micros += rand() % (jitter_range + 1);
+            }
+
+            usleep(jitter_micros);
+        }
     }
 
     return num;
@@ -644,6 +656,32 @@ int client_group::prepare(void)
 void client_group::run(void)
 {
     event_base_dispatch(m_base);
+}
+
+void client_group::interrupt(void)
+{
+    // Mark all clients as interrupted
+    set_all_clients_interrupted();
+    // Break the event loop to stop processing
+    event_base_loopbreak(m_base);
+    // Set end time for all clients as close as possible to the loop break
+    finalize_all_clients();
+}
+
+void client_group::finalize_all_clients(void)
+{
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        client* c = *i;
+        c->set_end_time();
+    }
+}
+
+void client_group::set_all_clients_interrupted(void)
+{
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        client* c = *i;
+        c->get_stats()->set_interrupted(true);
+    }
 }
 
 unsigned long int client_group::get_total_bytes(void)
@@ -686,6 +724,16 @@ unsigned long int client_group::get_duration_usec(void)
     }
 
     return duration;
+}
+
+unsigned long int client_group::get_total_connection_errors(void)
+{
+    unsigned long int total_errors = 0;
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        total_errors += (*i)->get_stats()->get_total_connection_errors();
+    }
+
+    return total_errors;
 }
 
 void client_group::merge_run_stats(run_stats* target)

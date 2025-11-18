@@ -134,6 +134,7 @@ public:
     one_sec_cmd_stats m_wait_cmd;
     one_sec_cmd_stats m_total_cmd;
     ar_one_sec_cmd_stats m_ar_commands;
+    unsigned int m_connection_errors;
     one_second_stats(unsigned int second);
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
@@ -200,10 +201,13 @@ public:
     // number of bytes sent
     unsigned long int m_bytes_tx;
     unsigned long int m_ops;
+    unsigned long int m_connection_errors;
+    double m_connection_errors_sec;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void add(const totals& other);
     void update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency);
+    void update_connection_error();
 };
 
 
