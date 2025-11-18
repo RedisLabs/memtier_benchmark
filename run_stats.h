@@ -128,6 +128,7 @@ public:
 
     void update_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses);
     void update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_connection_error(struct timeval* ts);
 
     void update_moved_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
     void update_moved_set_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
@@ -194,6 +195,7 @@ public:
     unsigned long int get_total_bytes(void);
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
+    unsigned long int get_total_connection_errors(void);
 };
 
 #endif //MEMTIER_BENCHMARK_RUN_STATS_H

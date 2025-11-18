@@ -206,6 +206,13 @@ void run_stats::update_set_op(struct timeval* ts, unsigned int bytes_rx, unsigne
     hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
+void run_stats::update_connection_error(struct timeval* ts)
+{
+    roll_cur_stats(ts);
+    m_cur_stats.m_connection_errors++;
+    m_totals.update_connection_error();
+}
+
 void run_stats::update_moved_get_op(struct timeval* ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
 {
     roll_cur_stats(ts);
@@ -344,6 +351,11 @@ unsigned long int run_stats::get_total_ops(void)
 unsigned long int run_stats::get_total_latency(void)
 {
     return m_totals.m_latency;
+}
+
+unsigned long int run_stats::get_total_connection_errors(void)
+{
+    return m_totals.m_connection_errors;
 }
 
 #define AVERAGE(total, count) \
@@ -849,6 +861,9 @@ void run_stats::summarize(totals& result) const
         totals.merge(*i);
     }
 
+    // Also include current stats that haven't been rolled yet
+    totals.merge(m_cur_stats);
+
     unsigned long int test_duration_usec = ts_diff(m_start_time, m_end_time);
 
     // total ops, bytes
@@ -884,13 +899,17 @@ void run_stats::summarize(totals& result) const
     result.m_bytes_sec_tx = (result.m_bytes_tx / 1024.0) / test_duration_usec * 1000000;
     result.m_moved_sec = (double) (totals.m_set_cmd.m_moved + totals.m_get_cmd.m_moved) / test_duration_usec * 1000000;
     result.m_ask_sec = (double) (totals.m_set_cmd.m_ask + totals.m_get_cmd.m_ask) / test_duration_usec * 1000000;
+
+    // connection errors/sec
+    result.m_connection_errors = totals.m_connection_errors;
+    result.m_connection_errors_sec = (double) totals.m_connection_errors / test_duration_usec * 1000000;
 }
 
 void result_print_to_json(json_handler * jsonhandler, const char * type, double ops_sec,
                           double hits, double miss, double moved, double ask, double kbs, double kbs_rx, double kbs_tx,
-                          double latency, long m_total_latency, long ops,
+                          double latency, long m_total_latency, long ops, double connection_errors_sec, long connection_errors,
                           std::vector<double> quantile_list, struct hdr_histogram* latency_histogram,
-                          std::vector<unsigned int> timestamps, 
+                          std::vector<unsigned int> timestamps,
                           std::vector<one_sec_cmd_stats> timeserie_stats )
 {
     if (jsonhandler != NULL){ // Added for double verification in case someone accidently send NULL.
@@ -905,6 +924,9 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
 
         if (ask >= 0)
             jsonhandler->write_obj("ASK/sec","%.2f", ask);
+
+        jsonhandler->write_obj("Connection Errors/sec","%.2f", connection_errors_sec);
+        jsonhandler->write_obj("Connection Errors","%lld", connection_errors);
 
         const bool has_samples = hdr_total_count(latency_histogram)>0;
         const double avg_latency = latency;
@@ -1254,6 +1276,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                                  m_totals.m_ar_commands[i].m_latency,
                                  m_totals.m_ar_commands[i].m_total_latency,
                                  m_totals.m_ar_commands[i].m_ops,
+                                 0.0, // connection_errors_sec (not tracked per command)
+                                 0,   // connection_errors (not tracked per command)
                                  quantiles_list,
                                  arbitrary_command_latency_histogram,
                                  timestamps,
@@ -1275,6 +1299,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              m_totals.m_set_cmd.m_latency,
                              m_totals.m_set_cmd.m_total_latency,
                              m_totals.m_set_cmd.m_ops,
+                             0.0, // connection_errors_sec (not tracked per command)
+                             0,   // connection_errors (not tracked per command)
                              quantiles_list,
                              m_set_latency_histogram,
                              timestamps,
@@ -1291,6 +1317,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              m_totals.m_get_cmd.m_latency,
                              m_totals.m_get_cmd.m_total_latency,
                              m_totals.m_get_cmd.m_ops,
+                             0.0, // connection_errors_sec (not tracked per command)
+                             0,   // connection_errors (not tracked per command)
                              quantiles_list,
                              m_get_latency_histogram,
                              timestamps,
@@ -1307,6 +1335,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                              0.0,
                              0.0,
                              m_totals.m_wait_cmd.m_ops,
+                             0.0, // connection_errors_sec (not tracked per command)
+                             0,   // connection_errors (not tracked per command)
                              quantiles_list,
                              m_wait_latency_histogram,
                              timestamps,
@@ -1325,6 +1355,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
                          m_totals.m_latency,
                          m_totals.m_total_latency,
                          m_totals.m_ops,
+                         m_totals.m_connection_errors_sec,
+                         m_totals.m_connection_errors,
                          quantiles_list,
                          m_totals.latency_histogram,
                          timestamps,
@@ -1405,7 +1437,7 @@ void run_stats::print(FILE *out, benchmark_config *config,
     // aggregate all one_second_stats; we do this only if we have
     // one_second_stats, otherwise it means we're probably printing previously
     // aggregated data
-    if (m_stats.size() > 0) {
+    if (m_stats.size() > 0 || m_cur_stats.m_connection_errors > 0) {
         summarize(m_totals);
     }
 

@@ -14,7 +14,9 @@ race:run_stats::get_duration_usec
 race:run_stats::get_total_ops
 race:run_stats::get_total_bytes
 race:run_stats::get_total_latency
+race:run_stats::get_total_connection_errors
 race:totals::update_op
+race:totals::update_connection_error
 
 # OpenSSL internal races (false positives in libcrypto)
 # These are known benign races within OpenSSL library itself

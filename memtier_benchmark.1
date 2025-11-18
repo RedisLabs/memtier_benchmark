@@ -128,6 +128,24 @@ Number of concurrent pipelined requests (default: 1)
 \fB\-\-reconnect\-interval\fR=\fI\,NUM\/\fR
 Number of requests after which re\-connection is performed
 .TP
+\fB\-\-reconnect\-on\-error\fR
+Enable automatic reconnection on connection errors (default: disabled)
+.TP
+\fB\-\-max\-reconnect\-attempts\fR=\fI\,NUM\/\fR
+Maximum number of reconnection attempts, 0 for unlimited (default: 0)
+.TP
+\fB\-\-reconnect\-backoff\-factor\fR=\fI\,NUM\/\fR
+Backoff factor for reconnection delays, 0 for no backoff (default: 0)
+.TP
+\fB\-\-connection\-timeout\fR=\fI\,SECS\/\fR
+Connection timeout in seconds, 0 to disable (default: 0)
+.TP
+\fB\-\-thread\-conn\-start\-min\-jitter\-micros\fR=\fI\,NUM\/\fR
+Minimum jitter in microseconds between connection creation (default: 0)
+.TP
+\fB\-\-thread\-conn\-start\-max\-jitter\-micros\fR=\fI\,NUM\/\fR
+Maximum jitter in microseconds between connection creation (default: 0)
+.TP
 \fB\-\-multi\-key\-get\fR=\fI\,NUM\/\fR
 Enable multi\-key get commands, up to NUM keys (default: 0)
 .TP

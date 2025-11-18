@@ -622,6 +622,18 @@ int client_group::create_clients(int num)
         }
 
         m_clients.push_back(c);
+
+        // Add jitter between connection creation (except for the last connection)
+        if (i < num - 1 && m_config->thread_conn_start_max_jitter_micros > 0) {
+            unsigned int jitter_range = m_config->thread_conn_start_max_jitter_micros - m_config->thread_conn_start_min_jitter_micros;
+            unsigned int jitter_micros = m_config->thread_conn_start_min_jitter_micros;
+
+            if (jitter_range > 0) {
+                jitter_micros += rand() % (jitter_range + 1);
+            }
+
+            usleep(jitter_micros);
+        }
     }
 
     return num;
@@ -712,6 +724,16 @@ unsigned long int client_group::get_duration_usec(void)
     }
 
     return duration;
+}
+
+unsigned long int client_group::get_total_connection_errors(void)
+{
+    unsigned long int total_errors = 0;
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        total_errors += (*i)->get_stats()->get_total_connection_errors();
+    }
+
+    return total_errors;
 }
 
 void client_group::merge_run_stats(run_stats* target)

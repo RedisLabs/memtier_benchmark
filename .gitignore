@@ -6,6 +6,7 @@ config.h.in~
 config.h
 config.sub
 configure
+configure~
 compile
 depcomp
 install-sh
@@ -33,9 +34,18 @@ tests/tls/*
 *.txt
 !/tests/test_requirements.txt
 __pycache__
+*.csv
+*.json
 
 # Code coverage with lcov/gcov
 *.gcno
 *.gcov
 *.gcda
 *.info
+
+# redis related
+*.rdb
+*.aof
+appendonlydir/
+*.conf
+
