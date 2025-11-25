@@ -489,3 +489,53 @@ bool arbitrary_command::split_command_to_args() {
     err:
     return false;
 }
+
+// Monitor command list implementation
+bool monitor_command_list::load_from_file(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "error: failed to open monitor input file: %s\n", filename);
+        return false;
+    }
+
+    char line[65536]; // Large buffer for monitor lines
+    while (fgets(line, sizeof(line), file)) {
+        // Find the first quote - this is where the command starts
+        char* first_quote = strchr(line, '"');
+        if (!first_quote) {
+            continue; // Skip lines without commands
+        }
+
+        // Extract everything from first quote to end of line
+        // We keep the quotes as-is to avoid re-parsing
+        std::string command_str(first_quote);
+
+        // Remove trailing newline if present
+        if (!command_str.empty() && command_str[command_str.length() - 1] == '\n') {
+            command_str.erase(command_str.length() - 1);
+        }
+        if (!command_str.empty() && command_str[command_str.length() - 1] == '\r') {
+            command_str.erase(command_str.length() - 1);
+        }
+
+        commands.push_back(command_str);
+    }
+
+    fclose(file);
+
+    if (commands.empty()) {
+        fprintf(stderr, "error: no commands found in monitor input file: %s\n", filename);
+        return false;
+    }
+
+    fprintf(stderr, "Loaded %zu commands from monitor input file\n", commands.size());
+    return true;
+}
+
+const std::string& monitor_command_list::get_command(size_t index) const {
+    if (index >= commands.size()) {
+        static std::string empty;
+        return empty;
+    }
+    return commands[index];
+}

@@ -106,18 +106,21 @@ protected:
 
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
+#define MONITOR_PLACEHOLDER_PREFIX "__monitor_q"
 
 enum command_arg_type {
     const_type      = 0,
     key_type        = 1,
     data_type       = 2,
-    undefined_type  = 3
+    monitor_type    = 3,
+    undefined_type  = 4
 };
 
 struct command_arg {
-    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len) {;}
+    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len), monitor_index(0) {;}
     command_arg_type type;
     std::string data;
+    size_t monitor_index;  // For monitor_type, stores the index (1-based)
 };
 
 struct arbitrary_command {
@@ -176,6 +179,18 @@ public:
 
         return max_length;
     }
+};
+
+struct monitor_command_list {
+private:
+    std::vector<std::string> commands;
+
+public:
+    monitor_command_list() {;}
+
+    bool load_from_file(const char* filename);
+    const std::string& get_command(size_t index) const;
+    size_t size() const { return commands.size(); }
 };
 
 #endif /* _CONFIG_TYPES_H */
