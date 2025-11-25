@@ -107,13 +107,15 @@ protected:
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
 #define MONITOR_PLACEHOLDER_PREFIX "__monitor_q"
+#define MONITOR_RANDOM_PLACEHOLDER "__monitor_q@__"
 
 enum command_arg_type {
     const_type      = 0,
     key_type        = 1,
     data_type       = 2,
     monitor_type    = 3,
-    undefined_type  = 4
+    monitor_random_type = 4,
+    undefined_type  = 5
 };
 
 struct command_arg {
@@ -190,6 +192,7 @@ public:
 
     bool load_from_file(const char* filename);
     const std::string& get_command(size_t index) const;
+    const std::string& get_random_command() const;
     size_t size() const { return commands.size(); }
 };
 

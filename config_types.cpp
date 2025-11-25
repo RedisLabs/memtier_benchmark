@@ -499,7 +499,9 @@ bool monitor_command_list::load_from_file(const char* filename) {
     }
 
     char line[65536]; // Large buffer for monitor lines
+    size_t total_lines = 0;
     while (fgets(line, sizeof(line), file)) {
+        total_lines++;
         // Find the first quote - this is where the command starts
         char* first_quote = strchr(line, '"');
         if (!first_quote) {
@@ -528,7 +530,7 @@ bool monitor_command_list::load_from_file(const char* filename) {
         return false;
     }
 
-    fprintf(stderr, "Loaded %zu commands from monitor input file\n", commands.size());
+    fprintf(stderr, "Loaded %zu monitor commands from %zu total lines\n", commands.size(), total_lines);
     return true;
 }
 
@@ -538,4 +540,13 @@ const std::string& monitor_command_list::get_command(size_t index) const {
         return empty;
     }
     return commands[index];
+}
+
+const std::string& monitor_command_list::get_random_command() const {
+    if (commands.empty()) {
+        static std::string empty;
+        return empty;
+    }
+    size_t random_index = rand() % commands.size();
+    return commands[random_index];
 }

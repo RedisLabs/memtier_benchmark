@@ -1060,7 +1060,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case o_command: {
                     // Check if this is a monitor placeholder
                     const char* cmd_str = optarg;
-                    if (strncmp(cmd_str, MONITOR_PLACEHOLDER_PREFIX, strlen(MONITOR_PLACEHOLDER_PREFIX)) == 0) {
+                    if (strcmp(cmd_str, MONITOR_RANDOM_PLACEHOLDER) == 0 ||
+                        strncmp(cmd_str, MONITOR_PLACEHOLDER_PREFIX, strlen(MONITOR_PLACEHOLDER_PREFIX)) == 0) {
                         // This is a monitor placeholder, we'll expand it later after loading the file
                         arbitrary_command cmd(cmd_str);
                         cmd.split_command_to_args();
@@ -1263,6 +1264,7 @@ void usage() {
             "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
             "      --monitor-input=FILE       Read commands from Redis MONITOR output file.\n"
             "                                 Commands can be referenced as __monitor_q1__, __monitor_q2__, etc.\n"
+            "                                 Use __monitor_q@__ to select a random command from the file.\n"
             "                                 For example: --monitor-input=monitor.txt --command=\"__monitor_q1__\"\n"
             "\n"
             "Object Options:\n"
@@ -1703,11 +1705,44 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
+        // Seed random for monitor random selection
+        srand(time(NULL) ^ getpid());
+
         // Expand monitor placeholders in commands
         for (unsigned int i = 0; i < cfg.arbitrary_commands->size(); i++) {
             arbitrary_command& cmd = cfg.arbitrary_commands->at(i);
 
-            // Check if command is a monitor placeholder
+            // Check if command is a random monitor placeholder
+            if (strcmp(cmd.command.c_str(), MONITOR_RANDOM_PLACEHOLDER) == 0) {
+                // Pick a random command from the monitor file
+                const std::string& monitor_cmd = cfg.monitor_commands->get_random_command();
+                cmd.command = monitor_cmd;
+                cmd.command_args.clear();
+
+                // Re-parse the command
+                if (!cmd.split_command_to_args()) {
+                    fprintf(stderr, "error: failed to parse random monitor command: %s\n", monitor_cmd.c_str());
+                    exit(1);
+                }
+
+                // Update command name (first word of the command)
+                size_t pos = cmd.command.find(" ");
+                if (pos == std::string::npos) {
+                    pos = cmd.command.size();
+                }
+                cmd.command_name.assign(cmd.command.c_str(), pos);
+                // Remove quotes if present
+                if (cmd.command_name.length() > 0 && cmd.command_name[0] == '"') {
+                    cmd.command_name = cmd.command_name.substr(1);
+                }
+                if (cmd.command_name.length() > 0 && cmd.command_name[cmd.command_name.length()-1] == '"') {
+                    cmd.command_name = cmd.command_name.substr(0, cmd.command_name.length()-1);
+                }
+                std::transform(cmd.command_name.begin(), cmd.command_name.end(), cmd.command_name.begin(), ::toupper);
+                continue;
+            }
+
+            // Check if command is a specific monitor placeholder
             if (strncmp(cmd.command.c_str(), MONITOR_PLACEHOLDER_PREFIX, strlen(MONITOR_PLACEHOLDER_PREFIX)) == 0) {
                 // Extract the index from __monitor_qN__
                 const char* num_start = cmd.command.c_str() + strlen(MONITOR_PLACEHOLDER_PREFIX);
@@ -1715,7 +1750,7 @@ int main(int argc, char *argv[])
                 long index = strtol(num_start, &endptr, 10);
 
                 if (endptr == num_start || index < 1 || (size_t)index > cfg.monitor_commands->size()) {
-                    fprintf(stderr, "error: invalid monitor placeholder '%s' (valid range: q1-q%zu)\n",
+                    fprintf(stderr, "error: invalid monitor placeholder '%s' (valid range: q1-q%zu or q@)\n",
                             cmd.command.c_str(), cfg.monitor_commands->size());
                     exit(1);
                 }
