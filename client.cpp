@@ -278,7 +278,13 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
     // Check if this is a random monitor command - handle it specially
     if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
         // Pick a random command from the monitor file at runtime
-        const std::string& monitor_cmd = m_config->monitor_commands->get_random_command();
+        size_t selected_index = 0;
+        const std::string& monitor_cmd = m_config->monitor_commands->get_random_command(&selected_index);
+
+        benchmark_debug_log("%s: random monitor command selected (q%zu): %s\n",
+                          m_connections[conn_id]->get_readable_id(),
+                          selected_index + 1,  // 1-based index for user display
+                          monitor_cmd.c_str());
 
         // Parse and format the monitor command into a temporary arbitrary_command
         arbitrary_command temp_cmd(monitor_cmd.c_str());

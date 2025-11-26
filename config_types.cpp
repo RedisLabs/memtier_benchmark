@@ -550,3 +550,14 @@ const std::string& monitor_command_list::get_random_command() const {
     size_t random_index = rand() % commands.size();
     return commands[random_index];
 }
+
+const std::string& monitor_command_list::get_random_command(size_t* out_index) const {
+    if (commands.empty()) {
+        static std::string empty;
+        if (out_index) *out_index = 0;
+        return empty;
+    }
+    size_t random_index = rand() % commands.size();
+    if (out_index) *out_index = random_index;
+    return commands[random_index];
+}
