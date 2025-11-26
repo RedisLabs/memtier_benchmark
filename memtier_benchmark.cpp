@@ -1714,31 +1714,13 @@ int main(int argc, char *argv[])
 
             // Check if command is a random monitor placeholder
             if (strcmp(cmd.command.c_str(), MONITOR_RANDOM_PLACEHOLDER) == 0) {
-                // Pick a random command from the monitor file
-                const std::string& monitor_cmd = cfg.monitor_commands->get_random_command();
-                cmd.command = monitor_cmd;
+                // Mark this command as random monitor type - will be expanded at runtime
                 cmd.command_args.clear();
-
-                // Re-parse the command
-                if (!cmd.split_command_to_args()) {
-                    fprintf(stderr, "error: failed to parse random monitor command: %s\n", monitor_cmd.c_str());
-                    exit(1);
-                }
-
-                // Update command name (first word of the command)
-                size_t pos = cmd.command.find(" ");
-                if (pos == std::string::npos) {
-                    pos = cmd.command.size();
-                }
-                cmd.command_name.assign(cmd.command.c_str(), pos);
-                // Remove quotes if present
-                if (cmd.command_name.length() > 0 && cmd.command_name[0] == '"') {
-                    cmd.command_name = cmd.command_name.substr(1);
-                }
-                if (cmd.command_name.length() > 0 && cmd.command_name[cmd.command_name.length()-1] == '"') {
-                    cmd.command_name = cmd.command_name.substr(0, cmd.command_name.length()-1);
-                }
-                std::transform(cmd.command_name.begin(), cmd.command_name.end(), cmd.command_name.begin(), ::toupper);
+                command_arg arg(MONITOR_RANDOM_PLACEHOLDER, strlen(MONITOR_RANDOM_PLACEHOLDER));
+                arg.type = monitor_random_type;
+                arg.monitor_index = 0; // 0 means random
+                cmd.command_args.push_back(arg);
+                cmd.command_name = "MONITOR_RANDOM";
                 continue;
             }
 
@@ -1834,15 +1816,22 @@ int main(int argc, char *argv[])
 
     // if user configure arbitrary commands, format and prepare it
     for (unsigned int i=0; i<cfg.arbitrary_commands->size(); i++) {
+        arbitrary_command& cmd = cfg.arbitrary_commands->at(i);
+
+        // Skip formatting for random monitor commands - they will be formatted at runtime
+        if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
+            continue;
+        }
+
         abstract_protocol* tmp_protocol = protocol_factory(cfg.protocol);
         assert(tmp_protocol != NULL);
 
-        if (!tmp_protocol->format_arbitrary_command(cfg.arbitrary_commands->at(i))) {
+        if (!tmp_protocol->format_arbitrary_command(cmd)) {
             exit(1);
         }
 
         // Cluster mode supports only a single key commands
-        if (cfg.cluster_mode && cfg.arbitrary_commands->at(i).keys_count > 1) {
+        if (cfg.cluster_mode && cmd.keys_count > 1) {
             benchmark_error_log("error: Cluster mode supports only a single key commands\n");
             exit(1);
         }
