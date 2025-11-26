@@ -635,10 +635,18 @@ void shard_connection::handle_event(short events)
         if (!m_conns_manager->get_reqs_processed()) {
             /* Set timer for request rate */
             if (m_config->request_rate) {
-                struct timeval interval = { 0, (int)m_config->request_interval_microsecond };
+                // Convert microseconds to seconds and microseconds for struct timeval
+                unsigned int interval_usec = m_config->request_interval_microsecond;
+                struct timeval interval;
+                interval.tv_sec = interval_usec / 1000000;
+                interval.tv_usec = interval_usec % 1000000;
+
                 m_request_per_cur_interval = m_config->request_per_interval;
                 m_event_timer = event_new(m_event_base, -1, EV_PERSIST, cluster_client_timer_handler, (void *)this);
                 event_add(m_event_timer, &interval);
+
+                // Send first batch immediately to avoid waiting for the first timer event
+                fill_pipeline();
             }
 
             process_first_request();

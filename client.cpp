@@ -672,14 +672,30 @@ int client_group::create_clients(int num)
         m_clients.push_back(c);
 
         // Add jitter between connection creation (except for the last connection)
-        if (i < num - 1 && m_config->thread_conn_start_max_jitter_micros > 0) {
+        unsigned int jitter_micros = 0;
+
+        // Check millisecond jitter first
+        if (i < num - 1 && m_config->thread_conn_start_max_jitter_ms > 0) {
+            unsigned int jitter_range = m_config->thread_conn_start_max_jitter_ms - m_config->thread_conn_start_min_jitter_ms;
+            unsigned int jitter_ms = m_config->thread_conn_start_min_jitter_ms;
+
+            if (jitter_range > 0) {
+                jitter_ms += rand() % (jitter_range + 1);
+            }
+
+            jitter_micros = jitter_ms * 1000;  // Convert ms to microseconds
+        }
+        // Otherwise check microsecond jitter
+        else if (i < num - 1 && m_config->thread_conn_start_max_jitter_micros > 0) {
             unsigned int jitter_range = m_config->thread_conn_start_max_jitter_micros - m_config->thread_conn_start_min_jitter_micros;
-            unsigned int jitter_micros = m_config->thread_conn_start_min_jitter_micros;
+            jitter_micros = m_config->thread_conn_start_min_jitter_micros;
 
             if (jitter_range > 0) {
                 jitter_micros += rand() % (jitter_range + 1);
             }
+        }
 
+        if (jitter_micros > 0) {
             usleep(jitter_micros);
         }
     }

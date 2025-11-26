@@ -98,6 +98,8 @@ struct benchmark_config {
     unsigned int connection_timeout;
     unsigned int thread_conn_start_min_jitter_micros;
     unsigned int thread_conn_start_max_jitter_micros;
+    unsigned int thread_conn_start_min_jitter_ms;
+    unsigned int thread_conn_start_max_jitter_ms;
     int multi_key_get;
     const char *authenticate;
     int select_db;

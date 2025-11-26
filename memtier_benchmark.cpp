@@ -143,7 +143,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "run_count = %u\n"
         "debug = %u\n"
         "requests = %llu\n"
-        "rate_limit = %u\n"
+        "rate_limit = %.2f\n"
         "clients = %u\n"
         "threads = %u\n"
         "test_time = %u\n"
@@ -170,6 +170,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "connection_timeout = %u\n"
         "thread_conn_start_min_jitter_micros = %u\n"
         "thread_conn_start_max_jitter_micros = %u\n"
+        "thread_conn_start_min_jitter_ms = %u\n"
+        "thread_conn_start_max_jitter_ms = %u\n"
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
@@ -225,6 +227,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->connection_timeout,
         cfg->thread_conn_start_min_jitter_micros,
         cfg->thread_conn_start_max_jitter_micros,
+        cfg->thread_conn_start_min_jitter_ms,
+        cfg->thread_conn_start_max_jitter_ms,
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
@@ -289,6 +293,8 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("connection_timeout","%u",    		cfg->connection_timeout);
     jsonhandler->write_obj("thread_conn_start_min_jitter_micros","%u", cfg->thread_conn_start_min_jitter_micros);
     jsonhandler->write_obj("thread_conn_start_max_jitter_micros","%u", cfg->thread_conn_start_max_jitter_micros);
+    jsonhandler->write_obj("thread_conn_start_min_jitter_ms","%u", cfg->thread_conn_start_min_jitter_ms);
+    jsonhandler->write_obj("thread_conn_start_max_jitter_ms","%u", cfg->thread_conn_start_max_jitter_ms);
     jsonhandler->write_obj("multi_key_get"     ,"%u",         	cfg->multi_key_get);
     jsonhandler->write_obj("authenticate"      ,"\"%s\"",      	cfg->authenticate ? cfg->authenticate : "");
     jsonhandler->write_obj("select-db"         ,"%d",           cfg->select_db);
@@ -563,6 +569,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_connection_timeout,
         o_thread_conn_start_min_jitter_micros,
         o_thread_conn_start_max_jitter_micros,
+        o_thread_conn_start_min_jitter_ms,
+        o_thread_conn_start_max_jitter_ms,
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
@@ -648,6 +656,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "connection-timeout",         1, 0, o_connection_timeout },
         { "thread-conn-start-min-jitter-micros", 1, 0, o_thread_conn_start_min_jitter_micros },
         { "thread-conn-start-max-jitter-micros", 1, 0, o_thread_conn_start_max_jitter_micros },
+        { "thread-conn-start-min-jitter-ms", 1, 0, o_thread_conn_start_min_jitter_ms },
+        { "thread-conn-start-max-jitter-ms", 1, 0, o_thread_conn_start_max_jitter_ms },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
@@ -1002,6 +1012,22 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_thread_conn_start_min_jitter_ms:
+                    endptr = NULL;
+                    cfg->thread_conn_start_min_jitter_ms = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-min-jitter-ms must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_thread_conn_start_max_jitter_ms:
+                    endptr = NULL;
+                    cfg->thread_conn_start_max_jitter_ms = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-max-jitter-ms must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
                 case o_generate_keys:
                     cfg->generate_keys = 1;
                     break;
@@ -1244,6 +1270,9 @@ void usage() {
             "      --connection-timeout=SECS  Connection timeout in seconds, 0 to disable (default: 0)\n"
             "      --thread-conn-start-min-jitter-micros=NUM Minimum jitter in microseconds between connection creation (default: 0)\n"
             "      --thread-conn-start-max-jitter-micros=NUM Maximum jitter in microseconds between connection creation (default: 0)\n"
+            "      --thread-conn-start-min-jitter-ms=NUM Minimum jitter in milliseconds between connection creation (default: 0)\n"
+            "      --thread-conn-start-max-jitter-ms=NUM Maximum jitter in milliseconds between connection creation (default: 0)\n"
+            "                                 Note: Use either microsecond or millisecond jitter options, not both.\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
@@ -1818,6 +1847,17 @@ int main(int argc, char *argv[])
     if (cfg.thread_conn_start_min_jitter_micros > cfg.thread_conn_start_max_jitter_micros) {
         fprintf(stderr, "error: thread-conn-start-min-jitter-micros (%u) cannot be greater than thread-conn-start-max-jitter-micros (%u).\n",
                 cfg.thread_conn_start_min_jitter_micros, cfg.thread_conn_start_max_jitter_micros);
+        exit(1);
+    }
+    if (cfg.thread_conn_start_min_jitter_ms > cfg.thread_conn_start_max_jitter_ms) {
+        fprintf(stderr, "error: thread-conn-start-min-jitter-ms (%u) cannot be greater than thread-conn-start-max-jitter-ms (%u).\n",
+                cfg.thread_conn_start_min_jitter_ms, cfg.thread_conn_start_max_jitter_ms);
+        exit(1);
+    }
+    // Check that only one jitter type is specified
+    if ((cfg.thread_conn_start_max_jitter_micros > 0 || cfg.thread_conn_start_min_jitter_micros > 0) &&
+        (cfg.thread_conn_start_max_jitter_ms > 0 || cfg.thread_conn_start_min_jitter_ms > 0)) {
+        fprintf(stderr, "error: cannot specify both microsecond and millisecond jitter options. Use only one type.\n");
         exit(1);
     }
 
