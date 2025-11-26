@@ -115,7 +115,7 @@ struct benchmark_config {
     const char *monitor_input;
     struct monitor_command_list* monitor_commands;
     const char *hdr_prefix;
-    unsigned int request_rate;
+    double request_rate;
     unsigned int request_per_interval;
     unsigned int request_interval_microsecond;
 #ifdef USE_TLS

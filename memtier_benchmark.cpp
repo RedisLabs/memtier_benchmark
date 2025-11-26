@@ -261,7 +261,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("run_count"         ,"%u",          	cfg->run_count);
     jsonhandler->write_obj("debug"             ,"%u",          	cfg->debug);
     jsonhandler->write_obj("requests"          ,"%llu",        	cfg->requests);
-    jsonhandler->write_obj("rate_limit"        ,"%u",         	cfg->request_rate);
+    jsonhandler->write_obj("rate_limit"        ,"%.2f",         	cfg->request_rate);
     jsonhandler->write_obj("clients"           ,"%u",          	cfg->clients);
     jsonhandler->write_obj("threads"           ,"%u",          	cfg->threads);
     jsonhandler->write_obj("test_time"         ,"%u",          	cfg->test_time);
@@ -1111,8 +1111,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_rate_limiting: {
                     endptr = NULL;
-                    cfg->request_rate = (unsigned int) strtoul(optarg, &endptr, 10);
-                    if (!cfg->request_rate || !endptr || *endptr != '\0') {
+                    cfg->request_rate = strtod(optarg, &endptr);
+                    if (cfg->request_rate <= 0 || !endptr || *endptr != '\0') {
                         fprintf(stderr, "error: rate must be greater than zero.\n");
                         return -1;
                     }
@@ -1230,6 +1230,7 @@ void usage() {
             "  -n, --requests=NUMBER          Number of total requests per client (default: 10000)\n"
             "                                 use 'allkeys' to run on the entire key-range\n"
             "      --rate-limiting=NUMBER     The max number of requests to make per second from an individual connection (default is unlimited rate).\n"
+            "                                 Supports fractional values (e.g., 0.1 for 1 request every 10 seconds).\n"
             "                                 If you use --rate-limiting and a very large rate is entered which cannot be met, memtier will do as many requests as possible per second.\n"
             "  -c, --clients=NUMBER           Number of clients per thread (default: 50)\n"
             "  -t, --threads=NUMBER           Number of threads (default: 4)\n"
@@ -1852,14 +1853,25 @@ int main(int argc, char *argv[])
     }
 
     // if user configured rate limiting, do some calculations
-    if (cfg.request_rate) {
-        /* Our event resolution is (at least) 50 events per second (event every >= 20 ml).
-         * When we calculate the number of request per interval, we are taking
-         * the upper bound and adjust the interval accordingly to get more accuracy */
-        cfg.request_per_interval = (cfg.request_rate + 50 - 1) / 50;
-        unsigned int events_per_second = cfg.request_rate / cfg.request_per_interval;
-        cfg.request_interval_microsecond = 1000000 / events_per_second;
-        benchmark_debug_log("Rate limiting configured to send %u requests per %u millisecond\n", cfg.request_per_interval, cfg.request_interval_microsecond / 1000);
+    if (cfg.request_rate > 0) {
+        if (cfg.request_rate >= 1.0) {
+            /* For rates >= 1 req/sec:
+             * Our event resolution is (at least) 50 events per second (event every >= 20 ms).
+             * When we calculate the number of request per interval, we are taking
+             * the upper bound and adjust the interval accordingly to get more accuracy */
+            cfg.request_per_interval = ((unsigned int)cfg.request_rate + 50 - 1) / 50;
+            unsigned int events_per_second = (unsigned int)cfg.request_rate / cfg.request_per_interval;
+            cfg.request_interval_microsecond = 1000000 / events_per_second;
+            benchmark_debug_log("Rate limiting configured to send %u requests per %u millisecond\n",
+                              cfg.request_per_interval, cfg.request_interval_microsecond / 1000);
+        } else {
+            /* For rates < 1 req/sec:
+             * Send 1 request per interval, where interval = 1/rate seconds */
+            cfg.request_per_interval = 1;
+            cfg.request_interval_microsecond = (unsigned int)(1000000.0 / cfg.request_rate);
+            benchmark_debug_log("Rate limiting configured to send %u request per %.2f seconds\n",
+                              cfg.request_per_interval, cfg.request_interval_microsecond / 1000000.0);
+        }
     }
 
 #ifdef USE_TLS
