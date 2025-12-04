@@ -594,6 +594,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_hdr_file_prefix,
         o_rate_limiting,
         o_uri,
+        o_nameserver,
         o_help
     };
 
@@ -675,6 +676,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "monitor-input",              1, 0, o_monitor_input },
         { "rate-limiting",              1, 0, o_rate_limiting },
         { "uri",                        1, 0, o_uri },
+        { "nameserver",                 1, 0, o_nameserver },
         { NULL,                         0, 0, 0 }
     };
 
@@ -1144,6 +1146,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     }
                     break;
                 }
+                case o_nameserver:
+                    cfg->nameserver = optarg;
+                    break;
 #ifdef USE_TLS
                 case o_tls:
                     cfg->tls = true;
@@ -1215,6 +1220,7 @@ void usage() {
             "  -s, --server=ADDR              Same as --host\n"
             "  -p, --port=PORT                Server port (default: 6379)\n"
             "  -S, --unix-socket=SOCKET       UNIX Domain socket name (default: none)\n"
+            "      --nameserver=ADDR          DNS nameserver to use for resolving server address (default: system resolver)\n"
             "  -4, --ipv4                     Force IPv4 address resolution.\n"
             "  -6  --ipv6                     Force IPv6 address resolution.\n"
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).\n"
@@ -1984,7 +1990,7 @@ int main(int argc, char *argv[])
 
     if (cfg.server != NULL && cfg.port > 0) {
         try {
-            cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.resolution);
+            cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.resolution, cfg.nameserver);
         } catch (std::runtime_error& e) {
             benchmark_error_log("%s:%u: error: %s\n",
                     cfg.server, cfg.port, e.what());

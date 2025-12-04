@@ -44,10 +44,15 @@
 #include <assert.h>
 #endif
 
+#include <arpa/inet.h>
+#include <resolv.h>
+#include <arpa/nameser.h>
+
 #include "cluster_client.h"
 #include "memtier_benchmark.h"
 #include "obj_gen.h"
 #include "shard_connection.h"
+#include "config_types.h"
 
 #define KEY_INDEX_QUEUE_MAX_SIZE 1000000
 
@@ -176,6 +181,142 @@ shard_connection* cluster_client::create_shard_connection(abstract_protocol* abs
     return sc;
 }
 
+// Helper function to resolve hostname with custom nameserver
+static int resolve_with_custom_nameserver(const char* hostname, const char* port_str,
+                                          const char* nameserver, struct connect_info* ci) {
+    unsigned char answer[NS_PACKETSZ];
+    int answer_len;
+
+    // Initialize resolver state
+    struct __res_state res_state;
+    memset(&res_state, 0, sizeof(res_state));
+
+    if (res_ninit(&res_state) != 0) {
+        return EAI_SYSTEM;
+    }
+
+    // Parse and set custom nameserver
+    struct in_addr ns_addr;
+    struct in6_addr ns_addr6;
+    bool is_ipv6 = false;
+
+    // Try IPv4 first
+    if (inet_pton(AF_INET, nameserver, &ns_addr) == 1) {
+        res_state.nsaddr_list[0].sin_family = AF_INET;
+        res_state.nsaddr_list[0].sin_addr = ns_addr;
+        res_state.nsaddr_list[0].sin_port = htons(53);
+        res_state.nscount = 1;
+    }
+    // Try IPv6
+    else if (inet_pton(AF_INET6, nameserver, &ns_addr6) == 1) {
+        is_ipv6 = true;
+        struct sockaddr_in6 *ns6 = (struct sockaddr_in6 *)malloc(sizeof(struct sockaddr_in6));
+        memset(ns6, 0, sizeof(struct sockaddr_in6));
+        ns6->sin6_family = AF_INET6;
+        ns6->sin6_addr = ns_addr6;
+        ns6->sin6_port = htons(53);
+        res_state._u._ext.nsaddrs[0] = ns6;
+        res_state._u._ext.nssocks[0] = -1;
+        res_state._u._ext.nscount = 1;
+        res_state.nscount = 0;
+    }
+    else {
+        res_nclose(&res_state);
+        return EAI_NONAME;
+    }
+
+    // Try A record first
+    answer_len = res_nquery(&res_state, hostname, ns_c_in, ns_t_a, answer, sizeof(answer));
+
+    if (answer_len < 0) {
+        // Try AAAA record
+        answer_len = res_nquery(&res_state, hostname, ns_c_in, ns_t_aaaa, answer, sizeof(answer));
+
+        if (answer_len < 0) {
+            if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+                free(res_state._u._ext.nsaddrs[0]);
+            }
+            res_nclose(&res_state);
+            return EAI_NONAME;
+        }
+    }
+
+    // Parse DNS response
+    ns_msg msg;
+    if (ns_initparse(answer, answer_len, &msg) < 0) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        return EAI_FAIL;
+    }
+
+    int answer_count = ns_msg_count(msg, ns_s_an);
+    if (answer_count == 0) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        return EAI_NONAME;
+    }
+
+    // Extract first answer
+    ns_rr rr;
+    if (ns_parserr(&msg, ns_s_an, 0, &rr) < 0) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        return EAI_FAIL;
+    }
+
+    // Determine if we got A or AAAA record
+    int rr_type = ns_rr_type(rr);
+    int port_num = atoi(port_str);
+
+    if (rr_type == ns_t_a) {
+        // IPv4 address
+        struct sockaddr_in *sa = (struct sockaddr_in *)ci->addr_buf;
+        memset(sa, 0, sizeof(struct sockaddr_in));
+        sa->sin_family = AF_INET;
+        sa->sin_port = htons(port_num);
+        memcpy(&sa->sin_addr, ns_rr_rdata(rr), sizeof(struct in_addr));
+
+        ci->ci_family = AF_INET;
+        ci->ci_socktype = SOCK_STREAM;
+        ci->ci_protocol = IPPROTO_TCP;
+        ci->ci_addrlen = sizeof(struct sockaddr_in);
+        ci->ci_addr = (struct sockaddr *)sa;
+    } else if (rr_type == ns_t_aaaa) {
+        // IPv6 address
+        struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)ci->addr_buf;
+        memset(sa6, 0, sizeof(struct sockaddr_in6));
+        sa6->sin6_family = AF_INET6;
+        sa6->sin6_port = htons(port_num);
+        memcpy(&sa6->sin6_addr, ns_rr_rdata(rr), sizeof(struct in6_addr));
+
+        ci->ci_family = AF_INET6;
+        ci->ci_socktype = SOCK_STREAM;
+        ci->ci_protocol = IPPROTO_TCP;
+        ci->ci_addrlen = sizeof(struct sockaddr_in6);
+        ci->ci_addr = (struct sockaddr *)sa6;
+    } else {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        return EAI_FAIL;
+    }
+
+    // Cleanup
+    if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+        free(res_state._u._ext.nsaddrs[0]);
+    }
+    res_nclose(&res_state);
+
+    return 0;
+}
+
 bool cluster_client::connect_shard_connection(shard_connection* sc, char* address, char* port) {
     // empty key index queue
     if (m_key_index_pools[sc->get_id()]->size()) {
@@ -188,29 +329,41 @@ bool cluster_client::connect_shard_connection(shard_connection* sc, char* addres
 
     // get address information
     struct connect_info ci;
-    struct addrinfo *addr_info;
-    struct addrinfo hints;
+    int res;
 
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_flags = AI_PASSIVE;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_UNSPEC;
+    // Use custom nameserver if specified
+    if (m_config->nameserver != NULL && strlen(m_config->nameserver) > 0) {
+        res = resolve_with_custom_nameserver(address, port, m_config->nameserver, &ci);
+        if (res != 0) {
+            benchmark_error_log("connect: resolve error with custom nameserver: %s\n", gai_strerror(res));
+            return false;
+        }
+    } else {
+        // Use standard getaddrinfo
+        struct addrinfo *addr_info;
+        struct addrinfo hints;
 
-    int res = getaddrinfo(address, port, &hints, &addr_info);
-    if (res != 0) {
-        benchmark_error_log("connect: resolve error: %s\n", gai_strerror(res));
-        return false;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_flags = AI_PASSIVE;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_family = AF_UNSPEC;
+
+        res = getaddrinfo(address, port, &hints, &addr_info);
+        if (res != 0) {
+            benchmark_error_log("connect: resolve error: %s\n", gai_strerror(res));
+            return false;
+        }
+
+        ci.ci_family = addr_info->ai_family;
+        ci.ci_socktype = addr_info->ai_socktype;
+        ci.ci_protocol = addr_info->ai_protocol;
+        assert(addr_info->ai_addrlen <= sizeof(ci.addr_buf));
+        memcpy(ci.addr_buf, addr_info->ai_addr, addr_info->ai_addrlen);
+        ci.ci_addr = (struct sockaddr *) ci.addr_buf;
+        ci.ci_addrlen = addr_info->ai_addrlen;
+
+        freeaddrinfo(addr_info);
     }
-
-    ci.ci_family = addr_info->ai_family;
-    ci.ci_socktype = addr_info->ai_socktype;
-    ci.ci_protocol = addr_info->ai_protocol;
-    assert(addr_info->ai_addrlen <= sizeof(ci.addr_buf));
-    memcpy(ci.addr_buf, addr_info->ai_addr, addr_info->ai_addrlen);
-    ci.ci_addr = (struct sockaddr *) ci.addr_buf;
-    ci.ci_addrlen = addr_info->ai_addrlen;
-
-    freeaddrinfo(addr_info);
 
     // call connect
     res = sc->connect(&ci);

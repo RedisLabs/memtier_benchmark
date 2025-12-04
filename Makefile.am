@@ -52,7 +52,8 @@ memtier_benchmark_LDADD = \
 	$(LIBEVENT_LIBS) \
 	$(LIBEVENT_OPENSSL_LIBS) \
 	$(LIBCRYPTO_LIBS) \
-	$(LIBSSL_LIBS)
+	$(LIBSSL_LIBS) \
+	-lresolv
 
 
 @CODE_COVERAGE_RULES@

@@ -87,17 +87,19 @@ struct connect_info {
 };
 
 struct server_addr {
-    server_addr(const char *hostname, int port, int resolution);
+    server_addr(const char *hostname, int port, int resolution, const char *nameserver = NULL);
     virtual ~server_addr();
 
     int get_connect_info(struct connect_info *ci);
     const char* get_last_error(void) const;
 protected:
     int resolve(void);
+    int resolve_with_nameserver(void);
     pthread_mutex_t m_mutex;
 
     std::string m_hostname;
     int m_port;
+    std::string m_nameserver;
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
     int m_resolution;

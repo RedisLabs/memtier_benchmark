@@ -33,6 +33,9 @@
 #include <sys/socket.h>
 #endif
 #include <netdb.h>
+#include <arpa/inet.h>
+#include <resolv.h>
+#include <arpa/nameser.h>
 
 #include <string>
 #include <iostream>
@@ -225,8 +228,9 @@ const char* config_weight_list::print(char *buf, int buf_len)
 }
 
 
-server_addr::server_addr(const char *hostname, int port, int resolution) :
-    m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution), m_last_error(0)
+server_addr::server_addr(const char *hostname, int port, int resolution, const char *nameserver) :
+    m_hostname(hostname), m_port(port), m_nameserver(nameserver ? nameserver : ""),
+    m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution), m_last_error(0)
 {
     int error = resolve();
 
@@ -246,8 +250,182 @@ server_addr::~server_addr()
     pthread_mutex_destroy(&m_mutex);
 }
 
+int server_addr::resolve_with_nameserver(void)
+{
+    // Use res_query to perform DNS lookup with custom nameserver
+    unsigned char answer[NS_PACKETSZ];
+    int answer_len;
+
+    // Initialize resolver state
+    struct __res_state res_state;
+    memset(&res_state, 0, sizeof(res_state));
+
+    if (res_ninit(&res_state) != 0) {
+        m_last_error = EAI_SYSTEM;
+        return m_last_error;
+    }
+
+    // Parse and set custom nameserver
+    struct in_addr ns_addr;
+    struct in6_addr ns_addr6;
+    bool is_ipv6 = false;
+
+    // Try IPv4 first
+    if (inet_pton(AF_INET, m_nameserver.c_str(), &ns_addr) == 1) {
+        res_state.nsaddr_list[0].sin_family = AF_INET;
+        res_state.nsaddr_list[0].sin_addr = ns_addr;
+        res_state.nsaddr_list[0].sin_port = htons(53);
+        res_state.nscount = 1;
+    }
+    // Try IPv6
+    else if (inet_pton(AF_INET6, m_nameserver.c_str(), &ns_addr6) == 1) {
+        is_ipv6 = true;
+        // For IPv6, we need to use _u._ext.nsaddrs
+        struct sockaddr_in6 *ns6 = (struct sockaddr_in6 *)malloc(sizeof(struct sockaddr_in6));
+        memset(ns6, 0, sizeof(struct sockaddr_in6));
+        ns6->sin6_family = AF_INET6;
+        ns6->sin6_addr = ns_addr6;
+        ns6->sin6_port = htons(53);
+        res_state._u._ext.nsaddrs[0] = ns6;
+        res_state._u._ext.nssocks[0] = -1;
+        res_state._u._ext.nscount = 1;
+        res_state.nscount = 0;  // Must be 0 when using IPv6
+    }
+    else {
+        res_nclose(&res_state);
+        m_last_error = EAI_NONAME;
+        return m_last_error;
+    }
+
+    // Determine query type based on resolution preference
+    int query_type = (m_resolution == AF_INET6) ? ns_t_aaaa : ns_t_a;
+
+    // Perform DNS query
+    answer_len = res_nquery(&res_state, m_hostname.c_str(), ns_c_in, query_type, answer, sizeof(answer));
+
+    if (answer_len < 0) {
+        // If AAAA query failed and we allow both, try A record
+        if (query_type == ns_t_aaaa && m_resolution == AF_UNSPEC) {
+            query_type = ns_t_a;
+            answer_len = res_nquery(&res_state, m_hostname.c_str(), ns_c_in, query_type, answer, sizeof(answer));
+        }
+
+        if (answer_len < 0) {
+            if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+                free(res_state._u._ext.nsaddrs[0]);
+            }
+            res_nclose(&res_state);
+            m_last_error = EAI_NONAME;
+            return m_last_error;
+        }
+    }
+
+    // Parse DNS response
+    ns_msg msg;
+    if (ns_initparse(answer, answer_len, &msg) < 0) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        m_last_error = EAI_FAIL;
+        return m_last_error;
+    }
+
+    int answer_count = ns_msg_count(msg, ns_s_an);
+    if (answer_count == 0) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        m_last_error = EAI_NONAME;
+        return m_last_error;
+    }
+
+    // Extract first answer
+    ns_rr rr;
+    if (ns_parserr(&msg, ns_s_an, 0, &rr) < 0) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        m_last_error = EAI_FAIL;
+        return m_last_error;
+    }
+
+    // Build addrinfo structure
+    struct addrinfo *ai = (struct addrinfo *)calloc(1, sizeof(struct addrinfo));
+    if (!ai) {
+        if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+            free(res_state._u._ext.nsaddrs[0]);
+        }
+        res_nclose(&res_state);
+        m_last_error = EAI_MEMORY;
+        return m_last_error;
+    }
+
+    ai->ai_socktype = SOCK_STREAM;
+    ai->ai_protocol = IPPROTO_TCP;
+
+    if (query_type == ns_t_a) {
+        // IPv4 address
+        struct sockaddr_in *sa = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in));
+        if (!sa) {
+            free(ai);
+            if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+                free(res_state._u._ext.nsaddrs[0]);
+            }
+            res_nclose(&res_state);
+            m_last_error = EAI_MEMORY;
+            return m_last_error;
+        }
+        sa->sin_family = AF_INET;
+        sa->sin_port = htons(m_port);
+        memcpy(&sa->sin_addr, ns_rr_rdata(rr), sizeof(struct in_addr));
+
+        ai->ai_family = AF_INET;
+        ai->ai_addrlen = sizeof(struct sockaddr_in);
+        ai->ai_addr = (struct sockaddr *)sa;
+    } else {
+        // IPv6 address
+        struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)calloc(1, sizeof(struct sockaddr_in6));
+        if (!sa6) {
+            free(ai);
+            if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+                free(res_state._u._ext.nsaddrs[0]);
+            }
+            res_nclose(&res_state);
+            m_last_error = EAI_MEMORY;
+            return m_last_error;
+        }
+        sa6->sin6_family = AF_INET6;
+        sa6->sin6_port = htons(m_port);
+        memcpy(&sa6->sin6_addr, ns_rr_rdata(rr), sizeof(struct in6_addr));
+
+        ai->ai_family = AF_INET6;
+        ai->ai_addrlen = sizeof(struct sockaddr_in6);
+        ai->ai_addr = (struct sockaddr *)sa6;
+    }
+
+    m_server_addr = ai;
+
+    // Cleanup
+    if (is_ipv6 && res_state._u._ext.nsaddrs[0]) {
+        free(res_state._u._ext.nsaddrs[0]);
+    }
+    res_nclose(&res_state);
+
+    m_last_error = 0;
+    return 0;
+}
+
 int server_addr::resolve(void)
 {
+    // If custom nameserver is specified, use it
+    if (!m_nameserver.empty()) {
+        return resolve_with_nameserver();
+    }
+
+    // Otherwise use standard getaddrinfo
     char port_str[20];
     struct addrinfo hints;
 
