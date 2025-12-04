@@ -223,7 +223,7 @@ void object_generator::set_random_seed(int seed)
 void object_generator::fill_value_buffer()
 {
     if (m_value_buffer == NULL) return;
-    
+
     if (!m_random_data) {
         memset(m_value_buffer, 'x', m_value_buffer_size);
     } else {
@@ -243,9 +243,8 @@ void object_generator::alloc_value_buffer(void)
         size = m_data_size.size_fixed;
     else if (m_data_size_type == data_size_range)
         size = m_data_size.size_range.size_max;
-    else if (m_data_size_type == data_size_weighted) {
+    else if (m_data_size_type == data_size_weighted)
         size = m_data_size.size_list->largest();
-    }
 
     m_value_buffer_size = size;
     if (size > 0) {
