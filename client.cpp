@@ -72,6 +72,8 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     else if (config->distinct_client_seed)
         m_obj_gen->set_random_seed(config->next_client_idx);
 
+    m_obj_gen->fill_value_buffer();
+
     // Setup first arbitrary command
     if (config->arbitrary_commands->is_defined())
         advance_arbitrary_command_index();
