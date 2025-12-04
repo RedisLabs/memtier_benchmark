@@ -517,8 +517,12 @@ const char* object_generator::get_value(unsigned long long key_index, unsigned i
     // modify object content in case of random data
     if (m_random_data) {
         m_value_buffer[m_value_buffer_mutation_pos++]++;
-        if (m_value_buffer_mutation_pos >= m_value_buffer_size)
+        if (m_value_buffer_mutation_pos >= m_value_buffer_size) {
             m_value_buffer_mutation_pos = 0;
+            // generate completely new random data
+            for(unsigned int i=0; i < m_value_buffer_size; i++)
+                m_value_buffer[i] = m_random.get_random();
+        }
     }
 
     *len = new_size;
