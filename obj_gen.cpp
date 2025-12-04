@@ -222,6 +222,8 @@ void object_generator::set_random_seed(int seed)
 
 void object_generator::fill_value_buffer()
 {
+    if (m_value_buffer == NULL) return;
+    
     if (!m_random_data) {
         memset(m_value_buffer, 'x', m_value_buffer_size);
     } else {
