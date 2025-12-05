@@ -159,7 +159,6 @@ object_generator::object_generator(size_t n_key_iterators/*= OBJECT_GENERATOR_KE
     m_key_zipf_Hmax(0),
     m_key_zipf_s(0),
     m_value_buffer(NULL),
-    m_random_fd(-1),
     m_value_buffer_size(0),
     m_value_buffer_mutation_pos(0)
 {
@@ -189,7 +188,6 @@ object_generator::object_generator(const object_generator& copy) :
     m_key_zipf_Hmax(copy.m_key_zipf_Hmax),
     m_key_zipf_s(copy.m_key_zipf_s),
     m_value_buffer(NULL),
-    m_random_fd(-1),
     m_value_buffer_size(0),
     m_value_buffer_mutation_pos(0)
 {
@@ -197,7 +195,7 @@ object_generator::object_generator(const object_generator& copy) :
         m_data_size.size_list != NULL) {
         m_data_size.size_list = new config_weight_list(*m_data_size.size_list);
     }
-    alloc_value_buffer(copy.m_value_buffer);
+    alloc_value_buffer();
 
     m_next_key.resize(copy.m_next_key.size(), 0);
 }
@@ -209,10 +207,6 @@ object_generator::~object_generator()
     if (m_data_size_type == data_size_weighted &&
         m_data_size.size_list != NULL) {
         delete m_data_size.size_list;
-    }
-    if (m_random_fd != -1) {
-        close(m_random_fd);
-        m_random_fd = -1;
     }
 }
 
@@ -226,65 +220,19 @@ void object_generator::set_random_seed(int seed)
     m_random.set_seed(seed);
 }
 
-void object_generator::alloc_value_buffer(void)
+void object_generator::fill_value_buffer()
 {
-    unsigned int size = 0;
+    if (m_value_buffer == NULL) return;
 
-    if (m_value_buffer != NULL)
-        free(m_value_buffer), m_value_buffer = NULL;
-
-    if (m_data_size_type == data_size_fixed)
-        size = m_data_size.size_fixed;
-    else if (m_data_size_type == data_size_range)
-        size = m_data_size.size_range.size_max;
-    else if (m_data_size_type == data_size_weighted) {
-        size = m_data_size.size_list->largest();
-    }
-
-    m_value_buffer_size = size;
-    if (size > 0) {
-        m_value_buffer = (char*) malloc(size);
-        assert(m_value_buffer != NULL);
-        if (!m_random_data) {
-            memset(m_value_buffer, 'x', size);
-        } else {
-            if (m_random_fd == -1) {
-                m_random_fd = open("/dev/urandom",  O_RDONLY);
-                assert(m_random_fd != -1);
-            }
-
-            char buf1[64] = { 0 };
-            char buf2[64] = { 0 };
-            unsigned int buf1_idx = sizeof(buf1);
-            unsigned int buf2_idx = sizeof(buf2);
-            char *d = m_value_buffer;
-            int ret;
-            int iter = 0;
-            while (d - m_value_buffer < size) {
-                if (buf1_idx == sizeof(buf1)) {
-                    buf1_idx = 0;
-                    buf2_idx++;
-
-                    if (buf2_idx >= sizeof(buf2)) {
-                        if (iter % 20 == 0) {
-                            ret = read(m_random_fd, buf1, sizeof(buf1));
-                            assert(ret > -1);
-                            ret = read(m_random_fd, buf2, sizeof(buf2));
-                            assert(ret > -1);
-                        }
-                        buf2_idx = 0;
-                        iter++;
-                    }
-                }
-                *d = buf1[buf1_idx] ^ buf2[buf2_idx] ^ iter;
-                d++;
-                buf1_idx++;
-            }
-        }
+    if (!m_random_data) {
+        memset(m_value_buffer, 'x', m_value_buffer_size);
+    } else {
+        for(unsigned int i=0; i < m_value_buffer_size; i++)
+            m_value_buffer[i] = m_random.get_random();
     }
 }
 
-void object_generator::alloc_value_buffer(const char* copy_from)
+void object_generator::alloc_value_buffer(void)
 {
     unsigned int size = 0;
 
@@ -302,7 +250,6 @@ void object_generator::alloc_value_buffer(const char* copy_from)
     if (size > 0) {
         m_value_buffer = (char*) malloc(size);
         assert(m_value_buffer != NULL);
-        memcpy(m_value_buffer, copy_from, size);
     }
 }
 
@@ -517,8 +464,10 @@ const char* object_generator::get_value(unsigned long long key_index, unsigned i
     // modify object content in case of random data
     if (m_random_data) {
         m_value_buffer[m_value_buffer_mutation_pos++]++;
-        if (m_value_buffer_mutation_pos >= m_value_buffer_size)
+        if (m_value_buffer_mutation_pos >= m_value_buffer_size) {
             m_value_buffer_mutation_pos = 0;
+            fill_value_buffer(); // generate completely new random data
+        }
     }
 
     *len = new_size;
