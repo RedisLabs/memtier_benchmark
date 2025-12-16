@@ -806,14 +806,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 case 'v':
                     {
                         // Print version information similar to Redis format
-                        printf("%s\n", PACKAGE_STRING);
-                        printf("Copyright (C) 2011-2025 Redis Ltd.\n");
-                        printf("This is free software.  You may redistribute copies of it under the terms of\n");
-                        printf("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n");
-                        printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
-
-                        // Print detailed version info in Redis-like format
-                        printf("v=%s sha=%s:%s", PACKAGE_VERSION, MEMTIER_GIT_SHA1, MEMTIER_GIT_DIRTY);
+                        // First line: memtier_benchmark v=... sha=... bits=... libevent=... openssl=...
+                        printf("memtier_benchmark v=%s sha=%s:%s", PACKAGE_VERSION, MEMTIER_GIT_SHA1, MEMTIER_GIT_DIRTY);
 
                         // Print architecture bits
 #if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)
@@ -833,6 +827,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
 #endif
 
                         printf("\n");
+
+                        // Copyright and license info
+                        printf("Copyright (C) 2011-2025 Redis Ltd.\n");
+                        printf("This is free software.  You may redistribute copies of it under the terms of\n");
+                        printf("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n");
+                        printf("There is NO WARRANTY, to the extent permitted by law.\n");
                     }
                     exit(0);
                 case 's':
