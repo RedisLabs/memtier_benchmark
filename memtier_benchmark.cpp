@@ -804,11 +804,36 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     return -1;
                     break;
                 case 'v':
-                    puts(PACKAGE_STRING);
-                    puts("Copyright (C) 2011-2025 Redis Ltd.");
-                    puts("This is free software.  You may redistribute copies of it under the terms of");
-                    puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
-                    puts("There is NO WARRANTY, to the extent permitted by law.");
+                    {
+                        // Print version information similar to Redis format
+                        printf("%s\n", PACKAGE_STRING);
+                        printf("Copyright (C) 2011-2025 Redis Ltd.\n");
+                        printf("This is free software.  You may redistribute copies of it under the terms of\n");
+                        printf("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n");
+                        printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
+
+                        // Print detailed version info in Redis-like format
+                        printf("v=%s sha=%s:%s", PACKAGE_VERSION, MEMTIER_GIT_SHA1, MEMTIER_GIT_DIRTY);
+
+                        // Print architecture bits
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)
+                        printf(" bits=64");
+#elif defined(__i386__) || defined(_M_IX86) || defined(__arm__)
+                        printf(" bits=32");
+#else
+                        printf(" bits=unknown");
+#endif
+
+                        // Print libevent version
+                        printf(" libevent=%s", event_get_version());
+
+                        // Print OpenSSL version if TLS is enabled
+#ifdef USE_TLS
+                        printf(" openssl=%s", OPENSSL_VERSION_TEXT);
+#endif
+
+                        printf("\n");
+                    }
                     exit(0);
                 case 's':
                 case 'h':
