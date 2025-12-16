@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  // For strcasecmp() on POSIX systems
 #include <stdarg.h>
 #include <limits.h>
 #include <getopt.h>
