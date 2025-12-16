@@ -16,6 +16,11 @@
  * along with memtier_benchmark.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// Define _XOPEN_SOURCE before including system headers for ucontext.h on macOS
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 600
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -595,8 +600,8 @@ static int generate_random_seed()
     if (f)
     {
         size_t ignore = fread(&R, sizeof(R), 1, f);
+        (void)ignore; // Suppress unused variable warning
         fclose(f);
-        ignore++;//ignore warning
     }
 
     return (int)time(NULL)^getpid()^R;
