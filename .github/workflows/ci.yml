@@ -101,7 +101,7 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get install lcov autoconf automake pkg-config libevent-dev
 
-    - name: Build no tls
+    - name: Build without TLS
       run: autoreconf -ivf && ./configure --disable-tls && make -j
 
     - name: Verify version, libevent
@@ -118,14 +118,13 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get install lcov autoconf automake pkg-config libevent-dev
 
-    - name: Build
+    - name: Build without TLS
       run: autoreconf -ivf && ./configure --disable-tls && make -j
 
     - name: Verify version, libevent, openssl
       run: |
         ./memtier_benchmark --version
         ldd ./memtier_benchmark | grep libevent
-        ldd ./memtier_benchmark | grep ssl
 
   build-ubuntu:
     strategy:
