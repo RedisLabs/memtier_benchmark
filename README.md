@@ -95,6 +95,17 @@ $ memtier_benchmark --help
 
 for command line options.
 
+## Crash Reporting
+
+memtier_benchmark includes built-in crash handling that automatically generates detailed bug reports when the program crashes. If you encounter a crash, the tool will print a comprehensive report including:
+
+* Stack traces for all threads
+* System and build information
+* Active client connection states
+* Instructions for generating core dumps
+
+For more information on crash handling, debugging, and how to report crashes, see the [Crash Handling and Debugging](DEVELOPMENT.md#crash-handling-and-debugging) section in DEVELOPMENT.md.
+
 ### Cluster mode
 
 #### Connections
