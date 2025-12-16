@@ -204,15 +204,10 @@ jobs:
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@${{ matrix.openssl }}`/lib/pkgconfig ./configure && make
 
-  # According to https://github.com/actions/runner-images/blob/macos-14-arm64/20241119.509/images/macos/macos-14-arm64-Readme.md
-  # [macOS] OpenSSL 1.1 will be removed and OpenSSL 3 will be the default for all macOS images from November 4, 2024
-  # so use macos-13 which does not have the deprecation notice
-  # macos-13 details: https://github.com/actions/runner-images/blob/main/images/macos/macos-13-Readme.md
+  # macos-13 has been retired as of December 2024, so use macos-14
+  # macos-14 details: https://github.com/actions/runner-images/blob/main/images/macos/macos-14-Readme.md
   build-macos-openssl-1-1:
-    strategy:
-      matrix:
-        platform: [macos-13]
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
     - name: Install dependencies
@@ -222,10 +217,7 @@ jobs:
 
 
   build-macos-openssl-1-0-2:
-    strategy:
-      matrix:
-        platform: [macos-13]
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
     - name: Install dependencies
