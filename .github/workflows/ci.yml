@@ -42,6 +42,12 @@ jobs:
     - name: Build
       run: autoreconf -ivf && ./configure && make -j
 
+    - name: Verify version, libevent, openssl
+      run: |
+        ./memtier_benchmark --version
+        ldd ./memtier_benchmark | grep libevent
+        ldd ./memtier_benchmark | grep openssl
+
   test-debian-versions:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -80,6 +86,12 @@ jobs:
     - name: Build
       run: autoreconf -ivf && ./configure && make -j
 
+    - name: Verify version, libevent, openssl
+      run: |
+        ./memtier_benchmark --version
+        ldd ./memtier_benchmark | grep libevent
+        ldd ./memtier_benchmark | grep openssl
+
   build-notls:
     runs-on: ubuntu-latest
     steps:
@@ -89,8 +101,13 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get install lcov autoconf automake pkg-config libevent-dev
 
-    - name: Build
+    - name: Build no tls
       run: autoreconf -ivf && ./configure --disable-tls && make -j
+
+    - name: Verify version, libevent
+      run: |
+        ./memtier_benchmark --version
+        ldd ./memtier_benchmark | grep libevent
 
   build-ubuntu-latest:
     runs-on: ubuntu-latest
@@ -103,6 +120,12 @@ jobs:
 
     - name: Build
       run: autoreconf -ivf && ./configure --disable-tls && make -j
+
+    - name: Verify version, libevent, openssl
+      run: |
+        ./memtier_benchmark --version
+        ldd ./memtier_benchmark | grep libevent
+        ldd ./memtier_benchmark | grep openssl
 
   build-ubuntu:
     strategy:
@@ -203,6 +226,11 @@ jobs:
       run: brew install autoconf automake libtool libevent openssl@${{ matrix.openssl }}
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@${{ matrix.openssl }}`/lib/pkgconfig ./configure && make
+    - name: Verify version, libevent, openssl
+      run: |
+        ./memtier_benchmark --version
+        otool -L ./memtier_benchmark | grep libevent
+        otool -L ./memtier_benchmark | grep openssl
 
   # macos-13 has been retired as of December 2025, so use macos-14
   # macos-14 details: https://github.com/actions/runner-images/blob/main/images/macos/macos-14-Readme.md
@@ -214,10 +242,11 @@ jobs:
       run: brew install autoconf automake libtool libevent openssl@1.1
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.1`/lib/pkgconfig ./configure && make
-    - name: Verify version and libevent
+    - name: Verify version, libevent, openssl
       run: |
         ./memtier_benchmark --version
         otool -L ./memtier_benchmark | grep libevent
+        otool -L ./memtier_benchmark | grep openssl
 
 
   build-macos-openssl-1-0-2:
@@ -230,7 +259,8 @@ jobs:
       run: brew install rbenv/tap/openssl@1.0
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.0`/lib/pkgconfig ./configure && make
-    - name: Verify version and libevent
+    - name: Verify version, libevent, openssl
       run: |
         ./memtier_benchmark --version
         otool -L ./memtier_benchmark | grep libevent
+        otool -L ./memtier_benchmark | grep openssl
