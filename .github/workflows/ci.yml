@@ -214,6 +214,10 @@ jobs:
       run: brew install autoconf automake libtool libevent openssl@1.1
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.1`/lib/pkgconfig ./configure && make
+    - name: Verify version and libevent
+      run: |
+        ./memtier_benchmark --version
+        otool -L ./memtier_benchmark | grep libevent
 
 
   build-macos-openssl-1-0-2:
@@ -226,3 +230,7 @@ jobs:
       run: brew install rbenv/tap/openssl@1.0
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@1.0`/lib/pkgconfig ./configure && make
+    - name: Verify version and libevent
+      run: |
+        ./memtier_benchmark --version
+        otool -L ./memtier_benchmark | grep libevent
