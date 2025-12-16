@@ -204,7 +204,7 @@ jobs:
     - name: Build
       run: autoreconf -ivf && PKG_CONFIG_PATH=`brew --prefix openssl@${{ matrix.openssl }}`/lib/pkgconfig ./configure && make
 
-  # macos-13 has been retired as of December 2024, so use macos-14
+  # macos-13 has been retired as of December 2025, so use macos-14
   # macos-14 details: https://github.com/actions/runner-images/blob/main/images/macos/macos-14-Readme.md
   build-macos-openssl-1-1:
     runs-on: macos-14
