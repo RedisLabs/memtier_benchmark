@@ -46,7 +46,7 @@ jobs:
       run: |
         ./memtier_benchmark --version
         ldd ./memtier_benchmark | grep libevent
-        ldd ./memtier_benchmark | grep openssl
+        ldd ./memtier_benchmark | grep ssl
 
   test-debian-versions:
     runs-on: ubuntu-latest
@@ -90,7 +90,7 @@ jobs:
       run: |
         ./memtier_benchmark --version
         ldd ./memtier_benchmark | grep libevent
-        ldd ./memtier_benchmark | grep openssl
+        ldd ./memtier_benchmark | grep ssl
 
   build-notls:
     runs-on: ubuntu-latest
@@ -125,7 +125,7 @@ jobs:
       run: |
         ./memtier_benchmark --version
         ldd ./memtier_benchmark | grep libevent
-        ldd ./memtier_benchmark | grep openssl
+        ldd ./memtier_benchmark | grep ssl
 
   build-ubuntu:
     strategy:
@@ -230,7 +230,7 @@ jobs:
       run: |
         ./memtier_benchmark --version
         otool -L ./memtier_benchmark | grep libevent
-        otool -L ./memtier_benchmark | grep openssl
+        otool -L ./memtier_benchmark | grep ssl
 
   # macos-13 has been retired as of December 2025, so use macos-14
   # macos-14 details: https://github.com/actions/runner-images/blob/main/images/macos/macos-14-Readme.md
@@ -246,7 +246,7 @@ jobs:
       run: |
         ./memtier_benchmark --version
         otool -L ./memtier_benchmark | grep libevent
-        otool -L ./memtier_benchmark | grep openssl
+        otool -L ./memtier_benchmark | grep ssl
 
 
   build-macos-openssl-1-0-2:
@@ -263,4 +263,4 @@ jobs:
       run: |
         ./memtier_benchmark --version
         otool -L ./memtier_benchmark | grep libevent
-        otool -L ./memtier_benchmark | grep openssl
+        otool -L ./memtier_benchmark | grep ssl
