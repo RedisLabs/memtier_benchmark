@@ -132,6 +132,19 @@ public:
         return m_connection_state;
     }
 
+    int get_pending_resp() {
+        return m_pending_resp;
+    }
+
+    // Get local port for crash reporting
+    int get_local_port();
+
+    // Get last command type for crash reporting
+    const char* get_last_request_type();
+
+    void handle_reconnect_timer_event();
+    void handle_connection_timeout_event();
+
 private:
     void setup_event(int sockfd);
     int setup_socket(struct connect_info* addr);

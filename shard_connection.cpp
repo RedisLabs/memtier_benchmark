@@ -350,6 +350,60 @@ const char* shard_connection::get_readable_id() {
     return m_readable_id.c_str();
 }
 
+int shard_connection::get_local_port() {
+    if (!m_bev) {
+        return -1;
+    }
+
+    int fd = bufferevent_getfd(m_bev);
+    if (fd < 0) {
+        return -1;
+    }
+
+    struct sockaddr_storage local_addr;
+    socklen_t addr_len = sizeof(local_addr);
+
+    if (getsockname(fd, (struct sockaddr*)&local_addr, &addr_len) != 0) {
+        return -1;
+    }
+
+    if (local_addr.ss_family == AF_INET) {
+        struct sockaddr_in* addr_in = (struct sockaddr_in*)&local_addr;
+        return ntohs(addr_in->sin_port);
+    } else if (local_addr.ss_family == AF_INET6) {
+        struct sockaddr_in6* addr_in6 = (struct sockaddr_in6*)&local_addr;
+        return ntohs(addr_in6->sin6_port);
+    }
+
+    return -1;
+}
+
+const char* shard_connection::get_last_request_type() {
+    if (!m_pipeline || m_pipeline->empty()) {
+        return "none";
+    }
+
+    // Get the last request in the pipeline (the one at the back)
+    // Note: We can't directly access the back of a std::queue, so we need to check the front
+    // which represents the oldest pending request
+    request* req = m_pipeline->front();
+    if (!req) {
+        return "unknown";
+    }
+
+    switch (req->m_type) {
+        case rt_set: return "SET";
+        case rt_get: return "GET";
+        case rt_wait: return "WAIT";
+        case rt_arbitrary: return "ARBITRARY";
+        case rt_auth: return "AUTH";
+        case rt_select_db: return "SELECT";
+        case rt_cluster_slots: return "CLUSTER_SLOTS";
+        case rt_hello: return "HELLO";
+        default: return "unknown";
+    }
+}
+
 request* shard_connection::pop_req() {
     request* req = m_pipeline->front();
     m_pipeline->pop();

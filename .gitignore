@@ -21,6 +21,7 @@ config.log
 config.status
 libtool
 stamp-h1
+version.h
 *.DS_Store
 .vscode/*
 .idea/*
