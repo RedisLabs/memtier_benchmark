@@ -130,6 +130,9 @@ public:
         return m_config->arbitrary_commands->at(command_index);
     }
 
+    /* Get connections for crash reporting */
+    std::vector<shard_connection*>& get_connections(void) { return m_connections; }
+
     /* Set the arbitrary command index to the next to be executed */
     void advance_arbitrary_command_index() {
         while(true) {
@@ -219,7 +222,8 @@ public:
     struct event_base *get_event_base(void) { return m_base; }
     benchmark_config *get_config(void) { return m_config; }
     abstract_protocol* get_protocol(void) { return m_protocol; }
-    object_generator* get_obj_gen(void) { return m_obj_gen; }    
+    object_generator* get_obj_gen(void) { return m_obj_gen; }
+    std::vector<client*>& get_clients(void) { return m_clients; }
 
     unsigned long int get_total_bytes(void);
     unsigned long int get_total_ops(void);
