@@ -99,13 +99,11 @@ protected:
     const char *m_key;
     int m_key_len;
     char *m_value_buffer;
-    int m_random_fd;
     gaussian_noise m_random;
     unsigned int m_value_buffer_size;
     unsigned int m_value_buffer_mutation_pos;
 
     void alloc_value_buffer(void);
-    void alloc_value_buffer(const char* copy_from);
     void random_init(void);
 public:
     object_generator(size_t n_key_iterators = OBJECT_GENERATOR_KEY_ITERATORS);
@@ -128,6 +126,7 @@ public:
     void set_key_distribution(double key_stddev, double key_median);
     void set_key_zipf_distribution(double key_exp);
     void set_random_seed(int seed);
+    void fill_value_buffer();
     unsigned long long get_key_index(int iter);
     void generate_key(unsigned long long key_index);
     const char * get_key() { return m_key; }

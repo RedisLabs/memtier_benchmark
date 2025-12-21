@@ -169,7 +169,8 @@ one_second_stats::one_second_stats(unsigned int second) :
         m_get_cmd(),
         m_wait_cmd(),
         m_total_cmd(),
-        m_ar_commands()
+        m_ar_commands(),
+        m_connection_errors(0)
         {
     reset(second);
 }
@@ -185,6 +186,7 @@ void one_second_stats::reset(unsigned int second) {
     m_wait_cmd.reset();
     m_total_cmd.reset();
     m_ar_commands.reset();
+    m_connection_errors = 0;
 }
 
 void one_second_stats::merge(const one_second_stats& other) {
@@ -193,6 +195,7 @@ void one_second_stats::merge(const one_second_stats& other) {
     m_wait_cmd.merge(other.m_wait_cmd);
     m_total_cmd.merge(other.m_total_cmd);
     m_ar_commands.merge(other.m_ar_commands);
+    m_connection_errors += other.m_connection_errors;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -300,7 +303,9 @@ totals::totals() :
         m_total_latency(0),
         m_bytes_rx(0),
         m_bytes_tx(0),
-        m_ops(0) {
+        m_ops(0),
+        m_connection_errors(0),
+        m_connection_errors_sec(0) {
 }
 
 void totals::setup_arbitrary_commands(size_t n_arbitrary_commands) {
@@ -325,6 +330,8 @@ void totals::add(const totals& other) {
     m_latency += other.m_latency;
     m_total_latency += other.m_latency;
     m_ops += other.m_ops;
+    m_connection_errors += other.m_connection_errors;
+    m_connection_errors_sec += other.m_connection_errors_sec;
 
     // aggregate latency data
     hdr_add(latency_histogram,other.latency_histogram);
@@ -339,7 +346,8 @@ void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, u
     hdr_record_value_capped(latency_histogram,latency);
 }
 
-void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency, unsigned int hits, unsigned int misses) {
-    update_op(bytes_rx, bytes_tx, latency);
-    // Note: totals class doesn't track individual hits/misses, they're aggregated at higher levels
+void totals::update_connection_error() {
+    m_connection_errors++;
 }
+
+

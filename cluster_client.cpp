@@ -209,6 +209,7 @@ bool cluster_client::connect_shard_connection(shard_connection* sc, char* addres
     memcpy(ci.addr_buf, addr_info->ai_addr, addr_info->ai_addrlen);
     ci.ci_addr = (struct sockaddr *) ci.addr_buf;
     ci.ci_addrlen = addr_info->ai_addrlen;
+
     freeaddrinfo(addr_info);
 
     // call connect
@@ -497,4 +498,3 @@ void cluster_client::handle_response(unsigned int conn_id, struct timeval timest
     // continue with base class
     client::handle_response(conn_id, timestamp, request, response);
 }
-

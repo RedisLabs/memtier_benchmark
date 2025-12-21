@@ -18,7 +18,14 @@
 AUTOMAKE_OPTIONS = foreign 1.9 subdir-objects
 CODE_COVERAGE_IGNORE_PATTERN='*/deps/hdr_histogram/*'
 
-EXTRA_DIST = README.md COPYING
+EXTRA_DIST = README.md COPYING version.sh
+
+# Generate version.h before building
+BUILT_SOURCES = version.h
+CLEANFILES = version.h
+
+version.h:
+	$(SHELL) $(srcdir)/version.sh
 
 bin_PROGRAMS = memtier_benchmark
 completionsdir=$(BASH_COMPLETION_DIR)

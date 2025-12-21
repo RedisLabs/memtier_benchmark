@@ -16,15 +16,23 @@
  * along with memtier_benchmark.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// Define _XOPEN_SOURCE before including system headers for ucontext.h on macOS
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 600
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+
+#include "version.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  // For strcasecmp() on POSIX systems
 #include <stdarg.h>
 #include <limits.h>
 #include <getopt.h>
@@ -32,6 +40,13 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <signal.h>
+#include <execinfo.h>
+#include <ucontext.h>
+#include <time.h>
+#include <sys/utsname.h>
+#include <dirent.h>
+#include <event2/event.h>
 
 #ifdef USE_TLS
 #include <openssl/crypto.h>
@@ -56,6 +71,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <atomic>
 
 #include "client.h"
 #include "JSON_handler.h"
@@ -64,6 +80,131 @@
 
 
 static int log_level = 0;
+
+// Global flag for signal handling
+static volatile sig_atomic_t g_interrupted = 0;
+
+// Forward declarations
+struct cg_thread;
+static void print_client_list(FILE* fp, int pid, const char* timestr);
+static void print_all_threads_stack_trace(FILE* fp, int pid, const char* timestr);
+
+// Global pointer to threads for crash handler access
+static std::vector<cg_thread*>* g_threads = NULL;
+
+// Signal handler for Ctrl+C
+static void sigint_handler(int signum)
+{
+    (void)signum;  // unused parameter
+    g_interrupted = 1;
+}
+
+// Crash handler - prints stack trace and other debugging information
+static void crash_handler(int sig, siginfo_t *info, void *secret)
+{
+    (void)secret;  // unused parameter
+    struct tm *tm;
+    time_t now;
+    char timestr[64];
+
+    // Get current time
+    now = time(NULL);
+    tm = localtime(&now);
+    strftime(timestr, sizeof(timestr), "%d %b %Y %H:%M:%S", tm);
+
+    // Print crash header
+    fprintf(stderr, "\n\n=== MEMTIER_BENCHMARK BUG REPORT START: Cut & paste starting from here ===\n");
+    fprintf(stderr, "[%d] %s # memtier_benchmark crashed by signal: %d\n", getpid(), timestr, sig);
+
+    // Print signal information
+    const char *signal_name = "UNKNOWN";
+    switch(sig) {
+        case SIGSEGV: signal_name = "SIGSEGV"; break;
+        case SIGBUS: signal_name = "SIGBUS"; break;
+        case SIGFPE: signal_name = "SIGFPE"; break;
+        case SIGILL: signal_name = "SIGILL"; break;
+        case SIGABRT: signal_name = "SIGABRT"; break;
+    }
+    fprintf(stderr, "[%d] %s # Crashed running signal <%s>\n", getpid(), timestr, signal_name);
+
+    if (info) {
+        fprintf(stderr, "[%d] %s # Signal code: %d\n", getpid(), timestr, info->si_code);
+        fprintf(stderr, "[%d] %s # Fault address: %p\n", getpid(), timestr, info->si_addr);
+    }
+
+    // Print stack trace for all threads
+    print_all_threads_stack_trace(stderr, getpid(), timestr);
+
+    // Print system information
+    fprintf(stderr, "\n[%d] %s # --- INFO OUTPUT\n", getpid(), timestr);
+
+    struct utsname name;
+    if (uname(&name) == 0) {
+        fprintf(stderr, "[%d] %s # os:%s %s %s\n", getpid(), timestr, name.sysname, name.release, name.machine);
+    }
+
+    fprintf(stderr, "[%d] %s # memtier_version:%s\n", getpid(), timestr, PACKAGE_VERSION);
+    fprintf(stderr, "[%d] %s # memtier_git_sha1:%s\n", getpid(), timestr, MEMTIER_GIT_SHA1);
+    fprintf(stderr, "[%d] %s # memtier_git_dirty:%s\n", getpid(), timestr, MEMTIER_GIT_DIRTY);
+
+#if defined(__x86_64__) || defined(_M_X64)
+    fprintf(stderr, "[%d] %s # arch_bits:64\n", getpid(), timestr);
+#elif defined(__i386__) || defined(_M_IX86)
+    fprintf(stderr, "[%d] %s # arch_bits:32\n", getpid(), timestr);
+#elif defined(__aarch64__)
+    fprintf(stderr, "[%d] %s # arch_bits:64\n", getpid(), timestr);
+#elif defined(__arm__)
+    fprintf(stderr, "[%d] %s # arch_bits:32\n", getpid(), timestr);
+#else
+    fprintf(stderr, "[%d] %s # arch_bits:unknown\n", getpid(), timestr);
+#endif
+
+#ifdef __GNUC__
+    fprintf(stderr, "[%d] %s # gcc_version:%d.%d.%d\n", getpid(), timestr,
+            __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+#endif
+
+    fprintf(stderr, "[%d] %s # libevent_version:%s\n", getpid(), timestr, event_get_version());
+
+#ifdef USE_TLS
+    fprintf(stderr, "[%d] %s # openssl_version:%s\n", getpid(), timestr, OPENSSL_VERSION_TEXT);
+#endif
+
+    // Print client connection information
+    print_client_list(stderr, getpid(), timestr);
+
+    fprintf(stderr, "[%d] %s # For more information, please check the core dump if available.\n", getpid(), timestr);
+    fprintf(stderr, "[%d] %s # To enable core dumps: ulimit -c unlimited\n", getpid(), timestr);
+    fprintf(stderr, "[%d] %s # Core pattern: /proc/sys/kernel/core_pattern\n", getpid(), timestr);
+
+    fprintf(stderr, "\n=== MEMTIER_BENCHMARK BUG REPORT END. Make sure to include from START to END. ===\n\n");
+    fprintf(stderr, "       Please report this bug by opening an issue on github.com/RedisLabs/memtier_benchmark\n\n");
+
+    // Remove the handler and re-raise the signal to generate core dump
+    struct sigaction act;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
+    act.sa_handler = SIG_DFL;
+    sigaction(sig, &act, NULL);
+    raise(sig);
+}
+
+// Setup crash handlers
+static void setup_crash_handlers(void)
+{
+    struct sigaction act;
+
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
+    act.sa_sigaction = crash_handler;
+
+    sigaction(SIGSEGV, &act, NULL);
+    sigaction(SIGBUS, &act, NULL);
+    sigaction(SIGFPE, &act, NULL);
+    sigaction(SIGILL, &act, NULL);
+    sigaction(SIGABRT, &act, NULL);
+}
+
 void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
 {
     if (level > log_level)
@@ -153,6 +294,9 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "key_stddev = %f\n"
         "key_median = %f\n"
         "reconnect_interval = %u\n"
+        "connection_timeout = %u\n"
+        "thread_conn_start_min_jitter_micros = %u\n"
+        "thread_conn_start_max_jitter_micros = %u\n"
         "multi_key_get = %u\n"
         "authenticate = %s\n"
         "select-db = %d\n"
@@ -205,6 +349,9 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         cfg->key_stddev,
         cfg->key_median,
         cfg->reconnect_interval,
+        cfg->connection_timeout,
+        cfg->thread_conn_start_min_jitter_micros,
+        cfg->thread_conn_start_max_jitter_micros,
         cfg->multi_key_get,
         cfg->authenticate ? cfg->authenticate : "",
         cfg->select_db,
@@ -266,6 +413,9 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     jsonhandler->write_obj("key_median"        ,"%f",           cfg->key_median);
     jsonhandler->write_obj("key_zipf_exp"      ,"%f",           cfg->key_zipf_exp);
     jsonhandler->write_obj("reconnect_interval","%u",    		cfg->reconnect_interval);
+    jsonhandler->write_obj("connection_timeout","%u",    		cfg->connection_timeout);
+    jsonhandler->write_obj("thread_conn_start_min_jitter_micros","%u", cfg->thread_conn_start_min_jitter_micros);
+    jsonhandler->write_obj("thread_conn_start_max_jitter_micros","%u", cfg->thread_conn_start_max_jitter_micros);
     jsonhandler->write_obj("multi_key_get"     ,"%u",         	cfg->multi_key_get);
     jsonhandler->write_obj("authenticate"      ,"\"%s\"",      	cfg->authenticate ? cfg->authenticate : "");
     jsonhandler->write_obj("select-db"         ,"%d",           cfg->select_db);
@@ -437,6 +587,7 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined())
         cfg->print_percentiles = config_quantiles("50,99,99.9");
+
 #ifdef USE_TLS
     if (!cfg->tls_protocols)
         cfg->tls_protocols = REDIS_TLS_PROTO_DEFAULT;
@@ -450,8 +601,8 @@ static int generate_random_seed()
     if (f)
     {
         size_t ignore = fread(&R, sizeof(R), 1, f);
+        (void)ignore; // Suppress unused variable warning
         fclose(f);
-        ignore++;//ignore warning
     }
 
     return (int)time(NULL)^getpid()^R;
@@ -533,6 +684,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_randomize,
         o_client_stats,
         o_reconnect_interval,
+        o_reconnect_on_error,
+        o_max_reconnect_attempts,
+        o_reconnect_backoff_factor,
+        o_connection_timeout,
+        o_thread_conn_start_min_jitter_micros,
+        o_thread_conn_start_max_jitter_micros,
         o_generate_keys,
         o_multi_key_get,
         o_select_db,
@@ -611,6 +768,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "key-median",                 1, 0, o_key_median },
         { "key-zipf-exp",               1, 0, o_key_zipf_exp},
         { "reconnect-interval",         1, 0, o_reconnect_interval },
+        { "reconnect-on-error",         0, 0, o_reconnect_on_error },
+        { "max-reconnect-attempts",     1, 0, o_max_reconnect_attempts },
+        { "reconnect-backoff-factor",   1, 0, o_reconnect_backoff_factor },
+        { "connection-timeout",         1, 0, o_connection_timeout },
+        { "thread-conn-start-min-jitter-micros", 1, 0, o_thread_conn_start_min_jitter_micros },
+        { "thread-conn-start-max-jitter-micros", 1, 0, o_thread_conn_start_max_jitter_micros },
         { "multi-key-get",              1, 0, o_multi_key_get },
         { "authenticate",               1, 0, 'a' },
         { "select-db",                  1, 0, o_select_db },
@@ -641,11 +804,36 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     return -1;
                     break;
                 case 'v':
-                    puts(PACKAGE_STRING);
-                    puts("Copyright (C) 2011-2024 Redis Ltd.");
-                    puts("This is free software.  You may redistribute copies of it under the terms of");
-                    puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
-                    puts("There is NO WARRANTY, to the extent permitted by law.");
+                    {
+                        // Print version information similar to Redis format
+                        // First line: memtier_benchmark v=... sha=... bits=... libevent=... openssl=...
+                        printf("memtier_benchmark v=%s sha=%s:%s", PACKAGE_VERSION, MEMTIER_GIT_SHA1, MEMTIER_GIT_DIRTY);
+
+                        // Print architecture bits
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)
+                        printf(" bits=64");
+#elif defined(__i386__) || defined(_M_IX86) || defined(__arm__)
+                        printf(" bits=32");
+#else
+                        printf(" bits=unknown");
+#endif
+
+                        // Print libevent version
+                        printf(" libevent=%s", event_get_version());
+
+                        // Print OpenSSL version if TLS is enabled
+#ifdef USE_TLS
+                        printf(" openssl=%s", OPENSSL_VERSION_TEXT);
+#endif
+
+                        printf("\n");
+
+                        // Copyright and license info
+                        printf("Copyright (C) 2011-2025 Redis Ltd.\n");
+                        printf("This is free software.  You may redistribute copies of it under the terms of\n");
+                        printf("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n");
+                        printf("There is NO WARRANTY, to the extent permitted by law.\n");
+                    }
                     exit(0);
                 case 's':
                 case 'h':
@@ -921,6 +1109,49 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         return -1;
                     }
                     break;
+                case o_reconnect_on_error:
+                    cfg->reconnect_on_error = true;
+                    break;
+                case o_max_reconnect_attempts:
+                    endptr = NULL;
+                    cfg->max_reconnect_attempts = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: max-reconnect-attempts must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_reconnect_backoff_factor:
+                    endptr = NULL;
+                    cfg->reconnect_backoff_factor = strtod(optarg, &endptr);
+                    if (cfg->reconnect_backoff_factor <= 0.0 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: reconnect-backoff-factor must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_connection_timeout:
+                    endptr = NULL;
+                    cfg->connection_timeout = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: connection-timeout must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_thread_conn_start_min_jitter_micros:
+                    endptr = NULL;
+                    cfg->thread_conn_start_min_jitter_micros = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-min-jitter-micros must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
+                case o_thread_conn_start_max_jitter_micros:
+                    endptr = NULL;
+                    cfg->thread_conn_start_max_jitter_micros = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (!endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: thread-conn-start-max-jitter-micros must be a valid number.\n");
+                        return -1;
+                    }
+                    break;
                 case o_generate_keys:
                     cfg->generate_keys = 1;
                     break;
@@ -1144,6 +1375,12 @@ void usage() {
             "      --ratio=RATIO              Set:Get ratio (default: 1:10)\n"
             "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
             "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
+            "      --reconnect-on-error       Enable automatic reconnection on connection errors (default: disabled)\n"
+            "      --max-reconnect-attempts=NUM Maximum number of reconnection attempts (default: 0, unlimited)\n"
+            "      --reconnect-backoff-factor=NUM Backoff factor for reconnection delays (default: 0, no backoff)\n"
+            "      --connection-timeout=SECS  Connection timeout in seconds, 0 to disable (default: 0)\n"
+            "      --thread-conn-start-min-jitter-micros=NUM Minimum jitter in microseconds between connection creation (default: 0)\n"
+            "      --thread-conn-start-max-jitter-micros=NUM Maximum jitter in microseconds between connection creation (default: 0)\n"
             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
             "      --select-db=DB             DB number to select, when testing a redis server\n"
             "      --distinct-client-seed     Use a different random seed for each client\n"
@@ -1222,10 +1459,13 @@ struct cg_thread {
     client_group* m_cg;
     abstract_protocol* m_protocol;
     pthread_t m_thread;
-    bool m_finished;
+    std::atomic<bool> m_finished;  // Atomic to prevent data race between worker thread write and main thread read
+    bool m_restart_requested;
+    unsigned int m_restart_count;
 
     cg_thread(unsigned int id, benchmark_config* config, object_generator* obj_gen) :
-        m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false)
+        m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL),
+        m_finished(false), m_restart_requested(false), m_restart_count(0)
     {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);
@@ -1264,13 +1504,57 @@ struct cg_thread {
         assert(ret == 0);
     }
 
+    int restart(void)
+    {
+        // Clean up existing client group
+        if (m_cg != NULL) {
+            delete m_cg;
+        }
+
+        // Create new client group
+        m_cg = new client_group(m_config, m_protocol, m_obj_gen);
+
+        // Prepare new clients
+        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients)
+            return -1;
+        if (m_cg->prepare() < 0)
+            return -1;
+
+        // Reset state
+        m_finished = false;
+        m_restart_requested = false;
+        m_restart_count++;
+
+        // Start new thread
+        return pthread_create(&m_thread, NULL, cg_thread_start, (void *)this);
+    }
+
 };
 
 static void* cg_thread_start(void *t)
 {
     cg_thread* thread = (cg_thread*) t;
-    thread->m_cg->run();
-    thread->m_finished = true;
+
+    try {
+        thread->m_cg->run();
+
+        // Check if we should restart due to connection failures
+        // If the thread finished but still has time left and connection errors, request restart
+        if (thread->m_cg->get_total_connection_errors() > 0) {
+            benchmark_error_log("Thread %u finished due to connection failures, requesting restart.\n", thread->m_thread_id);
+            thread->m_restart_requested = true;
+        }
+
+        thread->m_finished = true;
+    } catch (const std::exception& e) {
+        benchmark_error_log("Thread %u caught exception: %s\n", thread->m_thread_id, e.what());
+        thread->m_finished = true;
+        thread->m_restart_requested = true;
+    } catch (...) {
+        benchmark_error_log("Thread %u caught unknown exception\n", thread->m_thread_id);
+        thread->m_finished = true;
+        thread->m_restart_requested = true;
+    }
 
     return t;
 }
@@ -1289,12 +1573,98 @@ void size_to_str(unsigned long int size, char *buf, int buf_len)
     }
 }
 
+// Print client list for crash handler
+static void print_client_list(FILE* fp, int pid, const char* timestr)
+{
+    if (g_threads != NULL) {
+        fprintf(fp, "\n[%d] %s # --- CLIENT LIST OUTPUT\n", pid, timestr);
+
+        for (size_t t = 0; t < g_threads->size(); t++) {
+            cg_thread* thread = (*g_threads)[t];
+            if (thread && thread->m_cg) {
+                std::vector<client*>& clients = thread->m_cg->get_clients();
+
+                for (size_t c = 0; c < clients.size(); c++) {
+                    client* cl = clients[c];
+                    if (cl) {
+                        std::vector<shard_connection*>& connections = cl->get_connections();
+
+                        for (size_t conn_idx = 0; conn_idx < connections.size(); conn_idx++) {
+                            shard_connection* conn = connections[conn_idx];
+                            if (conn) {
+                                const char* state_str = "unknown";
+                                switch (conn->get_connection_state()) {
+                                    case conn_disconnected: state_str = "disconnected"; break;
+                                    case conn_in_progress: state_str = "connecting"; break;
+                                    case conn_connected: state_str = "connected"; break;
+                                }
+
+                                int local_port = conn->get_local_port();
+                                const char* last_cmd = conn->get_last_request_type();
+
+                                fprintf(fp, "[%d] %s # thread=%zu client=%zu conn=%zu addr=%s:%s local_port=%d state=%s pending=%d last_cmd=%s\n",
+                                        pid, timestr, t, c, conn_idx,
+                                        conn->get_address() ? conn->get_address() : "unknown",
+                                        conn->get_port() ? conn->get_port() : "unknown",
+                                        local_port,
+                                        state_str,
+                                        conn->get_pending_resp(),
+                                        last_cmd);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper function to print stack trace for all threads
+static void print_all_threads_stack_trace(FILE* fp, int pid, const char* timestr)
+{
+    fprintf(fp, "\n[%d] %s # --- STACK TRACE (all threads)\n", pid, timestr);
+
+    // Get the current (crashing) thread ID
+    pthread_t current_thread = pthread_self();
+
+    // Print main/crashing thread first
+    fprintf(fp, "[%d] %s # Thread %lu (current/crashing thread):\n", pid, timestr, (unsigned long)current_thread);
+
+    void *trace[100];
+    int trace_size = backtrace(trace, 100);
+    char **messages = backtrace_symbols(trace, trace_size);
+    for (int i = 1; i < trace_size; i++) {
+        fprintf(fp, "[%d] %s #   %s\n", pid, timestr, messages[i]);
+    }
+    free(messages);
+
+    // Now print stack traces for worker threads if available
+    if (g_threads != NULL) {
+        for (size_t t = 0; t < g_threads->size(); t++) {
+            cg_thread* thread = (*g_threads)[t];
+            if (thread && thread->m_thread) {
+                pthread_t tid = thread->m_thread;
+
+                // Skip if this is the current thread (already printed)
+                if (pthread_equal(tid, current_thread)) {
+                    continue;
+                }
+
+                fprintf(fp, "[%d] %s # Thread %lu (worker thread %zu):\n", pid, timestr, (unsigned long)tid, t);
+                fprintf(fp, "[%d] %s #   (Note: Stack trace for non-crashing threads not available on this platform)\n", pid, timestr);
+            }
+        }
+    }
+}
+
 run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen)
 {
     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
 
     // prepare threads data
     std::vector<cg_thread*> threads;
+    g_threads = &threads;  // Set global pointer for crash handler
+
     for (unsigned int i = 0; i < cfg->threads; i++) {
         cg_thread* t = new cg_thread(i, cfg, obj_gen);
         assert(t != NULL);
@@ -1320,24 +1690,64 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
     unsigned long int cur_bytes_sec = 0;
 
     // provide some feedback...
+    // NOTE: Reading stats from worker threads without synchronization is a benign race.
+    // These stats are only for progress display and are approximate. Final results are
+    // collected after pthread_join() when all threads have finished (race-free).
     unsigned int active_threads = 0;
     do {
         active_threads = 0;
         sleep(1);
+
+        // Check for Ctrl+C interrupt
+        if (g_interrupted) {
+            // Calculate elapsed time before interrupting
+            unsigned long int elapsed_duration = 0;
+            unsigned int thread_counter = 0;
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                thread_counter++;
+                float factor = ((float)(thread_counter - 1) / thread_counter);
+                elapsed_duration = factor * elapsed_duration + (float)(*i)->m_cg->get_duration_usec() / thread_counter;
+            }
+            fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, stopping threads...\n",
+                    run_id, (float)elapsed_duration / 1000000);
+            // Interrupt all threads (marks clients as interrupted, breaks event loops, and finalizes stats)
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                (*i)->m_cg->interrupt();
+            }
+            break;
+        }
 
         unsigned long int total_ops = 0;
         unsigned long int total_bytes = 0;
         unsigned long int duration = 0;
         unsigned int thread_counter = 0;
         unsigned long int total_latency = 0;
+        unsigned long int total_connection_errors = 0;
 
         for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+            // Check if thread needs restart
+            if ((*i)->m_finished && (*i)->m_restart_requested && (*i)->m_restart_count < 5) {
+                benchmark_error_log("Restarting thread %u (restart #%u)...\n",
+                                  (*i)->m_thread_id, (*i)->m_restart_count + 1);
+
+                // Join the failed thread first
+                (*i)->join();
+
+                // Attempt to restart
+                if ((*i)->restart() == 0) {
+                    benchmark_error_log("Thread %u restarted successfully.\n", (*i)->m_thread_id);
+                } else {
+                    benchmark_error_log("Failed to restart thread %u.\n", (*i)->m_thread_id);
+                }
+            }
+
             if (!(*i)->m_finished)
                 active_threads++;
 
             total_ops += (*i)->m_cg->get_total_ops();
             total_bytes += (*i)->m_cg->get_total_bytes();
             total_latency += (*i)->m_cg->get_total_latency();
+            total_connection_errors += (*i)->m_cg->get_total_connection_errors();
             thread_counter++;
             float factor = ((float)(thread_counter - 1) / thread_counter);
             duration =  factor * duration +  (float)(*i)->m_cg->get_duration_usec() / thread_counter ;
@@ -1376,8 +1786,14 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         else
             progress = 100.0 * (duration / 1000000.0)/cfg->test_time;
 
-        fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
-            run_id, progress, (unsigned int) (duration / 1000000), active_threads, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+        // Only show connection errors if there are any (backwards compatible output)
+        if (total_connection_errors > 0) {
+            fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns %lu conn errors: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
+                run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_connection_errors, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+        } else {
+            fprintf(stderr, "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
+                run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
+        }
     } while (active_threads > 0);
 
     fprintf(stderr, "\n\n");
@@ -1409,6 +1825,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         threads.erase(threads.begin());
         delete t;
     }
+
+    g_threads = NULL;  // Clear global pointer
 
     return stats;
 }
@@ -1492,6 +1910,21 @@ static void cleanup_openssl(void)
 
 int main(int argc, char *argv[])
 {
+    // Install signal handler for Ctrl+C
+    signal(SIGINT, sigint_handler);
+
+    // Install crash handlers for debugging
+    setup_crash_handlers();
+
+    // Enable core dumps
+    struct rlimit core_limit;
+    core_limit.rlim_cur = RLIM_INFINITY;
+    core_limit.rlim_max = RLIM_INFINITY;
+    if (setrlimit(RLIMIT_CORE, &core_limit) != 0) {
+        fprintf(stderr, "warning: failed to set core dump limit: %s\n", strerror(errno));
+        fprintf(stderr, "warning: core dumps may not be generated on crash\n");
+    }
+
     benchmark_config cfg = benchmark_config();
     cfg.arbitrary_commands = new arbitrary_command_list();
 
@@ -1532,6 +1965,14 @@ int main(int argc, char *argv[])
     }
 
     config_init_defaults(&cfg);
+
+    // Validate jitter parameters
+    if (cfg.thread_conn_start_min_jitter_micros > cfg.thread_conn_start_max_jitter_micros) {
+        fprintf(stderr, "error: thread-conn-start-min-jitter-micros (%u) cannot be greater than thread-conn-start-max-jitter-micros (%u).\n",
+                cfg.thread_conn_start_min_jitter_micros, cfg.thread_conn_start_max_jitter_micros);
+        exit(1);
+    }
+
     log_level = cfg.debug;
     if (cfg.show_config) {
         fprintf(stderr, "============== Configuration values: ==============\n");
@@ -1957,6 +2398,9 @@ int main(int argc, char *argv[])
     }
 
     if (jsonhandler != NULL) {
+        // Log message for saving JSON file
+        fprintf(stderr, "Saving JSON output file: %s\n", cfg.json_out_file);
+
         // closing the JSON
         delete jsonhandler;
     }
@@ -1967,6 +2411,16 @@ int main(int argc, char *argv[])
 
     if (cfg.arbitrary_commands != NULL) {
         delete cfg.arbitrary_commands;
+    }
+
+    // Clean up dynamically allocated strings from URI parsing
+    if (cfg.uri) {
+        if (cfg.server) {
+            free((void*)cfg.server);
+        }
+        if (cfg.authenticate) {
+            free((void*)cfg.authenticate);
+        }
     }
 
 #ifdef USE_TLS

@@ -1,0 +1,90 @@
+name: TSAN (ThreadSanitizer)
+
+# Data race detection using ThreadSanitizer
+# This workflow builds memtier_benchmark with TSAN enabled and runs
+# tests to detect data races and threading issues.
+#
+# NOTE: TSAN currently detects known data races in the codebase.
+# This workflow is informational and will not fail the build.
+# See: https://github.com/google/sanitizers/issues/1716 for TSAN/ASLR issues
+
+on: [push, pull_request]
+
+jobs:
+  test-with-thread-sanitizer:
+    runs-on: ubuntu-latest
+    name: Data race detection (TSAN)
+    continue-on-error: true  # Don't fail build on known races
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install -y \
+          build-essential \
+          autoconf \
+          automake \
+          pkg-config \
+          libevent-dev \
+          zlib1g-dev \
+          libssl-dev
+
+    - name: Build with Thread Sanitizer
+      run: |
+        autoreconf -ivf
+        ./configure --enable-thread-sanitizer
+        make -j
+
+    - name: Verify TSAN is enabled
+      run: |
+        ldd ./memtier_benchmark | grep tsan
+        echo "✓ ThreadSanitizer is linked"
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
+
+    - name: Install Python test dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
+      run: |
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Increase connection limit
+      run: |
+        sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+        sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+        ulimit -n 40960
+
+    - name: Generate TLS test certificates
+      run: ./tests/gen-test-certs.sh
+
+    - name: Test OSS TCP with TSAN
+      timeout-minutes: 15
+      run: |
+        # Use setarch to disable ASLR (workaround for TSAN on kernel 6.6+)
+        # Use suppression file to ignore known benign races
+        export TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt"
+        setarch `uname -m` -R bash -c './tests/run_tests.sh'
+
+    - name: Test OSS TCP TLS with TSAN
+      timeout-minutes: 15
+      run: |
+        export TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt"
+        setarch `uname -m` -R bash -c 'TLS=1 ./tests/run_tests.sh'
+
+    - name: Test OSS-CLUSTER TCP with TSAN
+      timeout-minutes: 15
+      run: |
+        export TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt"
+        setarch `uname -m` -R bash -c 'OSS_STANDALONE=0 OSS_CLUSTER=1 ./tests/run_tests.sh'
+

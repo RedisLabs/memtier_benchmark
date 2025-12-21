@@ -55,87 +55,7 @@ brew install memtier_benchmark
 
 ### Installing from source
 
-#### Prerequisites
-
-The following libraries are required for building:
-
-* libevent 2.0.10 or newer.
-* libpcre 8.x.
-* OpenSSL (unless TLS support is disabled by `./configure --disable-tls`).
-
-The following tools are required
-* autoconf
-* automake
-* pkg-config
-* GNU make
-* GCC C++ compiler
-
-#### CentOS/Red Hat Linux 7 or newer
-
-Use the following to install prerequisites:
-```
-$ sudo yum install autoconf automake make gcc-c++ \
-    pcre-devel zlib-devel libmemcached-devel libevent-devel openssl-devel
-```
-
-#### Ubuntu/Debian
-
-Use the following to install prerequisites:
-
-```
-$ sudo apt-get install build-essential autoconf automake libpcre3-dev \
-    libevent-dev pkg-config zlib1g-dev libssl-dev
-```
-
-#### macOS
-
-To build natively on macOS, use Homebrew to install the required dependencies:
-
-```
-$ brew install autoconf automake libtool libevent pkg-config openssl@3.0
-```
-
-When running `./configure`, if it fails to find libssl it may be necessary to
-tweak the `PKG_CONFIG_PATH` environment variable:
-
-```
-PKG_CONFIG_PATH=`brew --prefix openssl@3.0`/lib/pkgconfig ./configure
-```
-
-#### Building and installing
-
-After downloading the source tree, use standard autoconf/automake commands:
-
-```
-$ autoreconf -ivf
-$ ./configure
-$ make
-$ sudo make install
-```
-
-#### Testing
-
-The project includes a basic set of integration tests.
-
-
-**Integration tests**
-
-
-Integration tests are based on [RLTest](https://github.com/RedisLabsModules/RLTest), and specific setup parameters can be provided
-to configure tests and topologies (OSS standalone and OSS cluster). By default the tests will be ran for all common commands, and with OSS standalone setup.
-
-
-To run all integration tests in a Python virtualenv, follow these steps:
-
-    $ mkdir -p .env
-    $ virtualenv .env
-    $ source .env/bin/activate
-    $ pip install -r tests/test_requirements.txt
-    $ ./tests/run_tests.sh
-
-To understand what test options are available simply run:
-
-    $ ./tests/run_tests.sh --help
+For detailed instructions on building from source, running tests, and using sanitizers for development, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Using Docker
 
@@ -174,6 +94,17 @@ $ memtier_benchmark --help
 ```
 
 for command line options.
+
+## Crash Reporting
+
+memtier_benchmark includes built-in crash handling that automatically generates detailed bug reports when the program crashes. If you encounter a crash, the tool will print a comprehensive report including:
+
+* Stack traces for all threads
+* System and build information
+* Active client connection states
+* Instructions for generating core dumps
+
+For more information on crash handling, debugging, and how to report crashes, see the [Crash Handling and Debugging](DEVELOPMENT.md#crash-handling-and-debugging) section in DEVELOPMENT.md.
 
 ### Cluster mode
 
