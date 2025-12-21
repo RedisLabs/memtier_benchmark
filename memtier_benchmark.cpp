@@ -2221,7 +2221,20 @@ int main(int argc, char *argv[])
         obj_gen->set_key_range(cfg.key_minimum, cfg.key_maximum);
     }
     if (cfg.key_stddev>0 || cfg.key_median>0) {
-        if (cfg.key_pattern[key_pattern_set]!='G' && cfg.key_pattern[key_pattern_get]!='G') {
+        // Check if Gaussian distribution is used in global key patterns or arbitrary commands
+        bool has_gaussian = (cfg.key_pattern[key_pattern_set]=='G' || cfg.key_pattern[key_pattern_get]=='G');
+
+        // Also check if any arbitrary command uses Gaussian distribution
+        if (!has_gaussian && cfg.arbitrary_commands->is_defined()) {
+            for (size_t i = 0; i < cfg.arbitrary_commands->size(); i++) {
+                if (cfg.arbitrary_commands->at(i).key_pattern == 'G') {
+                    has_gaussian = true;
+                    break;
+                }
+            }
+        }
+
+        if (!has_gaussian) {
             fprintf(stderr, "error: key-stddev and key-median are only allowed together with key-pattern set to G.\n");
             usage();
         }

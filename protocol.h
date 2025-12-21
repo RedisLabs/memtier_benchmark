@@ -136,6 +136,9 @@ public:
     void incr_hits(void);
     unsigned int get_hits(void);
 
+    // Check if response indicates a cache miss based on Redis protocol patterns
+    bool is_cache_miss();
+
     void clear();
 
     void set_mbulk_value(mbulk_size_el* element);

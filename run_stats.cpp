@@ -322,6 +322,22 @@ void run_stats::update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, u
     hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
 }
 
+void run_stats::update_arbitrary_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx,
+                                    unsigned int latency, size_t request_index, unsigned int hits, unsigned int misses) {
+    roll_cur_stats(ts);
+
+    m_cur_stats.m_ar_commands.at(request_index).update_op(bytes_rx, bytes_tx, latency, hits, misses);
+    m_cur_stats.m_total_cmd.update_op(bytes_rx, bytes_tx, latency, hits, misses);
+    m_totals.update_op(bytes_rx, bytes_tx, latency);
+
+    struct hdr_histogram* hist = m_ar_commands_latency_histograms.at(request_index);
+    struct hdr_histogram* inst_hist = inst_m_ar_commands_latency_histograms.at(request_index);
+    hdr_record_value_capped(hist,latency);
+    hdr_record_value_capped(inst_hist,latency);
+    hdr_record_value_capped(m_totals_latency_histogram,latency);
+    hdr_record_value_capped(inst_m_totals_latency_histogram,latency);
+}
+
 unsigned int run_stats::get_duration(void)
 {
     return m_cur_stats.m_second;
@@ -954,6 +970,8 @@ void result_print_to_json(json_handler * jsonhandler, const char * type, double 
             jsonhandler->write_obj("Bytes RX","%lld", cmd_stats.m_bytes_rx);
             jsonhandler->write_obj("Bytes TX","%lld", cmd_stats.m_bytes_tx);
             jsonhandler->write_obj("Count","%lld", cmd_stats.m_ops);
+            jsonhandler->write_obj("Hits","%lld", cmd_stats.m_hits);
+            jsonhandler->write_obj("Misses","%lld", cmd_stats.m_misses);
             if (sec_has_samples){
                 jsonhandler->write_obj("Average Latency","%.3f", cmd_stats.m_avg_latency);
                 jsonhandler->write_obj("Accumulated Latency","%lld", cmd_stats.m_total_latency / LATENCY_HDR_RESULTS_MULTIPLIER);
@@ -1088,6 +1106,40 @@ void run_stats::print_missess_sec_column(output_table &table) {
     column.elements.push_back(*el.init_str("%12s ", "---"));
     column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_misses_sec));
     column.elements.push_back(*el.init_str("%12s ", "---"));
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_misses_sec));
+
+    table.add_column(column);
+}
+
+void run_stats::print_arbitrary_hits_sec_column(output_table &table) {
+    table_el el;
+    table_column column(12);
+
+    column.elements.push_back(*el.init_str("%12s ", "Hits/sec"));
+    column.elements.push_back(*el.init_str("%s", "-------------"));
+
+    if (print_arbitrary_commands_results()) {
+        for (unsigned int i=0; i<m_totals.m_ar_commands.size(); i++) {
+            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_hits_sec));
+        }
+    }
+    column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_hits_sec));
+
+    table.add_column(column);
+}
+
+void run_stats::print_arbitrary_misses_sec_column(output_table &table) {
+    table_el el;
+    table_column column(12);
+
+    column.elements.push_back(*el.init_str("%12s ", "Misses/sec"));
+    column.elements.push_back(*el.init_str("%s", "-------------"));
+
+    if (print_arbitrary_commands_results()) {
+        for (unsigned int i=0; i<m_totals.m_ar_commands.size(); i++) {
+            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_misses_sec));
+        }
+    }
     column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_misses_sec));
 
     table.add_column(column);
@@ -1266,8 +1318,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list& co
             std::vector<one_sec_cmd_stats> arbitrary_command_stats = get_one_sec_cmd_stats_arbitrary_command(i);
 
             result_print_to_json(jsonhandler, command_name.c_str(), m_totals.m_ar_commands[i].m_ops_sec,
-                                 0.0,
-                                 0.0,
+                                 m_totals.m_ar_commands[i].m_hits_sec,
+                                 m_totals.m_ar_commands[i].m_misses_sec,
                                  cluster_mode ? m_totals.m_ar_commands[i].m_moved_sec : -1,
                                  cluster_mode ? m_totals.m_ar_commands[i].m_ask_sec : -1,
                                  m_totals.m_ar_commands[i].m_bytes_sec,
@@ -1449,13 +1501,17 @@ void run_stats::print(FILE *out, benchmark_config *config,
     // Ops/sec column
     print_ops_sec_column(table);
 
-    // Hits/sec column (not relevant for arbitrary commands)
-    if (!print_arbitrary_commands_results()) {
+    // Hits/sec column
+    if (print_arbitrary_commands_results()) {
+        print_arbitrary_hits_sec_column(table);
+    } else {
         print_hits_sec_column(table);
     }
 
-    // Misses/sec column (not relevant for arbitrary commands)
-    if (!print_arbitrary_commands_results()) {
+    // Misses/sec column
+    if (print_arbitrary_commands_results()) {
+        print_arbitrary_misses_sec_column(table);
+    } else {
         print_missess_sec_column(table);
     }
 
