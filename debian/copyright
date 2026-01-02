@@ -4,7 +4,7 @@ Upstream-Contact: Redis Ltd. <oss@redislabs.com>
 Source: https://github.com/RedisLabs/memtier_benchmark
 
 Files: *
-Copyright: 2011-2020 Redis Ltd. <info@redislabs.com>
+Copyright: 2011-2026 Redis Ltd. <info@redislabs.com>
 License: GPL-2+ with OpenSSL Exception
 
 Files: deps/hdr_histogram/*
