@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2019 Redis Labs Ltd.
+ * Copyright (C) 2011-2026 Redis Labs Ltd.
  *
  * This file is part of memtier_benchmark.
  *
@@ -829,7 +829,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         printf("\n");
 
                         // Copyright and license info
-                        printf("Copyright (C) 2011-2025 Redis Ltd.\n");
+                        printf("Copyright (C) 2011-2026 Redis Ltd.\n");
                         printf("This is free software.  You may redistribute copies of it under the terms of\n");
                         printf("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n");
                         printf("There is NO WARRANTY, to the extent permitted by law.\n");
