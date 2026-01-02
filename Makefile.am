@@ -1,5 +1,5 @@
 # Makefile for memtier_benchmark
-# Copyright (C) 2011-2017 Redis Labs Ltd.
+# Copyright (C) 2011-2026 Redis Labs Ltd.
 
 # This file is part of memtier_benchmark.
 
