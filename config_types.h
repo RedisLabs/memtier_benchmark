@@ -115,9 +115,14 @@ enum command_arg_type {
 };
 
 struct command_arg {
-    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len) {;}
+    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len), has_key_affixes(false) {;}
     command_arg_type type;
     std::string data;
+    // the prefix and suffix strings are used for mixed key placeholder storing of substrings
+    std::string data_prefix;
+    std::string data_suffix;
+    // optimization flag to avoid runtime checks
+    bool has_key_affixes;
 };
 
 struct arbitrary_command {
