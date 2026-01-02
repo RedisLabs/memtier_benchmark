@@ -299,9 +299,8 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
                 size_t total_len = prefix_len + key_len + suffix_len;
 
                 // Optimization: use stack buffer for small keys to avoid heap allocation
-                constexpr size_t STACK_BUFFER_SIZE = 512;
-                if (total_len < STACK_BUFFER_SIZE) {
-                    char stack_buffer[STACK_BUFFER_SIZE];
+                if (total_len < KEY_BUFFER_STACK_SIZE) {
+                    char stack_buffer[KEY_BUFFER_STACK_SIZE];
                     char* pos = stack_buffer;
 
                     // Manual copy for better performance
