@@ -95,6 +95,27 @@ $ memtier_benchmark --help
 
 for command line options.
 
+### Using monitor input files
+
+You can replay real command streams by pointing memtier_benchmark to a monitor log file with the `--monitor-input=/path/to/file` option. Special commands such as `__monitor_c1__` pick a specific entry from the file, while `__monitor_c@__` selects commands at runtime (optionally combined with `--monitor-pattern` and `--command-ratio`). For example, the following command replays the first command from the file on each request:
+
+```
+$ memtier_benchmark --monitor-input=monitor.txt --command=__monitor_c1__
+```
+
+This lets you mix synthetic workloads with realistic captured traffic in both standalone and Redis Cluster deployments.
+
+To generate monitor logs, you can use the Redis `MONITOR` command from `redis-cli`, which prints all commands received by the server. For example:
+
+```
+$ redis-cli MONITOR
+OK
+1460100081.165665 [0 127.0.0.1:51706] "set" "shipment:8000736522714:status" "sorting"
+1460100083.053365 [0 127.0.0.1:51707] "get" "shipment:8000736522714:status"
+```
+
+You can pipe this output and filter specific patterns with tools such as `grep`, then save it to a file and use it as a `--monitor-input` source. For more details, see the official Redis documentation on [monitoring commands executed in Redis](https://redis.io/docs/latest/develop/tools/cli/#monitor-commands-executed-in-redis).
+
 ## Crash Reporting
 
 memtier_benchmark includes built-in crash handling that automatically generates detailed bug reports when the program crashes. If you encounter a crash, the tool will print a comprehensive report including:
