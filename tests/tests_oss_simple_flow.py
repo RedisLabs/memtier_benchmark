@@ -650,9 +650,9 @@ def test_key_placeholder(env):
 def test_key_placeholder_togetherwithdata(env):
     env.skipOnCluster()
     run_count = 1
-    benchmark_specs = {"name": env.testName, "args": ['--command=HSET prefix:__key__:suffix f __data__']}
+    benchmark_specs = {"name": env.testName, "args": ['--command=SET \"prefix:__key__:suffix\" \"__data__\"']}
     addTLSArgs(benchmark_specs, env)
-    config = get_default_memtier_config()
+    config = get_default_memtier_config(threads=4, clients=1,requests=50)
     master_nodes_list = env.getMasterNodesList()
     overall_expected_request_count = get_expected_request_count(config) * run_count
 
@@ -671,10 +671,18 @@ def test_key_placeholder_togetherwithdata(env):
     debugPrintMemtierOnError(config, env)
 
     master_nodes_connections = env.getOSSMasterNodesConnectionList()
-    merged_command_stats = {'cmdstat_hset': {'calls': 0}}
+    merged_command_stats = {'cmdstat_set': {'calls': 0}}
     overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
     assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count,
                                     overall_request_count)
+
+    # Ensure all keys have the correct prefix and suffix
+    for conn in master_nodes_connections:
+        for key in conn.scan_iter("*"):
+            decoded_key = key.decode().split(":")
+            env.assertEqual(decoded_key[0], "prefix")
+            env.assertEqual(decoded_key[1].split("-")[0], "memtier")
+            env.assertEqual(decoded_key[2], "suffix")
 
 
 def test_default_set_get_rate_limited(env):
