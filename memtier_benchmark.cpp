@@ -44,6 +44,7 @@
 #include <execinfo.h>
 #include <ucontext.h>
 #include <time.h>
+#include <ctype.h>
 #include <sys/utsname.h>
 #include <dirent.h>
 #include <event2/event.h>
@@ -72,6 +73,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <atomic>
+#include <algorithm>
 
 #include "client.h"
 #include "JSON_handler.h"
@@ -79,7 +81,7 @@
 #include "memtier_benchmark.h"
 
 
-static int log_level = 0;
+int log_level = 0;
 
 // Global flag for signal handling
 static volatile sig_atomic_t g_interrupted = 0;
@@ -587,6 +589,8 @@ static void config_init_defaults(struct benchmark_config *cfg)
         cfg->hdr_prefix = "";
     if (!cfg->print_percentiles.is_defined())
         cfg->print_percentiles = config_quantiles("50,99,99.9");
+	    if (!cfg->monitor_pattern)
+	        cfg->monitor_pattern = 'S';
 
 #ifdef USE_TLS
     if (!cfg->tls_protocols)
@@ -702,6 +706,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_command,
         o_command_key_pattern,
         o_command_ratio,
+	        o_monitor_input,
+	        o_monitor_pattern,
         o_tls,
         o_tls_cert,
         o_tls_key,
@@ -788,6 +794,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "command",                    1, 0, o_command },
         { "command-key-pattern",        1, 0, o_command_key_pattern },
         { "command-ratio",              1, 0, o_command_ratio },
+	        { "monitor-input",              1, 0, o_monitor_input },
+	        { "monitor-pattern",            1, 0, o_monitor_pattern },
         { "rate-limiting",              1, 0, o_rate_limiting },
         { "uri",                        1, 0, o_uri },
         { NULL,                         0, 0, 0 }
@@ -1208,14 +1216,23 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     cfg->cluster_mode = true;
                     break;
                 case o_command: {
-                    // add new arbitrary command
-                    arbitrary_command cmd(optarg);
-
-                    if (cmd.split_command_to_args()) {
+                    // Check if this is a monitor placeholder
+                    const char* cmd_str = optarg;
+                    if (strcmp(cmd_str, MONITOR_RANDOM_PLACEHOLDER) == 0 ||
+                        strncmp(cmd_str, MONITOR_PLACEHOLDER_PREFIX, strlen(MONITOR_PLACEHOLDER_PREFIX)) == 0) {
+                        // This is a monitor placeholder, we'll expand it later after loading the file
+                        arbitrary_command cmd(cmd_str);
+                        cmd.split_command_to_args();
                         cfg->arbitrary_commands->add_command(cmd);
                     } else {
-                        fprintf(stderr, "error: failed to parse arbitrary command.\n");
-                        return -1;
+                        // Regular arbitrary command
+                        arbitrary_command cmd(cmd_str);
+                        if (cmd.split_command_to_args()) {
+                            cfg->arbitrary_commands->add_command(cmd);
+                        } else {
+                            fprintf(stderr, "error: failed to parse arbitrary command.\n");
+                            return -1;
+                        }
                     }
                     break;
                 }
@@ -1247,6 +1264,22 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     }
                     break;
                 }
+                case o_monitor_input:
+                    cfg->monitor_input = optarg;
+                    break;
+	                case o_monitor_pattern: {
+	                    if (!optarg || strlen(optarg) != 1) {
+	                        fprintf(stderr, "error: monitor-pattern must be a single character: 'S' (sequential) or 'R' (random).\n");
+	                        return -1;
+	                    }
+	                    char pattern = toupper((unsigned char)optarg[0]);
+	                    if (pattern != 'S' && pattern != 'R') {
+	                        fprintf(stderr, "error: monitor-pattern must be 'S' (sequential) or 'R' (random).\n");
+	                        return -1;
+	                    }
+	                    cfg->monitor_pattern = pattern;
+	                    break;
+	                }
                 case o_rate_limiting: {
                     endptr = NULL;
                     cfg->request_rate = (unsigned int) strtoul(optarg, &endptr, 10);
@@ -1400,6 +1433,11 @@ void usage() {
             "                                 Z for zipf distribution (will limit keys to positive).\n"
             "                                 S for Sequential.\n"
             "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
+	            "      --monitor-input=FILE       Read commands from Redis MONITOR output file.\n"
+	            "                                 Commands can be referenced as __monitor_c1__, __monitor_c2__, etc.\n"
+	            "                                 Use __monitor_c@__ to select commands from the file.\n"
+	            "                                 By default, selection is sequential; use --monitor-pattern=R for random.\n"
+	            "                                 For example: --monitor-input=monitor.txt --command=\"__monitor_c1__\"\n"
             "\n"
             "Object Options:\n"
             "  -d  --data-size=SIZE           Object data size in bytes (default: 32)\n"
@@ -1927,13 +1965,85 @@ int main(int argc, char *argv[])
 
     benchmark_config cfg = benchmark_config();
     cfg.arbitrary_commands = new arbitrary_command_list();
+    cfg.monitor_commands = new monitor_command_list();
 
     if (config_parse_args(argc, argv, &cfg) < 0) {
         usage();
     }
 
+    // Load monitor input file if specified
+    if (cfg.monitor_input) {
+        if (!cfg.monitor_commands->load_from_file(cfg.monitor_input)) {
+            exit(1);
+        }
+
+        // Seed random for monitor random selection
+        srand(time(NULL) ^ getpid());
+
+        // Expand monitor placeholders in commands
+        for (unsigned int i = 0; i < cfg.arbitrary_commands->size(); i++) {
+            arbitrary_command& cmd = cfg.arbitrary_commands->at(i);
+
+            // Check if command is a random monitor placeholder
+            if (strcmp(cmd.command.c_str(), MONITOR_RANDOM_PLACEHOLDER) == 0) {
+                // Mark this command as random monitor type - will be expanded at runtime
+                cmd.command_args.clear();
+                command_arg arg(MONITOR_RANDOM_PLACEHOLDER, strlen(MONITOR_RANDOM_PLACEHOLDER));
+                arg.type = monitor_random_type;
+                arg.monitor_index = 0; // 0 means random
+                cmd.command_args.push_back(arg);
+                cmd.command_name = "MONITOR_RANDOM";
+                continue;
+            }
+
+            // Check if command is a specific monitor placeholder
+            if (strncmp(cmd.command.c_str(), MONITOR_PLACEHOLDER_PREFIX, strlen(MONITOR_PLACEHOLDER_PREFIX)) == 0) {
+                // Extract the index from __monitor_cN__
+                const char* num_start = cmd.command.c_str() + strlen(MONITOR_PLACEHOLDER_PREFIX);
+                char* endptr;
+                long index = strtol(num_start, &endptr, 10);
+
+                if (endptr == num_start || index < 1 || (size_t)index > cfg.monitor_commands->size()) {
+                    fprintf(stderr, "error: invalid monitor placeholder '%s' (valid range: q1-q%zu or q@)\n",
+                            cmd.command.c_str(), cfg.monitor_commands->size());
+                    exit(1);
+                }
+
+                // Replace command with the one from monitor file (0-based index)
+                const std::string& monitor_cmd = cfg.monitor_commands->get_command(index - 1);
+                cmd.command = monitor_cmd;
+                cmd.command_args.clear();
+
+                // Re-parse the command
+                if (!cmd.split_command_to_args()) {
+                    fprintf(stderr, "error: failed to parse monitor command: %s\n", monitor_cmd.c_str());
+                    exit(1);
+                }
+
+                // Update command name (first word of the command)
+                size_t pos = cmd.command.find(" ");
+                if (pos == std::string::npos) {
+                    pos = cmd.command.size();
+                }
+                cmd.command_name.assign(cmd.command.c_str(), pos);
+                // Remove quotes if present
+                if (cmd.command_name.length() > 0 && cmd.command_name[0] == '"') {
+                    cmd.command_name = cmd.command_name.substr(1);
+                }
+                if (cmd.command_name.length() > 0 && cmd.command_name[cmd.command_name.length()-1] == '"') {
+                    cmd.command_name = cmd.command_name.substr(0, cmd.command_name.length()-1);
+                }
+                std::transform(cmd.command_name.begin(), cmd.command_name.end(), cmd.command_name.begin(), ::toupper);
+            }
+        }
+    }
+
     // Process URI if provided
     if (cfg.uri) {
+        // Save original values before URI parsing
+        const char *orig_server = cfg.server;
+        const char *orig_authenticate = cfg.authenticate;
+
         // Check for conflicts with individual connection parameters
         if (cfg.server && strcmp(cfg.server, "localhost") != 0) {
             fprintf(stderr, "warning: both URI and --host/--server specified, URI takes precedence.\n");
@@ -1955,6 +2065,15 @@ int main(int argc, char *argv[])
 
         if (parse_uri(cfg.uri, &cfg) < 0) {
             exit(1);
+        }
+
+        // If URI parsing didn't change these values, clear them so we don't try to free them later
+        // (they point to optarg or static strings, not malloc'd memory)
+        if (cfg.server == orig_server) {
+            cfg.server = NULL;
+        }
+        if (cfg.authenticate == orig_authenticate) {
+            cfg.authenticate = NULL;
         }
 
         // Validate cluster mode constraints
@@ -1982,15 +2101,22 @@ int main(int argc, char *argv[])
 
     // if user configure arbitrary commands, format and prepare it
     for (unsigned int i=0; i<cfg.arbitrary_commands->size(); i++) {
+        arbitrary_command& cmd = cfg.arbitrary_commands->at(i);
+
+        // Skip formatting for random monitor commands - they will be formatted at runtime
+        if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
+            continue;
+        }
+
         abstract_protocol* tmp_protocol = protocol_factory(cfg.protocol);
         assert(tmp_protocol != NULL);
 
-        if (!tmp_protocol->format_arbitrary_command(cfg.arbitrary_commands->at(i))) {
+        if (!tmp_protocol->format_arbitrary_command(cmd)) {
             exit(1);
         }
 
         // Cluster mode supports only a single key commands
-        if (cfg.cluster_mode && cfg.arbitrary_commands->at(i).keys_count > 1) {
+        if (cfg.cluster_mode && cmd.keys_count > 1) {
             benchmark_error_log("error: Cluster mode supports only a single key commands\n");
             exit(1);
         }
@@ -2398,6 +2524,10 @@ int main(int argc, char *argv[])
 
     if (cfg.arbitrary_commands != NULL) {
         delete cfg.arbitrary_commands;
+    }
+
+    if (cfg.monitor_commands != NULL) {
+        delete cfg.monitor_commands;
     }
 
     // Clean up dynamically allocated strings from URI parsing

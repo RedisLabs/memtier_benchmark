@@ -106,18 +106,24 @@ protected:
 
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
+#define MONITOR_PLACEHOLDER_PREFIX "__monitor_c"
+#define MONITOR_RANDOM_PLACEHOLDER "__monitor_c@__"
 
 enum command_arg_type {
     const_type      = 0,
     key_type        = 1,
     data_type       = 2,
-    undefined_type  = 3
+    monitor_type    = 3,
+    monitor_random_type = 4,
+    undefined_type  = 5
 };
 
 struct command_arg {
-    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len), has_key_affixes(false) {;}
+    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len), monitor_index(0), has_key_affixes(false) {;}
     command_arg_type type;
     std::string data;
+    // For monitor_type, stores the index (1-based)
+    size_t monitor_index;
     // the prefix and suffix strings are used for mixed key placeholder storing of substrings
     std::string data_prefix;
     std::string data_suffix;
@@ -181,6 +187,22 @@ public:
 
         return max_length;
     }
+};
+
+struct monitor_command_list {
+private:
+    std::vector<std::string> commands;
+	    std::atomic<size_t> next_index;
+
+public:
+	    monitor_command_list() : next_index(0) {;}
+
+    bool load_from_file(const char* filename);
+    const std::string& get_command(size_t index) const;
+    const std::string& get_random_command() const;
+    const std::string& get_random_command(size_t* out_index) const;
+	    const std::string& get_next_sequential_command(size_t* out_index);
+    size_t size() const { return commands.size(); }
 };
 
 #endif /* _CONFIG_TYPES_H */

@@ -279,6 +279,64 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
 
     benchmark_debug_log("%s: %s:\n", m_connections[conn_id]->get_readable_id(), cmd.command.c_str());
 
+	    // Check if this is a monitor command placeholder - handle it specially
+	    if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
+	        // Select a command from the monitor file at runtime based on the monitor pattern
+	        size_t selected_index = 0;
+	        const std::string* monitor_cmd_ptr = NULL;
+	        if (m_config->monitor_pattern == 'R') {
+	            monitor_cmd_ptr = &m_config->monitor_commands->get_random_command(&selected_index);
+	            benchmark_debug_log("%s: random monitor command selected (q%zu): %s\n",
+	                              m_connections[conn_id]->get_readable_id(),
+	                              selected_index + 1,  // 1-based index for user display
+	                              monitor_cmd_ptr->c_str());
+	        } else {
+	            monitor_cmd_ptr = &m_config->monitor_commands->get_next_sequential_command(&selected_index);
+	            benchmark_debug_log("%s: sequential monitor command selected (q%zu): %s\n",
+	                              m_connections[conn_id]->get_readable_id(),
+	                              selected_index + 1,  // 1-based index for user display
+	                              monitor_cmd_ptr->c_str());
+	        }
+
+	        const std::string& monitor_cmd = *monitor_cmd_ptr;
+
+        // Parse and format the monitor command into a temporary arbitrary_command
+        arbitrary_command temp_cmd(monitor_cmd.c_str());
+        if (!temp_cmd.split_command_to_args()) {
+            fprintf(stderr, "error: failed to parse random monitor command at runtime: %s\n", monitor_cmd.c_str());
+            return false;
+        }
+
+        // Format the command for the protocol (adds RESP headers)
+        if (!m_connections[conn_id]->get_protocol()->format_arbitrary_command(temp_cmd)) {
+            fprintf(stderr, "error: failed to format random monitor command at runtime: %s\n", monitor_cmd.c_str());
+            return false;
+        }
+
+        // Send the randomly selected command
+        for (unsigned int i = 0; i < temp_cmd.command_args.size(); i++) {
+            const command_arg* arg = &temp_cmd.command_args[i];
+            if (arg->type == const_type) {
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
+            } else if (arg->type == key_type) {
+                unsigned long long key_index;
+                get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
+                assert(res == available_for_conn);
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
+            } else if (arg->type == data_type) {
+                unsigned int value_len;
+                const char *value = m_obj_gen->get_value(0, &value_len);
+                assert(value != NULL);
+                assert(value_len > 0);
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
+            }
+        }
+
+        m_connections[conn_id]->send_arbitrary_command_end(command_index, &timestamp, cmd_size);
+        return true;
+    }
+
+    // Normal arbitrary command handling
     for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
         const command_arg* arg = &cmd.command_args[i];
         if (arg->type == const_type) {
