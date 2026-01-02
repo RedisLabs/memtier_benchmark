@@ -46,10 +46,12 @@
 
 #include <math.h>
 #include <algorithm>
+#include <sstream>
 #include <arpa/inet.h>
 
 #include "client.h"
 #include "cluster_client.h"
+#include "config_types.h"
 
 
 bool client::setup_client(benchmark_config *config, abstract_protocol *protocol, object_generator *objgen)
@@ -286,7 +288,46 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
             get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
             /* If key not available for this connection, we have a bug of sending partial request */
             assert(res == available_for_conn);
-            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
+
+            //when we have static data mixed with the key placeholder
+            if (arg->has_key_affixes) {
+                // Pre-calculate total length to avoid reallocations
+                const char* key = m_obj_gen->get_key();
+                unsigned int key_len = m_obj_gen->get_key_len();
+                size_t prefix_len = arg->data_prefix.length();
+                size_t suffix_len = arg->data_suffix.length();
+                size_t total_len = prefix_len + key_len + suffix_len;
+
+                // Optimization: use stack buffer for small keys to avoid heap allocation
+                if (total_len < KEY_BUFFER_STACK_SIZE) {
+                    char stack_buffer[KEY_BUFFER_STACK_SIZE];
+                    char* pos = stack_buffer;
+
+                    // Manual copy for better performance
+                    if (prefix_len > 0) {
+                        memcpy(pos, arg->data_prefix.data(), prefix_len);
+                        pos += prefix_len;
+                    }
+                    memcpy(pos, key, key_len);
+                    pos += key_len;
+                    if (suffix_len > 0) {
+                        memcpy(pos, arg->data_suffix.data(), suffix_len);
+                    }
+
+                    cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, stack_buffer, total_len);
+                } else {
+                    // Fallback to string for large keys
+                    std::string combined_key;
+                    combined_key.reserve(total_len);
+                    combined_key.append(arg->data_prefix);
+                    combined_key.append(key, key_len);
+                    combined_key.append(arg->data_suffix);
+
+                    cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, combined_key.c_str(), combined_key.length());
+                }
+            } else{
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
+            }
         } else if (arg->type == data_type) {
             unsigned int value_len;
             const char *value = m_obj_gen->get_value(0, &value_len);
