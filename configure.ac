@@ -1,5 +1,5 @@
 dnl configure.ac for memtier_benchmark
-dnl Copyright (C) 2011-2024 Redis Labs Ltd.
+dnl Copyright (C) 2011-2026 Redis Labs Ltd.
 
 dnl This file is part of memtier_benchmark.
 
