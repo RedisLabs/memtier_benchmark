@@ -49,6 +49,9 @@ class object_generator;
 #define SET_CMD_IDX 0
 #define GET_CMD_IDX 2
 
+// Stack buffer size for key operations to avoid heap allocation
+#define KEY_BUFFER_STACK_SIZE 512
+
 enum get_key_response { not_available, available_for_conn, available_for_other_conn };
 
 class client : public connections_manager {
