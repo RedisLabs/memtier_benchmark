@@ -248,7 +248,7 @@
           "value": ["$__all"]
         },
         "datasource": { "type": "graphite", "uid": null },
-        "definition": "stats.gauges.memtier.*",
+        "definition": "stats.gauges.memtier.*.*",
         "description": "Select benchmark run labels to display",
         "hide": 0,
         "includeAll": true,
@@ -256,9 +256,9 @@
         "multi": true,
         "name": "run_label",
         "options": [],
-        "query": "stats.gauges.memtier.*",
+        "query": "stats.gauges.memtier.*.*",
         "refresh": 2,
-        "regex": "/stats\\.gauges\\.memtier\\.([^.]+)\\./",
+        "regex": "/\\.([^.]+)\\.[^.]+$/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
