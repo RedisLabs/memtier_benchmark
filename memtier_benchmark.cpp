@@ -1858,11 +1858,18 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
         }
     } while (active_threads > 0);
 
-    // Send "run completed" annotation to Graphite
+    // Send "run completed" annotation and zero out gauges so graphs drop to 0
     if (cfg->statsd != NULL && cfg->statsd->is_enabled()) {
         char event_data[64];
         snprintf(event_data, sizeof(event_data) - 1, "run=%u", run_id);
         cfg->statsd->event("Benchmark Completed", event_data, "memtier,end");
+
+        // Zero out gauges so the graph shows the run has ended
+        cfg->statsd->gauge("ops_sec", (long)0);
+        cfg->statsd->gauge("ops_sec_avg", (long)0);
+        cfg->statsd->gauge("bytes_sec", (long)0);
+        cfg->statsd->gauge("bytes_sec_avg", (long)0);
+        cfg->statsd->gauge("progress_pct", (long)0);
     }
 
     fprintf(stderr, "\n\n");
