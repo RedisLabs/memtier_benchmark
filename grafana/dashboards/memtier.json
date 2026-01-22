@@ -1,6 +1,20 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "graphite", "uid": null },
+        "enable": true,
+        "hide": false,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Benchmark Events",
+        "target": {
+          "tags": "memtier",
+          "type": "events"
+        },
+        "type": "dashboard"
+      }
+    ]
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
@@ -46,8 +60,8 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "target": "stats.gauges.memtier.ops_sec" },
-        { "refId": "B", "target": "stats.gauges.memtier.ops_sec_avg" }
+        { "refId": "A", "target": "aliasByNode(stats.gauges.memtier.$run_label.ops_sec, 3)" },
+        { "refId": "B", "target": "aliasByNode(stats.gauges.memtier.$run_label.ops_sec_avg, 3)" }
       ],
       "title": "Operations per Second",
       "type": "timeseries"
@@ -89,8 +103,8 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "target": "stats.timers.memtier.latency_ms.mean" },
-        { "refId": "B", "target": "stats.timers.memtier.latency_avg_ms.mean" }
+        { "refId": "A", "target": "aliasByNode(stats.timers.memtier.$run_label.latency_ms.mean, 3)" },
+        { "refId": "B", "target": "aliasByNode(stats.timers.memtier.$run_label.latency_avg_ms.mean, 3)" }
       ],
       "title": "Latency (ms)",
       "type": "timeseries"
@@ -132,8 +146,8 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "target": "stats.gauges.memtier.bytes_sec" },
-        { "refId": "B", "target": "stats.gauges.memtier.bytes_sec_avg" }
+        { "refId": "A", "target": "aliasByNode(stats.gauges.memtier.$run_label.bytes_sec, 3)" },
+        { "refId": "B", "target": "aliasByNode(stats.gauges.memtier.$run_label.bytes_sec_avg, 3)" }
       ],
       "title": "Throughput",
       "type": "timeseries"
@@ -160,7 +174,7 @@
         "textMode": "auto"
       },
       "targets": [
-        { "refId": "A", "target": "stats.gauges.memtier.connections" }
+        { "refId": "A", "target": "sumSeries(stats.gauges.memtier.$run_label.connections)" }
       ],
       "title": "Connections",
       "type": "stat"
@@ -187,7 +201,7 @@
         "showThresholdMarkers": true
       },
       "targets": [
-        { "refId": "A", "target": "stats.gauges.memtier.progress_pct" }
+        { "refId": "A", "target": "maxSeries(stats.gauges.memtier.$run_label.progress_pct)" }
       ],
       "title": "Progress",
       "type": "gauge"
@@ -214,7 +228,7 @@
         "textMode": "auto"
       },
       "targets": [
-        { "refId": "A", "target": "stats.gauges.memtier.connection_errors" }
+        { "refId": "A", "target": "sumSeries(stats.gauges.memtier.$run_label.connection_errors)" }
       ],
       "title": "Connection Errors",
       "type": "stat"
@@ -225,7 +239,31 @@
   "style": "dark",
   "tags": ["memtier", "redis", "benchmark"],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "allValue": "*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": { "type": "graphite", "uid": null },
+        "definition": "stats.gauges.memtier.*",
+        "description": "Select benchmark run labels to display",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Run Label",
+        "multi": true,
+        "name": "run_label",
+        "options": [],
+        "query": "stats.gauges.memtier.*",
+        "refresh": 2,
+        "regex": "/stats\\.gauges\\.memtier\\.([^.]+)\\./",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
   },
   "time": { "from": "now-5m", "to": "now" },
   "timepicker": {},

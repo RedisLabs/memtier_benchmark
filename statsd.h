@@ -42,6 +42,9 @@ private:
     int m_socket;
     struct sockaddr_in m_server_addr;
     char m_prefix[256];
+    char m_run_label[128];
+    char m_graphite_host[256];
+    unsigned short m_graphite_port;
     bool m_enabled;
     bool m_initialized;
 
@@ -57,9 +60,15 @@ public:
      * @param host StatsD server hostname or IP
      * @param port StatsD server port (default 8125)
      * @param prefix Prefix for all metric names (e.g., "memtier")
+     * @param run_label Label for this benchmark run (e.g., "asm_scaling")
      * @return true if initialization successful, false otherwise
      */
-    bool init(const char* host, unsigned short port, const char* prefix);
+    bool init(const char* host, unsigned short port, const char* prefix, const char* run_label);
+
+    /**
+     * Get the run label for this client.
+     */
+    const char* get_run_label() const { return m_run_label; }
 
     /**
      * Close the UDP socket and cleanup.
@@ -103,6 +112,15 @@ public:
      * @param value Sample value
      */
     void histogram(const char* name, double value);
+
+    /**
+     * Send an event/annotation to Graphite.
+     * This sends an HTTP POST to Graphite's events API.
+     * @param what Short description of the event
+     * @param data Additional event data (optional)
+     * @param tags Comma-separated tags (optional)
+     */
+    void event(const char* what, const char* data = NULL, const char* tags = NULL);
 };
 
 #endif // _STATSD_H
