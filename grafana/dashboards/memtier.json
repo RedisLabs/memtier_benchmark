@@ -43,7 +43,7 @@
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -60,8 +60,8 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.gauges.memtier.$run_label.ops_sec, 3)" },
-        { "refId": "B", "target": "aliasByNode(stats.gauges.memtier.$run_label.ops_sec_avg, 3)" }
+        { "refId": "A", "target": "aliasByNode(stats.gauges.memtier.$run_label.ops_sec, 3, 4)" },
+        { "refId": "B", "target": "aliasByNode(stats.gauges.memtier.$run_label.ops_sec_avg, 3, 4)" }
       ],
       "title": "Operations per Second",
       "type": "timeseries"
@@ -86,7 +86,7 @@
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -103,8 +103,8 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.timers.memtier.$run_label.latency_ms.mean, 3)" },
-        { "refId": "B", "target": "aliasByNode(stats.timers.memtier.$run_label.latency_avg_ms.mean, 3)" }
+        { "refId": "A", "target": "aliasByNode(stats.timers.memtier.$run_label.latency_ms.mean, 3, 4)" },
+        { "refId": "B", "target": "aliasByNode(stats.timers.memtier.$run_label.latency_avg_ms.mean, 3, 4)" }
       ],
       "title": "Latency (ms)",
       "type": "timeseries"
@@ -129,7 +129,7 @@
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -146,8 +146,8 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.gauges.memtier.$run_label.bytes_sec, 3)" },
-        { "refId": "B", "target": "aliasByNode(stats.gauges.memtier.$run_label.bytes_sec_avg, 3)" }
+        { "refId": "A", "target": "aliasByNode(stats.gauges.memtier.$run_label.bytes_sec, 3, 4)" },
+        { "refId": "B", "target": "aliasByNode(stats.gauges.memtier.$run_label.bytes_sec_avg, 3, 4)" }
       ],
       "title": "Throughput",
       "type": "timeseries"
