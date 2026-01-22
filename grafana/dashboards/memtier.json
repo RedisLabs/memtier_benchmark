@@ -10,7 +10,7 @@
   "liveNow": true,
   "panels": [
     {
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "datasource": { "type": "graphite", "uid": null },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -53,7 +53,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "datasource": { "type": "graphite", "uid": null },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -96,7 +96,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "datasource": { "type": "graphite", "uid": null },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -139,7 +139,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "datasource": { "type": "graphite", "uid": null },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -166,7 +166,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "datasource": { "type": "graphite", "uid": null },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -193,7 +193,7 @@
       "type": "gauge"
     },
     {
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "datasource": { "type": "graphite", "uid": null },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
