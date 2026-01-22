@@ -3,7 +3,7 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": { "type": "graphite", "uid": null },
+        "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
         "enable": true,
         "hide": false,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -24,7 +24,7 @@
   "liveNow": true,
   "panels": [
     {
-      "datasource": { "type": "graphite", "uid": null },
+      "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -67,7 +67,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "graphite", "uid": null },
+      "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -110,7 +110,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "graphite", "uid": null },
+      "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -153,7 +153,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "graphite", "uid": null },
+      "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -180,7 +180,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "graphite", "uid": null },
+      "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -207,7 +207,7 @@
       "type": "gauge"
     },
     {
-      "datasource": { "type": "graphite", "uid": null },
+      "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -247,8 +247,8 @@
           "text": ["All"],
           "value": ["$__all"]
         },
-        "datasource": { "type": "graphite", "uid": null },
-        "definition": "stats.gauges.memtier.*.*",
+        "datasource": { "type": "graphite", "uid": "P1D261A8554D2DA69" },
+        "definition": "stats.gauges.memtier.*",
         "description": "Select benchmark run labels to display",
         "hide": 0,
         "includeAll": true,
@@ -256,9 +256,9 @@
         "multi": true,
         "name": "run_label",
         "options": [],
-        "query": "stats.gauges.memtier.*.*",
+        "query": "stats.gauges.memtier.*",
         "refresh": 2,
-        "regex": "/\\.([^.]+)\\.[^.]+$/",
+        "regex": "",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
