@@ -22,8 +22,8 @@ services:
       - "8126:8126"         # StatsD management
     volumes:
       - graphite-data:/opt/graphite/storage
-      - ./graphite/statsd-config.js:/opt/statsd/config.js:ro
-      - ./graphite/storage-schemas.conf:/opt/graphite/conf/storage-schemas.conf:ro
+      - ./graphite/statsd-config.js:/opt/statsd/config/udp.js:ro
+      - ./storage-schemas.conf:/opt/graphite/conf/storage-schemas.conf:ro
     environment:
       - GRAPHITE_WSGI_PROCESSES=1
       - GRAPHITE_WSGI_THREADS=1
@@ -38,6 +38,7 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_MIN_REFRESH_INTERVAL=1s
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
