@@ -1855,6 +1855,49 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             if (total_connection_errors > 0) {
                 cfg->statsd->gauge("connection_errors", (long)total_connection_errors);
             }
+
+            // Calculate and send percentile metrics from instantaneous histograms
+            // Allocate a temporary histogram to aggregate all threads' instantaneous histograms
+            hdr_histogram* temp_histogram = NULL;
+            if (hdr_init(LATENCY_HDR_MIN_VALUE, LATENCY_HDR_SEC_MAX_VALUE, LATENCY_HDR_SEC_SIGDIGTS, &temp_histogram) == 0) {
+                // Aggregate instantaneous histograms from all threads
+                for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                    if (!(*i)->m_finished) {
+                        (*i)->m_cg->aggregate_inst_histogram(temp_histogram);
+                    }
+                }
+
+                // Only calculate percentiles if we have samples
+                if (hdr_total_count(temp_histogram) > 0) {
+                    // Get the configured percentiles from config
+                    const std::vector<float>& quantiles = cfg->print_percentiles.quantile_list;
+
+                    // Calculate and send each configured percentile
+                    for (std::size_t i = 0; i < quantiles.size(); i++) {
+                        double percentile = quantiles[i];
+                        int64_t value = hdr_value_at_percentile(temp_histogram, percentile);
+                        double value_ms = value / (double)LATENCY_HDR_RESULTS_MULTIPLIER;
+
+                        // Format the metric name (e.g., "latency_p50", "latency_p99", "latency_p99_9")
+                        char metric_name[32];
+                        if (percentile == (int)percentile) {
+                            snprintf(metric_name, sizeof(metric_name), "latency_p%d", (int)percentile);
+                        } else {
+                            // Replace decimal point with underscore for metric name
+                            snprintf(metric_name, sizeof(metric_name), "latency_p%.1f", percentile);
+                            // Replace '.' with '_' in the metric name
+                            for (char* p = metric_name; *p; p++) {
+                                if (*p == '.') *p = '_';
+                            }
+                        }
+
+                        cfg->statsd->gauge(metric_name, value_ms);
+                    }
+                }
+
+                // Clean up the temporary histogram
+                hdr_close(temp_histogram);
+            }
         }
     } while (active_threads > 0);
 
