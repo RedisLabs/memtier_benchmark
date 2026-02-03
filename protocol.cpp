@@ -56,6 +56,59 @@ void abstract_protocol::set_keep_value(bool flag)
     m_keep_value = flag;
 }
 
+void abstract_protocol::capture_buffer_preview()
+{
+    if (!m_read_buf) {
+        m_parse_error.raw_buffer_len = 0;
+        m_parse_error.raw_buffer_preview[0] = '\0';
+        return;
+    }
+
+    m_parse_error.raw_buffer_len = evbuffer_get_length(m_read_buf);
+
+    if (m_parse_error.raw_buffer_len == 0) {
+        m_parse_error.raw_buffer_preview[0] = '\0';
+        return;
+    }
+
+    // Get a preview of the buffer (up to 100 bytes to leave room for escaping)
+    size_t preview_len = m_parse_error.raw_buffer_len;
+    if (preview_len > 100) preview_len = 100;
+
+    unsigned char *buf_data = evbuffer_pullup(m_read_buf, preview_len);
+    if (!buf_data) {
+        m_parse_error.raw_buffer_preview[0] = '\0';
+        return;
+    }
+
+    // Escape non-printable characters
+    char *out = m_parse_error.raw_buffer_preview;
+    char *out_end = m_parse_error.raw_buffer_preview + sizeof(m_parse_error.raw_buffer_preview) - 5;
+
+    for (size_t i = 0; i < preview_len && out < out_end; i++) {
+        unsigned char c = buf_data[i];
+        if (c >= 32 && c <= 126 && c != '\\') {
+            *out++ = c;
+        } else if (c == '\r') {
+            *out++ = '\\'; *out++ = 'r';
+        } else if (c == '\n') {
+            *out++ = '\\'; *out++ = 'n';
+        } else if (c == '\t') {
+            *out++ = '\\'; *out++ = 't';
+        } else if (c == '\\') {
+            *out++ = '\\'; *out++ = '\\';
+        } else {
+            out += snprintf(out, 5, "\\x%02x", c);
+        }
+    }
+
+    if (m_parse_error.raw_buffer_len > preview_len) {
+        snprintf(out, 5, "...");
+        out += 3;
+    }
+    *out = '\0';
+}
+
 /////////////////////////////////////////////////////////////////////////
 
 protocol_response::protocol_response()
@@ -173,6 +226,23 @@ protected:
     bool blob_type(char c);
     bool single_type(char c);
     bool response_ended();
+
+    const char* response_state_name() const {
+        switch (m_response_state) {
+            case rs_initial: return "initial";
+            case rs_read_bulk: return "read_bulk";
+            case rs_read_line: return "read_line";
+            case rs_end_bulk: return "end_bulk";
+            default: return "unknown";
+        }
+    }
+
+    void set_parse_error(const char* msg) {
+        m_parse_error.error_message = msg;
+        m_parse_error.response_state_name = response_state_name();
+        m_parse_error.bytes_parsed = m_response_len;
+        capture_buffer_preview();
+    }
 
 public:
     redis_protocol() : m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0), m_current_mbulk(NULL), m_resp3(false), m_attribute(false) { }
@@ -625,6 +695,7 @@ int redis_protocol::parse_response(void)
                     }
                 } else {
                     benchmark_debug_log("unsupported response: '%s'.\n", line);
+                    set_parse_error("unsupported response type");
                     free(line);
                     return -1;
                 }
@@ -707,10 +778,12 @@ int redis_protocol::parse_response(void)
                 }
                 break;
             default:
+                set_parse_error("invalid response state");
                 return -1;
         }
     }
 
+    set_parse_error("unexpected end of parse loop");
     return -1;
 }
 
@@ -785,6 +858,24 @@ protected:
     response_state m_response_state;
     unsigned int m_value_len;
     size_t m_response_len;
+
+    const char* response_state_name() const {
+        switch (m_response_state) {
+            case rs_initial: return "initial";
+            case rs_read_section: return "read_section";
+            case rs_read_value: return "read_value";
+            case rs_read_end: return "read_end";
+            default: return "unknown";
+        }
+    }
+
+    void set_parse_error(const char* msg) {
+        m_parse_error.error_message = msg;
+        m_parse_error.response_state_name = response_state_name();
+        m_parse_error.bytes_parsed = m_response_len;
+        capture_buffer_preview();
+    }
+
 public:
     memcache_text_protocol() : m_response_state(rs_initial), m_value_len(0), m_response_len(0) { }
     virtual memcache_text_protocol* clone(void) { return new memcache_text_protocol(); }
@@ -927,6 +1018,7 @@ int memcache_text_protocol::parse_response(void)
                     int res = sscanf(line, "%s %s %u %u %u", prefix, key, &flags, &m_value_len, &cas);
                     if (res < 4|| res > 5) {
                         benchmark_debug_log("unexpected VALUE response: %s\n", line);
+                        set_parse_error("unexpected VALUE response format");
                         if (m_last_response.get_status() != line)
                             free(line);
                         return -1;
@@ -943,6 +1035,7 @@ int memcache_text_protocol::parse_response(void)
                 } else {
                     m_last_response.set_error();
                     benchmark_debug_log("unknown response: %s\n", line);
+                    set_parse_error("unknown response type");
                     return -1;
                 }
                 break;
@@ -978,10 +1071,12 @@ int memcache_text_protocol::parse_response(void)
 
             default:
                 benchmark_debug_log("unknown response state %d.\n", m_response_state);
+                set_parse_error("invalid response state");
                 return -1;
         }
     }
 
+    set_parse_error("unexpected end of parse loop");
     return -1;
 }
 
@@ -1007,6 +1102,22 @@ protected:
     size_t m_response_len;
 
     const char* status_text(void);
+
+    const char* response_state_name() const {
+        switch (m_response_state) {
+            case rs_initial: return "initial";
+            case rs_read_body: return "read_body";
+            default: return "unknown";
+        }
+    }
+
+    void set_parse_error(const char* msg) {
+        m_parse_error.error_message = msg;
+        m_parse_error.response_state_name = response_state_name();
+        m_parse_error.bytes_parsed = m_response_len;
+        capture_buffer_preview();
+    }
+
 public:
     memcache_binary_protocol() : m_response_state(rs_initial), m_response_len(0) { }
     virtual memcache_binary_protocol* clone(void) { return new memcache_binary_protocol(); }
@@ -1190,6 +1301,7 @@ int memcache_binary_protocol::parse_response(void)
 
                 if (m_response_hdr.message.header.response.magic != PROTOCOL_BINARY_RES) {
                     benchmark_error_log("error: invalid memcache response header magic.\n");
+                    set_parse_error("invalid memcache response header magic");
                     return -1;
                 }
 
@@ -1253,10 +1365,12 @@ int memcache_binary_protocol::parse_response(void)
                 break;
             default:
                 benchmark_debug_log("unknown response state.\n");
+                set_parse_error("invalid response state");
                 return -1;
         }
     }
 
+    set_parse_error("unexpected end of parse loop");
     return -1;
 }
 

@@ -522,11 +522,13 @@ void shard_connection::process_response(void)
 {
     int ret;
     bool responses_handled = false;
+    unsigned int responses_parsed = 0;
 
     struct timeval now;
     gettimeofday(&now, NULL);
 
     while ((ret = m_protocol->parse_response()) > 0) {
+        responses_parsed++;
         bool error = false;
         protocol_response *r = m_protocol->get_response();
 
@@ -592,7 +594,18 @@ void shard_connection::process_response(void)
     }
 
     if (ret == -1) {
+        const parse_error_info* err = m_protocol->get_parse_error();
         benchmark_error_log("error: response parsing failed.\n");
+        benchmark_error_log("  server: %s\n", get_readable_id());
+        benchmark_error_log("  pipeline position: %u (of %zu pending)\n",
+                           responses_parsed + 1, responses_parsed + m_pipeline->size() + 1);
+        benchmark_error_log("  error: %s\n", err->error_message);
+        benchmark_error_log("  parser state: %s\n", err->response_state_name);
+        benchmark_error_log("  buffer length: %zu bytes, parsed: %zu bytes\n",
+                           err->raw_buffer_len, err->bytes_parsed);
+        if (err->raw_buffer_preview[0] != '\0') {
+            benchmark_error_log("  raw data: %s\n", err->raw_buffer_preview);
+        }
     }
 
     if (m_config->reconnect_interval > 0 && responses_handled) {

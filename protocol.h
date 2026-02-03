@@ -168,6 +168,20 @@ public:
     void clear(void);
 };
 
+// Structure to hold detailed parse error information
+struct parse_error_info {
+    const char* error_message;       // Description of what failed
+    const char* response_state_name; // Name of the response state when error occurred
+    char raw_buffer_preview[256];    // Preview of raw buffer content (escaped)
+    size_t raw_buffer_len;           // Length of data in read buffer
+    size_t bytes_parsed;             // How many bytes were parsed before error
+
+    parse_error_info() : error_message("unknown error"), response_state_name("unknown"),
+                         raw_buffer_len(0), bytes_parsed(0) {
+        raw_buffer_preview[0] = '\0';
+    }
+};
+
 class abstract_protocol {
 protected:
     struct evbuffer* m_read_buf;
@@ -175,6 +189,11 @@ protected:
 
     bool m_keep_value;
     struct protocol_response m_last_response;
+    struct parse_error_info m_parse_error;
+
+    // Helper to capture raw buffer preview for error reporting
+    void capture_buffer_preview();
+
 public:
     abstract_protocol();
     virtual ~abstract_protocol();
@@ -198,6 +217,9 @@ public:
     virtual int write_arbitrary_command(const char *val, int val_len) = 0;
 
     struct protocol_response* get_response(void) { return &m_last_response; }
+
+    // Get detailed error information when parse_response() returns -1
+    const parse_error_info* get_parse_error(void) const { return &m_parse_error; }
 };
 
 class abstract_protocol *protocol_factory(enum PROTOCOL_TYPE type);
