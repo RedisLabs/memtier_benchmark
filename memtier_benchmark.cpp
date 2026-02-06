@@ -1710,9 +1710,9 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             }
             fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, stopping threads...\n",
                     run_id, (float)elapsed_duration / 1000000);
-            // Interrupt all threads (marks clients as interrupted, breaks event loops, and finalizes stats)
+            // Force stop all threads (forcefully cleans up all events and breaks event loops)
             for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
-                (*i)->m_cg->interrupt();
+                (*i)->m_cg->force_stop();
             }
             break;
         }
@@ -1785,6 +1785,15 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
             progress = 100.0 * total_ops / ((double)cfg->requests*cfg->clients*cfg->threads);
         else
             progress = 100.0 * (duration / 1000000.0)/cfg->test_time;
+
+        // If test time has passed (progress >= 100%) and threads are still active, force stop them
+        if (cfg->test_time > 0 && progress >= 100.0 && active_threads > 0) {
+            fprintf(stderr, "\n[RUN #%u] Test time completed, forcing stop of all threads...\n", run_id);
+            for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                (*i)->m_cg->force_stop();
+            }
+            break;
+        }
 
         // Only show connection errors if there are any (backwards compatible output)
         if (total_connection_errors > 0) {

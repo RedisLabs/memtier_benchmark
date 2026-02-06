@@ -374,6 +374,48 @@ void shard_connection::disconnect() {
     m_hello = setup_done;
 }
 
+void shard_connection::force_stop() {
+    // Force stop all events and cleanup for immediate shutdown
+    // This is more aggressive than disconnect() - it doesn't wait for anything
+
+    // Delete rate limiting timer first
+    if (m_event_timer != NULL) {
+        event_del(m_event_timer);
+        event_free(m_event_timer);
+        m_event_timer = NULL;
+    }
+
+    // Delete reconnect timer
+    if (m_reconnect_timer != NULL) {
+        event_del(m_reconnect_timer);
+        event_free(m_reconnect_timer);
+        m_reconnect_timer = NULL;
+    }
+
+    // Delete connection timeout timer
+    if (m_connection_timeout_timer != NULL) {
+        event_del(m_connection_timeout_timer);
+        event_free(m_connection_timeout_timer);
+        m_connection_timeout_timer = NULL;
+    }
+
+    // Disable and free bufferevent - this will close the socket
+    if (m_bev != NULL) {
+        bufferevent_disable(m_bev, EV_READ | EV_WRITE);
+        bufferevent_free(m_bev);
+        m_bev = NULL;
+    }
+
+    // Clear pending requests
+    while (m_pending_resp > 0) {
+        delete pop_req();
+    }
+
+    m_connection_state = conn_disconnected;
+    m_request_per_cur_interval = 0;
+    m_reconnecting = false;
+}
+
 void shard_connection::set_address_port(const char* address, const char* port) {
     if (m_address != NULL) {
         free(m_address);
@@ -730,6 +772,19 @@ void shard_connection::handle_event(short events)
 }
 
 void shard_connection::handle_timer_event() {
+    // If we're finished and have no pending responses, stop the timer and disable events
+    if (m_conns_manager->finished() && m_pending_resp == 0) {
+        benchmark_debug_log("%s Timer: finished with no pending responses, cleaning up\n", get_readable_id());
+        if (m_event_timer != NULL) {
+            event_del(m_event_timer);
+        }
+        if (m_bev != NULL) {
+            bufferevent_disable(m_bev, EV_WRITE | EV_READ);
+        }
+        m_conns_manager->set_end_time();
+        return;
+    }
+
     m_request_per_cur_interval = m_config->request_per_interval;
     fill_pipeline();
 }

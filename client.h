@@ -126,6 +126,7 @@ public:
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual int connect(void);
     virtual void disconnect(void);
+    virtual void force_stop(void);  // Force stop all connections for immediate shutdown
     //
 
     /* Get current executed arbitrary command */
@@ -217,6 +218,7 @@ public:
     int prepare(void);
     void run(void);
     void interrupt(void);
+    void force_stop(void);  // Force stop all clients and break event loop for immediate shutdown
     void finalize_all_clients(void);
     void set_all_clients_interrupted(void);
 

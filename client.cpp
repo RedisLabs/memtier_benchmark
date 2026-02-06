@@ -170,6 +170,15 @@ void client::disconnect(void)
     sc->disconnect();
 }
 
+void client::force_stop(void)
+{
+    // Force stop all connections for immediate shutdown
+    for (std::vector<shard_connection*>::iterator i = m_connections.begin();
+         i != m_connections.end(); i++) {
+        (*i)->force_stop();
+    }
+}
+
 int client::connect(void)
 {
     struct connect_info addr;
@@ -708,6 +717,26 @@ void client_group::interrupt(void)
     // Break the event loop to stop processing
     event_base_loopbreak(m_base);
     // Set end time for all clients as close as possible to the loop break
+    finalize_all_clients();
+}
+
+void client_group::force_stop(void)
+{
+    // Force stop all clients and break event loop for immediate shutdown
+    // This is more aggressive than interrupt() - it forcefully cleans up all events
+
+    // Mark all clients as interrupted
+    set_all_clients_interrupted();
+
+    // Force stop all clients (this removes all events from the event loop)
+    for (std::vector<client*>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        (*i)->force_stop();
+    }
+
+    // Break the event loop to stop processing
+    event_base_loopbreak(m_base);
+
+    // Set end time for all clients
     finalize_all_clients();
 }
 
