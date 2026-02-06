@@ -126,6 +126,7 @@ public:
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual int connect(void);
     virtual void disconnect(void);
+    virtual void force_stop(void);  // Force stop all connections for immediate shutdown
     //
 
     /* Get current executed arbitrary command */
@@ -209,6 +210,7 @@ protected:
     abstract_protocol* m_protocol;
     object_generator* m_obj_gen;
     std::vector<client*> m_clients;
+    std::atomic<bool> m_stop_requested;  // Flag to signal the event loop to stop
 public:
     client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen);
     ~client_group();
@@ -217,6 +219,7 @@ public:
     int prepare(void);
     void run(void);
     void interrupt(void);
+    void force_stop(void);  // Force stop all clients and break event loop for immediate shutdown
     void finalize_all_clients(void);
     void set_all_clients_interrupted(void);
 

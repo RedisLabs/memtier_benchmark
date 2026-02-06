@@ -90,6 +90,7 @@ public:
 
     int connect(struct connect_info* addr);
     void disconnect();
+    void force_stop();  // Force stop all events and cleanup for immediate shutdown
 
     void send_wait_command(struct timeval* sent_time,
                             unsigned int num_slaves, unsigned int timeout);
