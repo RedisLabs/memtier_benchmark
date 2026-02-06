@@ -210,6 +210,7 @@ protected:
     abstract_protocol* m_protocol;
     object_generator* m_obj_gen;
     std::vector<client*> m_clients;
+    std::atomic<bool> m_stop_requested;  // Flag to signal the event loop to stop
 public:
     client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen);
     ~client_group();
