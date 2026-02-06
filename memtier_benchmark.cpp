@@ -1708,11 +1708,24 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
                 float factor = ((float)(thread_counter - 1) / thread_counter);
                 elapsed_duration = factor * elapsed_duration + (float)(*i)->m_cg->get_duration_usec() / thread_counter;
             }
-            fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, stopping threads...\n",
-                    run_id, (float)elapsed_duration / 1000000);
+            fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, forcing stop of %u threads...\n",
+                    run_id, (float)elapsed_duration / 1000000, active_threads);
             // Force stop all threads (forcefully cleans up all events and breaks event loops)
             for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
                 (*i)->m_cg->force_stop();
+            }
+
+            // Wait for threads to finish, updating status every second
+            while (active_threads > 0) {
+                sleep(1);
+                active_threads = 0;
+                for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                    if (!(*i)->m_finished)
+                        active_threads++;
+                }
+                if (active_threads > 0) {
+                    fprintf(stderr, "[RUN #%u] Waiting for %u threads to finish...\n", run_id, active_threads);
+                }
             }
             break;
         }
@@ -1788,9 +1801,22 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 
         // If test time has passed (progress >= 100%) and threads are still active, force stop them
         if (cfg->test_time > 0 && progress >= 100.0 && active_threads > 0) {
-            fprintf(stderr, "\n[RUN #%u] Test time completed, forcing stop of all threads...\n", run_id);
+            fprintf(stderr, "\n[RUN #%u] Test time completed, forcing stop of %u threads...\n", run_id, active_threads);
             for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
                 (*i)->m_cg->force_stop();
+            }
+
+            // Wait for threads to finish, updating status every second
+            while (active_threads > 0) {
+                sleep(1);
+                active_threads = 0;
+                for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
+                    if (!(*i)->m_finished)
+                        active_threads++;
+                }
+                if (active_threads > 0) {
+                    fprintf(stderr, "[RUN #%u] Waiting for %u threads to finish...\n", run_id, active_threads);
+                }
             }
             break;
         }
