@@ -707,25 +707,10 @@ int client_group::prepare(void)
 
 void client_group::run(void)
 {
-    // Use EVLOOP_ONCE in a loop to periodically check the stop flag
-    // This ensures we can exit promptly when force_stop() is called,
-    // even if there are pending events (like slow responses)
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 100000;  // 100ms timeout
-
-    while (!m_stop_requested.load(std::memory_order_relaxed)) {
-        // Set a timeout so epoll_wait doesn't block indefinitely
-        event_base_loopexit(m_base, &timeout);
-
-        // Run one iteration of the event loop
-        int ret = event_base_loop(m_base, EVLOOP_ONCE);
-
-        // ret == 1 means no more events, ret == -1 means error
-        if (ret != 0) {
-            break;
-        }
-    }
+    // Run the event loop - it will exit when:
+    // 1. All events are done (normal completion)
+    // 2. event_base_loopbreak() is called (from force_stop())
+    event_base_dispatch(m_base);
 }
 
 void client_group::interrupt(void)

@@ -1025,7 +1025,8 @@ def test_interrupt_signal_handling(env):
         stderr_content = stderr.read()
         # Check that the interrupt message is present and shows elapsed time
         env.assertTrue("Interrupted by user (Ctrl+C) after" in stderr_content)
-        env.assertTrue("secs, stopping threads..." in stderr_content)
+        env.assertTrue("secs, stopping " in stderr_content)
+        env.assertTrue("threads..." in stderr_content)
 
     # Check JSON output
     json_filename = '{0}/mb.json'.format(config.results_dir)

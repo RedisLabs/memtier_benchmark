@@ -1700,31 +1700,34 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
 
         // Check for Ctrl+C interrupt
         if (g_interrupted) {
-            // Calculate elapsed time before interrupting
+            // Calculate elapsed time and count active threads before interrupting
             unsigned long int elapsed_duration = 0;
             unsigned int thread_counter = 0;
+            unsigned int threads_to_stop = 0;
             for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
                 thread_counter++;
                 float factor = ((float)(thread_counter - 1) / thread_counter);
                 elapsed_duration = factor * elapsed_duration + (float)(*i)->m_cg->get_duration_usec() / thread_counter;
+                if (!(*i)->m_finished)
+                    threads_to_stop++;
             }
-            fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, forcing stop of %u threads...\n",
-                    run_id, (float)elapsed_duration / 1000000, active_threads);
+            fprintf(stderr, "\n[RUN #%u] Interrupted by user (Ctrl+C) after %.1f secs, stopping %u threads...\n",
+                    run_id, (float)elapsed_duration / 1000000, threads_to_stop);
             // Force stop all threads (forcefully cleans up all events and breaks event loops)
             for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
                 (*i)->m_cg->force_stop();
             }
 
             // Wait for threads to finish, updating status every second
-            while (active_threads > 0) {
+            while (threads_to_stop > 0) {
                 sleep(1);
-                active_threads = 0;
+                threads_to_stop = 0;
                 for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
                     if (!(*i)->m_finished)
-                        active_threads++;
+                        threads_to_stop++;
                 }
-                if (active_threads > 0) {
-                    fprintf(stderr, "[RUN #%u] Waiting for %u threads to finish...\n", run_id, active_threads);
+                if (threads_to_stop > 0) {
+                    fprintf(stderr, "[RUN #%u] Waiting for %u threads to finish...\n", run_id, threads_to_stop);
                 }
             }
             break;

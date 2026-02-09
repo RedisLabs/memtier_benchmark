@@ -359,7 +359,7 @@ void shard_connection::disconnect() {
     }
 
     // empty pipeline
-    while (m_pending_resp)
+    while (m_pending_resp.load(std::memory_order_relaxed))
         delete pop_req();
 
     m_connection_state = conn_disconnected;
@@ -407,7 +407,7 @@ void shard_connection::force_stop() {
     }
 
     // Clear pending requests
-    while (m_pending_resp > 0) {
+    while (m_pending_resp.load(std::memory_order_relaxed) > 0) {
         delete pop_req();
     }
 
@@ -501,7 +501,7 @@ request* shard_connection::pop_req() {
     m_pipeline->pop();
 
     m_pending_resp--;
-    assert(m_pending_resp >= 0);
+    assert(m_pending_resp.load(std::memory_order_relaxed) >= 0);
 
     return req;
 }
@@ -694,7 +694,7 @@ void shard_connection::fill_pipeline(void)
     // update events
     if (m_bev != NULL) {
         // no pending response (nothing to read) and output buffer empty (nothing to write)
-        if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
+        if ((m_pending_resp.load(std::memory_order_relaxed) == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
             bufferevent_disable(m_bev, EV_WRITE|EV_READ);
             if (m_config->request_rate) {
@@ -773,7 +773,7 @@ void shard_connection::handle_event(short events)
 
 void shard_connection::handle_timer_event() {
     // If we're finished and have no pending responses, stop the timer and disable events
-    if (m_conns_manager->finished() && m_pending_resp == 0) {
+    if (m_conns_manager->finished() && m_pending_resp.load(std::memory_order_relaxed) == 0) {
         benchmark_debug_log("%s Timer: finished with no pending responses, cleaning up\n", get_readable_id());
         if (m_event_timer != NULL) {
             event_del(m_event_timer);

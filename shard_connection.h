@@ -21,6 +21,7 @@
 
 #include <queue>
 #include <string>
+#include <atomic>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -134,7 +135,7 @@ public:
     }
 
     int get_pending_resp() {
-        return m_pending_resp;
+        return m_pending_resp.load(std::memory_order_relaxed);
     }
 
     // Get local port for crash reporting
@@ -183,7 +184,7 @@ private:
     std::queue<request *>* m_pipeline;
     unsigned int m_request_per_cur_interval;    // number requests to send during the current interval
 
-    int m_pending_resp;
+    std::atomic<int> m_pending_resp;  // Atomic for thread-safe access from main thread
 
     enum connection_state m_connection_state;
 
