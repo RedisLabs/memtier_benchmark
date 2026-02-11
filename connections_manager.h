@@ -19,7 +19,8 @@
 #ifndef MEMTIER_BENCHMARK_CLIENT_DATA_MANAGER_H
 #define MEMTIER_BENCHMARK_CLIENT_DATA_MANAGER_H
 
-class connections_manager {
+class connections_manager
+{
 public:
     virtual unsigned long long get_reqs_processed(void) = 0;
     virtual void inc_reqs_processed(void) = 0;
@@ -31,8 +32,8 @@ public:
     virtual void set_end_time(void) = 0;
 
     virtual void handle_cluster_slots(protocol_response *r) = 0;
-    virtual void handle_response(unsigned int conn_id, struct timeval timestamp,
-                                 request *request, protocol_response *response) = 0;
+    virtual void handle_response(unsigned int conn_id, struct timeval timestamp, request *request,
+                                 protocol_response *response) = 0;
 
     virtual void create_request(struct timeval timestamp, unsigned int conn_id) = 0;
     virtual bool hold_pipeline(unsigned int conn_id) = 0;
@@ -42,4 +43,4 @@ public:
 };
 
 
-#endif //MEMTIER_BENCHMARK_CLIENT_DATA_MANAGER_H
+#endif // MEMTIER_BENCHMARK_CLIENT_DATA_MANAGER_H

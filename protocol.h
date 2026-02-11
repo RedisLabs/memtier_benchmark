@@ -23,7 +23,8 @@
 #include <vector>
 #include "memtier_benchmark.h"
 
-enum mbulk_element_type {
+enum mbulk_element_type
+{
     mbulk_element_mbulk_size,
     mbulk_element_bulk
 };
@@ -32,44 +33,45 @@ enum mbulk_element_type {
 class mbulk_size_el;
 class bulk_el;
 
-class mbulk_element {
+class mbulk_element
+{
 public:
-    mbulk_element(mbulk_element_type t) : type(t) {;}
-    virtual ~mbulk_element() {;}
+    mbulk_element(mbulk_element_type t) : type(t) { ; }
+    virtual ~mbulk_element() { ; }
 
-    virtual mbulk_size_el* as_mbulk_size() = 0;
-    virtual bulk_el* as_bulk() = 0;
+    virtual mbulk_size_el *as_mbulk_size() = 0;
+    virtual bulk_el *as_bulk() = 0;
 
 protected:
     mbulk_element_type type;
 };
 
-class mbulk_size_el : public mbulk_element {
+class mbulk_size_el : public mbulk_element
+{
 public:
-    mbulk_size_el() : mbulk_element(mbulk_element_mbulk_size), upper_level(NULL), bulks_count(0) {;}
-    virtual ~mbulk_size_el() {
-        for (unsigned int i=0; i<mbulks_elements.size(); i++) {
-            mbulk_element* el = mbulks_elements[i];
+    mbulk_size_el() : mbulk_element(mbulk_element_mbulk_size), upper_level(NULL), bulks_count(0) { ; }
+    virtual ~mbulk_size_el()
+    {
+        for (unsigned int i = 0; i < mbulks_elements.size(); i++) {
+            mbulk_element *el = mbulks_elements[i];
             delete el;
         }
         mbulks_elements.clear();
     }
 
-    virtual mbulk_size_el* as_mbulk_size() {
-        return this;
-    }
+    virtual mbulk_size_el *as_mbulk_size() { return this; }
 
-    virtual bulk_el* as_bulk() {
-        assert(0);
-    }
+    virtual bulk_el *as_bulk() { assert(0); }
 
-    void add_new_element(mbulk_element* new_el) {
+    void add_new_element(mbulk_element *new_el)
+    {
         mbulks_elements.push_back(new_el);
         bulks_count--;
     }
 
     // return the next mbulk size element, that new element should be pushed to
-    mbulk_size_el* get_next_mbulk() {
+    mbulk_size_el *get_next_mbulk()
+    {
         mbulk_size_el *next = this;
         while (next != NULL) {
             if (next->bulks_count == 0) {
@@ -84,30 +86,29 @@ public:
 
     mbulk_size_el *upper_level;
     int bulks_count;
-    std::vector<mbulk_element*> mbulks_elements;
+    std::vector<mbulk_element *> mbulks_elements;
 };
 
-class bulk_el : public mbulk_element {
+class bulk_el : public mbulk_element
+{
 public:
-    bulk_el() : mbulk_element(mbulk_element_bulk), value(NULL), value_len(0) {;}
-    virtual ~bulk_el() {
+    bulk_el() : mbulk_element(mbulk_element_bulk), value(NULL), value_len(0) { ; }
+    virtual ~bulk_el()
+    {
         free(value);
         value_len = 0;
     }
 
-    virtual bulk_el* as_bulk() {
-        return this;
-    }
+    virtual bulk_el *as_bulk() { return this; }
 
-    virtual mbulk_size_el* as_mbulk_size() {
-        assert(0);
-    }
+    virtual mbulk_size_el *as_mbulk_size() { assert(0); }
 
-    char* value;
+    char *value;
     unsigned int value_len;
 };
 
-struct protocol_response {
+struct protocol_response
+{
 protected:
     const char *m_status;
     mbulk_size_el *m_mbulk_value;
@@ -138,13 +139,15 @@ public:
 
     void clear();
 
-    void set_mbulk_value(mbulk_size_el* element);
-    mbulk_size_el* get_mbulk_value();
+    void set_mbulk_value(mbulk_size_el *element);
+    mbulk_size_el *get_mbulk_value();
 };
 
-class keylist {
+class keylist
+{
 protected:
-    struct key_entry {
+    struct key_entry
+    {
         char *key_ptr;
         unsigned int key_len;
     };
@@ -168,25 +171,28 @@ public:
     void clear(void);
 };
 
-class abstract_protocol {
+class abstract_protocol
+{
 protected:
-    struct evbuffer* m_read_buf;
-    struct evbuffer* m_write_buf;
+    struct evbuffer *m_read_buf;
+    struct evbuffer *m_write_buf;
 
     bool m_keep_value;
     struct protocol_response m_last_response;
+
 public:
     abstract_protocol();
     virtual ~abstract_protocol();
-    virtual abstract_protocol* clone(void) = 0;
-    void set_buffers(struct evbuffer* read_buf, struct evbuffer* write_buf);
+    virtual abstract_protocol *clone(void) = 0;
+    void set_buffers(struct evbuffer *read_buf, struct evbuffer *write_buf);
     void set_keep_value(bool flag);
 
     virtual int select_db(int db) = 0;
     virtual int authenticate(const char *credentials) = 0;
     virtual int configure_protocol(enum PROTOCOL_TYPE type) = 0;
     virtual int write_command_cluster_slots() = 0;
-    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry, unsigned int offset) = 0;
+    virtual int write_command_set(const char *key, int key_len, const char *value, int value_len, int expiry,
+                                  unsigned int offset) = 0;
     virtual int write_command_get(const char *key, int key_len, unsigned int offset) = 0;
     virtual int write_command_multi_get(const keylist *keylist) = 0;
     virtual int write_command_wait(unsigned int num_slaves, unsigned int timeout) = 0;
@@ -197,9 +203,9 @@ public:
     virtual int write_arbitrary_command(const command_arg *arg) = 0;
     virtual int write_arbitrary_command(const char *val, int val_len) = 0;
 
-    struct protocol_response* get_response(void) { return &m_last_response; }
+    struct protocol_response *get_response(void) { return &m_last_response; }
 };
 
 class abstract_protocol *protocol_factory(enum PROTOCOL_TYPE type);
 
-#endif  /* _PROTOCOL_H */
+#endif /* _PROTOCOL_H */
