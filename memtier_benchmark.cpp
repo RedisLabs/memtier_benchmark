@@ -1967,9 +1967,6 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
-        // Seed random for monitor random selection
-        srand(time(NULL) ^ getpid());
-
         // Expand monitor placeholders in commands
         for (unsigned int i = 0; i < cfg.arbitrary_commands->size(); i++) {
             arbitrary_command &cmd = cfg.arbitrary_commands->at(i);

@@ -455,3 +455,90 @@ def test_monitor_placeholder_literal_without_monitor_input(env):
                     True,
                 )
             env.assertFalse(has_monitor_error)
+
+
+def test_monitor_random_reproducible_without_randomize(env):
+    """
+    Test that monitor random selection is reproducible when --randomize is NOT used.
+
+    Without --randomize, the random generator uses a constant seed, so running
+    memtier twice with the same configuration should produce identical results.
+
+    This test:
+    1. Creates a monitor file with numbered SET commands
+    2. Runs memtier twice without --randomize
+    3. Verifies both runs set the same final values (proving same command sequence)
+    """
+    # Create monitor input file with SET commands that write their index
+    test_dir = tempfile.mkdtemp()
+    monitor_file = os.path.join(test_dir, "monitor.txt")
+    with open(monitor_file, "w") as f:
+        # Each command sets a counter key to track which command was selected
+        f.write('[ proxy1 ] 1764031576.604009 [0 127.0.0.1:1234] "INCR" "cmd_1_count"\n')
+        f.write('[ proxy2 ] 1764031576.604010 [0 127.0.0.1:1234] "INCR" "cmd_2_count"\n')
+        f.write('[ proxy3 ] 1764031576.604011 [0 127.0.0.1:1234] "INCR" "cmd_3_count"\n')
+        f.write('[ proxy4 ] 1764031576.604012 [0 127.0.0.1:1234] "INCR" "cmd_4_count"\n')
+        f.write('[ proxy5 ] 1764031576.604013 [0 127.0.0.1:1234] "INCR" "cmd_5_count"\n')
+
+    # Run configuration - single thread/client for deterministic ordering
+    base_args = [
+        "--monitor-input={}".format(monitor_file),
+        "--command=__monitor_c@__",
+        "--monitor-pattern=R",  # Random selection
+        # Note: NO --randomize flag - should use constant seed
+    ]
+
+    config_dict = get_default_memtier_config(threads=1, clients=1, requests=100)
+    master_nodes_list = env.getMasterNodesList()
+
+    # Helper function to run benchmark and get command counts
+    def run_and_get_counts(run_name):
+        run_dir = os.path.join(test_dir, run_name)
+        os.makedirs(run_dir, exist_ok=True)
+
+        benchmark_specs = {"name": run_name, "args": base_args.copy()}
+        addTLSArgs(benchmark_specs, env)
+        add_required_env_arguments(benchmark_specs, config_dict.copy(), env, master_nodes_list)
+
+        config = RunConfig(run_dir, run_name, config_dict.copy(), {})
+        ensure_clean_benchmark_folder(config.results_dir)
+
+        benchmark = Benchmark.from_json(config, benchmark_specs)
+        memtier_ok = benchmark.run()
+
+        if not memtier_ok:
+            debugPrintMemtierOnError(config, env)
+        env.assertTrue(memtier_ok)
+
+        # Get counts from Redis
+        counts = {}
+        master_nodes_connections = env.getOSSMasterNodesConnectionList()
+        for conn in master_nodes_connections:
+            for i in range(1, 6):
+                key = "cmd_{}_count".format(i)
+                val = conn.execute_command("GET", key)
+                if val:
+                    if isinstance(val, bytes):
+                        val = val.decode("utf-8")
+                    counts[key] = int(val)
+        return counts
+
+    # Clear any existing keys
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    for conn in master_nodes_connections:
+        conn.execute_command("FLUSHALL")
+
+    # Run 1
+    counts_run1 = run_and_get_counts("run1")
+    env.debugPrint("Run 1 counts: {}".format(counts_run1), True)
+
+    # Clear Redis for run 2
+    for conn in master_nodes_connections:
+        conn.execute_command("FLUSHALL")
+
+    # Run 2 - should produce identical results
+    counts_run2 = run_and_get_counts("run2")
+    env.debugPrint("Run 2 counts: {}".format(counts_run2), True)
+
+    # Verify both runs produced the same command distribution
+    env.assertEqual(counts_run1, counts_run2)

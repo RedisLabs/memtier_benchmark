@@ -112,6 +112,9 @@ protected:
     std::atomic<int> m_last_error; // Atomic to prevent data race between resolve() and get_connect_info()
 };
 
+// Forward declaration for object_generator
+class object_generator;
+
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
 #define MONITOR_PLACEHOLDER_PREFIX "__monitor_c"
@@ -209,7 +212,7 @@ public:
 
     bool load_from_file(const char *filename);
     const std::string &get_command(size_t index) const;
-    const std::string &get_random_command(size_t *out_index) const;
+    const std::string &get_random_command(object_generator *obj_gen, size_t *out_index) const;
     const std::string &get_next_sequential_command(size_t *out_index);
     size_t size() const { return commands.size(); }
 };

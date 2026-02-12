@@ -305,7 +305,7 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
         size_t selected_index = 0;
         const std::string *monitor_cmd_ptr = NULL;
         if (m_config->monitor_pattern == 'R') {
-            monitor_cmd_ptr = &m_config->monitor_commands->get_random_command(&selected_index);
+            monitor_cmd_ptr = &m_config->monitor_commands->get_random_command(m_obj_gen, &selected_index);
             benchmark_debug_log("%s: random monitor command selected (q%zu): %s\n",
                                 m_connections[conn_id]->get_readable_id(),
                                 selected_index + 1, // 1-based index for user display

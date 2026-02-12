@@ -41,6 +41,7 @@
 #include <algorithm>
 
 #include "config_types.h"
+#include "obj_gen.h"
 
 config_range::config_range(const char *range_str) : min(0), max(0)
 {
@@ -530,14 +531,15 @@ const std::string &monitor_command_list::get_command(size_t index) const
     return commands[index];
 }
 
-const std::string &monitor_command_list::get_random_command(size_t *out_index) const
+const std::string &monitor_command_list::get_random_command(object_generator *obj_gen, size_t *out_index) const
 {
     if (commands.empty()) {
         static std::string empty;
         if (out_index) *out_index = 0;
         return empty;
     }
-    size_t random_index = rand() % commands.size();
+    // Use object_generator's random which respects --randomize and --distinct-client-seed
+    size_t random_index = obj_gen->random_range(0, commands.size() - 1);
     if (out_index) *out_index = random_index;
     return commands[random_index];
 }
