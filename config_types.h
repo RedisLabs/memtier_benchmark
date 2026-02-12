@@ -227,6 +227,10 @@ public:
     // Peek at next sequential index without advancing (for cluster routing)
     size_t peek_next_sequential_index() const;
 
+    // Atomically try to claim a sequential index (CAS operation)
+    // Returns true if we successfully advanced from expected_index to expected_index+1
+    bool try_claim_sequential_index(size_t expected_index);
+
     size_t size() const { return commands.size(); }
 };
 

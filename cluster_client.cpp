@@ -390,23 +390,19 @@ bool cluster_client::create_arbitrary_request(unsigned int command_index, struct
     }
 
     /* Handle monitor_random_type: use pre-computed keys for cluster routing.
-     * For sequential mode, we peek at the index before advancing to check ownership.
-     * For random mode, we send from any connection and rely on MOVED/ASK because
-     * we can't predict which random command will be selected. */
+     * We select the command, check if this connection owns its slot, and only send if it does.
+     * For sequential mode, we use CAS to atomically claim the index after ownership check. */
     if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
         bool is_random = (m_config->monitor_pattern == 'R');
+        size_t monitor_index;
 
         if (is_random) {
-            // For random mode, just send from this connection.
-            // MOVED/ASK will redirect if needed. We can't pre-route because
-            // the random command selection happens inside client::create_arbitrary_request()
-            // and would differ from any check we do here.
-            client::create_arbitrary_request(command_index, timestamp, conn_id);
-            return true;
+            // For random mode, generate a random index
+            monitor_index = m_obj_gen->random_range(0, m_config->monitor_commands->size() - 1);
+        } else {
+            // For sequential mode, peek at the next index without advancing yet
+            monitor_index = m_config->monitor_commands->peek_next_sequential_index();
         }
-
-        // For sequential mode, peek at the next index without advancing
-        size_t monitor_index = m_config->monitor_commands->peek_next_sequential_index();
 
         // Check if this command has a key (using pre-computed key)
         if (m_config->monitor_commands->has_key(monitor_index)) {
@@ -415,12 +411,23 @@ bool cluster_client::create_arbitrary_request(unsigned int command_index, struct
             unsigned int target_conn_id = m_slot_to_shard[hslot];
 
             // If this connection doesn't own the slot, skip this request
-            // The connection that owns this slot will pick it up later
+            // The connection that owns this slot will pick it up
             if (target_conn_id != conn_id) {
                 return false;
             }
         }
         // If no key (keyless command like FT.SEARCH/FT.AGGREGATE), any connection can send it
+
+        // For sequential mode, atomically claim the index before sending
+        if (!is_random) {
+            if (!m_config->monitor_commands->try_claim_sequential_index(monitor_index)) {
+                // Another thread claimed this index, try again next time
+                return false;
+            }
+        }
+
+        // Set the pre-selected index for client::create_arbitrary_request() to use
+        m_selected_monitor_index = monitor_index;
 
         // This connection owns the slot (or command is keyless), proceed with sending
         client::create_arbitrary_request(command_index, timestamp, conn_id);

@@ -663,3 +663,19 @@ size_t monitor_command_list::peek_next_sequential_index() const
     }
     return next_index.load(std::memory_order_relaxed) % commands.size();
 }
+
+bool monitor_command_list::try_claim_sequential_index(size_t expected_index)
+{
+    if (commands.empty()) {
+        return false;
+    }
+    // The expected_index is already modulo'd, but next_index is not.
+    // We need to find the actual next_index value that corresponds to expected_index.
+    size_t current = next_index.load(std::memory_order_relaxed);
+    if (current % commands.size() != expected_index) {
+        // Another thread already advanced past this index
+        return false;
+    }
+    // Try to atomically advance the counter
+    return next_index.compare_exchange_strong(current, current + 1, std::memory_order_relaxed);
+}

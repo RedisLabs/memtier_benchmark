@@ -85,6 +85,10 @@ protected:
 
     keylist *m_keylist; // used to construct multi commands
 
+    // Pre-selected monitor command index (set by cluster_client for proper routing)
+    // SIZE_MAX means no pre-selection, client should select at runtime
+    size_t m_selected_monitor_index;
+
 public:
     client(client_group *group);
     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol,

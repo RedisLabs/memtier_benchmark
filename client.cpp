@@ -116,7 +116,8 @@ client::client(client_group *group) :
         m_arbitrary_command_ratio_count(0),
         m_executed_command_index(0),
         m_tot_set_ops(0),
-        m_tot_wait_ops(0)
+        m_tot_wait_ops(0),
+        m_selected_monitor_index(SIZE_MAX)
 {
     m_event_base = group->get_event_base();
 
@@ -144,7 +145,8 @@ client::client(struct event_base *event_base, benchmark_config *config, abstract
         m_executed_command_index(0),
         m_tot_set_ops(0),
         m_tot_wait_ops(0),
-        m_keylist(NULL)
+        m_keylist(NULL),
+        m_selected_monitor_index(SIZE_MAX)
 {
     m_event_base = event_base;
 
@@ -301,16 +303,28 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
 
     // Check if this is a monitor command placeholder - handle it specially
     if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
-        // Select a command from the monitor file at runtime based on the monitor pattern
+        // Check if cluster_client pre-selected a monitor index for us
         size_t selected_index = 0;
         const std::string *monitor_cmd_ptr = NULL;
-        if (m_config->monitor_pattern == 'R') {
+
+        if (m_selected_monitor_index != SIZE_MAX) {
+            // Use the pre-selected index (set by cluster_client for proper routing)
+            selected_index = m_selected_monitor_index;
+            monitor_cmd_ptr = &m_config->monitor_commands->get_command(selected_index);
+            m_selected_monitor_index = SIZE_MAX; // Reset for next request
+            benchmark_debug_log("%s: pre-routed monitor command (q%zu): %s\n",
+                                m_connections[conn_id]->get_readable_id(),
+                                selected_index + 1, // 1-based index for user display
+                                monitor_cmd_ptr->c_str());
+        } else if (m_config->monitor_pattern == 'R') {
+            // Random mode - select at runtime (non-cluster mode only)
             monitor_cmd_ptr = &m_config->monitor_commands->get_random_command(m_obj_gen, &selected_index);
             benchmark_debug_log("%s: random monitor command selected (q%zu): %s\n",
                                 m_connections[conn_id]->get_readable_id(),
                                 selected_index + 1, // 1-based index for user display
                                 monitor_cmd_ptr->c_str());
         } else {
+            // Sequential mode - select at runtime (non-cluster mode only)
             monitor_cmd_ptr = &m_config->monitor_commands->get_next_sequential_command(&selected_index);
             benchmark_debug_log("%s: sequential monitor command selected (q%zu): %s\n",
                                 m_connections[conn_id]->get_readable_id(),
