@@ -325,3 +325,133 @@ def test_monitor_input_mixed_commands(env):
             found = True
             break
     env.assertTrue(found)
+
+
+def test_monitor_input_malformed_placeholder_rejected(env):
+    """
+    Test that malformed monitor placeholders are rejected with an error.
+
+    This test verifies that placeholders like:
+    - __monitor_c1 (missing trailing __)
+    - __monitor_c1_ (only one trailing underscore)
+    - __monitor_c1__garbage (trailing characters)
+    - __monitor_c1abc__ (non-numeric characters before __)
+    are properly rejected when --monitor-input is provided.
+    """
+    # Create monitor input file
+    test_dir = tempfile.mkdtemp()
+    monitor_file = os.path.join(test_dir, "monitor.txt")
+    with open(monitor_file, "w") as f:
+        f.write(
+            '[ proxy49 ] 1764031576.604009 [0 172.16.10.147:51682] "SET" "key1" "value1"\n'
+        )
+
+    malformed_placeholders = [
+        "__monitor_c1",        # missing trailing __
+        "__monitor_c1_",       # only one trailing underscore
+        "__monitor_c1__garbage",  # trailing characters after valid placeholder
+        "__monitor_c1abc__",   # non-numeric characters before __
+        "__monitor_c__",       # missing index number
+    ]
+
+    config = get_default_memtier_config(threads=1, clients=1, requests=10)
+    master_nodes_list = env.getMasterNodesList()
+
+    for placeholder in malformed_placeholders:
+        benchmark_specs = {
+            "name": env.testName,
+            "args": [
+                "--monitor-input={}".format(monitor_file),
+                "--command={}".format(placeholder),
+            ],
+        }
+        addTLSArgs(benchmark_specs, env)
+
+        add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+        run_config = RunConfig(test_dir, env.testName, config, {})
+        ensure_clean_benchmark_folder(run_config.results_dir)
+
+        benchmark = Benchmark.from_json(run_config, benchmark_specs)
+
+        # Run memtier_benchmark - should fail
+        memtier_ok = benchmark.run()
+
+        # Verify failure
+        if memtier_ok:
+            env.debugPrint(
+                "Expected failure for malformed placeholder '{}' but it succeeded".format(
+                    placeholder
+                ),
+                True,
+            )
+        env.assertFalse(memtier_ok)
+
+        # Check stderr for error message
+        stderr_file = "{0}/mb.stderr".format(run_config.results_dir)
+        if os.path.isfile(stderr_file):
+            with open(stderr_file) as stderr:
+                stderr_content = stderr.read()
+                # The placeholder should either be rejected as invalid monitor placeholder
+                # or treated as unknown command by Redis
+                has_error = (
+                    "invalid monitor placeholder" in stderr_content
+                    or "error" in stderr_content.lower()
+                )
+                if not has_error:
+                    env.debugPrint(
+                        "Expected error message for '{}', got: {}".format(
+                            placeholder, stderr_content
+                        ),
+                        True,
+                    )
+                env.assertTrue(has_error)
+
+
+def test_monitor_placeholder_literal_without_monitor_input(env):
+    """
+    Test that __monitor_c1__ is treated as a literal command when --monitor-input is not provided.
+
+    When monitor input is not configured, placeholder-like strings should be sent
+    to Redis as-is (which will result in an unknown command error from Redis).
+    This verifies that the placeholder validation only applies when monitor is in use.
+    """
+    test_dir = tempfile.mkdtemp()
+
+    # Configure memtier WITHOUT --monitor-input but WITH a monitor-like placeholder
+    benchmark_specs = {
+        "name": env.testName,
+        "args": [
+            "--command=__monitor_c1__",  # This should be sent literally to Redis
+        ],
+    }
+    addTLSArgs(benchmark_specs, env)
+
+    config = get_default_memtier_config(threads=1, clients=1, requests=10)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # Run memtier_benchmark
+    # This should NOT fail with "invalid monitor placeholder" error
+    # It will likely fail because Redis doesn't recognize __monitor_c1__ as a command,
+    # but that's a Redis error, not a memtier validation error
+    benchmark.run()  # Result doesn't matter - we only care about the error type
+
+    # Check stderr - should NOT contain "invalid monitor placeholder"
+    stderr_file = "{0}/mb.stderr".format(config.results_dir)
+    if os.path.isfile(stderr_file):
+        with open(stderr_file) as stderr:
+            stderr_content = stderr.read()
+            has_monitor_error = "invalid monitor placeholder" in stderr_content
+            if has_monitor_error:
+                env.debugPrint(
+                    "Placeholder validation should not apply without --monitor-input",
+                    True,
+                )
+            env.assertFalse(has_monitor_error)

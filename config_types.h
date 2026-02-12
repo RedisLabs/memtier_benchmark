@@ -209,7 +209,6 @@ public:
 
     bool load_from_file(const char *filename);
     const std::string &get_command(size_t index) const;
-    const std::string &get_random_command() const;
     const std::string &get_random_command(size_t *out_index) const;
     const std::string &get_next_sequential_command(size_t *out_index);
     size_t size() const { return commands.size(); }

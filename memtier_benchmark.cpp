@@ -1987,14 +1987,35 @@ int main(int argc, char *argv[])
             }
 
             // Check if command is a specific monitor placeholder
-            if (strncmp(cmd.command.c_str(), MONITOR_PLACEHOLDER_PREFIX, strlen(MONITOR_PLACEHOLDER_PREFIX)) == 0) {
-                // Extract the index from __monitor_cN__
-                const char *num_start = cmd.command.c_str() + strlen(MONITOR_PLACEHOLDER_PREFIX);
-                char *endptr;
-                long index = strtol(num_start, &endptr, 10);
+            // Expected format: __monitor_cN__ where N is a 1-based index
+            const size_t prefix_len = sizeof(MONITOR_PLACEHOLDER_PREFIX) - 1; // compile-time constant
+            const size_t suffix_len = 2;                                      // "__"
+            size_t cmd_len = cmd.command.length();
 
-                if (endptr == num_start || index < 1 || (size_t) index > cfg.monitor_commands->size()) {
-                    fprintf(stderr, "error: invalid monitor placeholder '%s' (valid range: q1-q%zu or q@)\n",
+            // Check if command starts with monitor prefix
+            if (cmd_len >= prefix_len && strncmp(cmd.command.c_str(), MONITOR_PLACEHOLDER_PREFIX, prefix_len) == 0) {
+                // Validate full format: must end with __, have digits between prefix and suffix
+                bool valid = false;
+                long index = 0;
+
+                if (cmd_len > prefix_len + suffix_len && cmd.command[cmd_len - 2] == '_' &&
+                    cmd.command[cmd_len - 1] == '_') {
+                    // Extract the index from __monitor_cN__
+                    const char *num_start = cmd.command.c_str() + prefix_len;
+                    char *endptr;
+                    index = strtol(num_start, &endptr, 10);
+
+                    // Valid if: consumed at least one digit, ends exactly at "__", index in range
+                    if (endptr != num_start && endptr == cmd.command.c_str() + cmd_len - suffix_len && index >= 1 &&
+                        (size_t) index <= cfg.monitor_commands->size()) {
+                        valid = true;
+                    }
+                }
+
+                if (!valid) {
+                    fprintf(stderr,
+                            "error: invalid monitor placeholder '%s' (valid range: __monitor_c1__ to __monitor_c%zu__ "
+                            "or __monitor_c@__)\n",
                             cmd.command.c_str(), cfg.monitor_commands->size());
                     exit(1);
                 }
