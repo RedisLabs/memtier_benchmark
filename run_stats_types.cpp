@@ -27,21 +27,23 @@
 
 
 one_sec_cmd_stats::one_sec_cmd_stats() :
-    m_bytes_rx(0),
-    m_bytes_tx(0),
-    m_ops(0),
-    m_hits(0),
-    m_misses(0),
-    m_moved(0),
-    m_ask(0),
-    m_total_latency(0),
-    m_avg_latency(0.0),
-    m_min_latency(std::numeric_limits<double>::max()),
-    m_max_latency(std::numeric_limits<double>::lowest()) {
+        m_bytes_rx(0),
+        m_bytes_tx(0),
+        m_ops(0),
+        m_hits(0),
+        m_misses(0),
+        m_moved(0),
+        m_ask(0),
+        m_total_latency(0),
+        m_avg_latency(0.0),
+        m_min_latency(std::numeric_limits<double>::max()),
+        m_max_latency(std::numeric_limits<double>::lowest())
+{
 }
 
 
-void one_sec_cmd_stats::reset() {
+void one_sec_cmd_stats::reset()
+{
     m_bytes_rx = 0;
     m_bytes_tx = 0;
     m_ops = 0;
@@ -56,7 +58,8 @@ void one_sec_cmd_stats::reset() {
     summarized_quantile_values.clear();
 }
 
-void one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
+void one_sec_cmd_stats::merge(const one_sec_cmd_stats &other)
+{
     m_bytes_rx += other.m_bytes_rx;
     m_bytes_tx += other.m_bytes_tx;
     m_ops += other.m_ops;
@@ -72,7 +75,8 @@ void one_sec_cmd_stats::merge(const one_sec_cmd_stats& other) {
     m_min_latency = other.m_min_latency < m_min_latency ? other.m_min_latency : m_min_latency;
 }
 
-void one_sec_cmd_stats::summarize_quantiles(safe_hdr_histogram histogram, std::vector<double> sorted_quantiles) {
+void one_sec_cmd_stats::summarize_quantiles(safe_hdr_histogram histogram, std::vector<double> sorted_quantiles)
+{
     std::vector<int64_t> values(sorted_quantiles.size());
     int result = hdr_value_at_percentiles(histogram, sorted_quantiles.data(), values.data(), sorted_quantiles.size());
     if (result != 0) {
@@ -83,54 +87,62 @@ void one_sec_cmd_stats::summarize_quantiles(safe_hdr_histogram histogram, std::v
     }
 }
 
-void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency) {
+void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
+{
     m_bytes_rx += bytes_rx;
     m_bytes_tx += bytes_tx;
     m_ops++;
     m_total_latency += latency;
     const double latency_millis = latency / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
     m_avg_latency = (double) (m_total_latency) / (double) m_ops / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-    m_max_latency = (m_max_latency < latency_millis) ? latency_millis: m_max_latency;
-    m_min_latency = (m_min_latency > latency_millis) ? latency_millis: m_min_latency;
+    m_max_latency = (m_max_latency < latency_millis) ? latency_millis : m_max_latency;
+    m_min_latency = (m_min_latency > latency_millis) ? latency_millis : m_min_latency;
 }
 
-void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency,
-                                  unsigned int hits, unsigned int misses) {
+void one_sec_cmd_stats::update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits,
+                                  unsigned int misses)
+{
     update_op(bytes_rx, bytes_tx, latency);
     m_hits += hits;
     m_misses += misses;
 }
 
-void one_sec_cmd_stats::update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency) {
+void one_sec_cmd_stats::update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
+{
     update_op(bytes_rx, bytes_tx, latency);
     m_moved++;
 }
 
-void one_sec_cmd_stats::update_ask_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency) {
+void one_sec_cmd_stats::update_ask_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency)
+{
     update_op(bytes_rx, bytes_tx, latency);
     m_ask++;
 }
 
-void ar_one_sec_cmd_stats::setup(size_t n_arbitrary_commands) {
+void ar_one_sec_cmd_stats::setup(size_t n_arbitrary_commands)
+{
     m_commands.resize(n_arbitrary_commands);
     reset();
 }
 
-void ar_one_sec_cmd_stats::reset() {
-    for (size_t i = 0; i<m_commands.size(); i++) {
+void ar_one_sec_cmd_stats::reset()
+{
+    for (size_t i = 0; i < m_commands.size(); i++) {
         m_commands[i].reset();
     }
 }
 
-void ar_one_sec_cmd_stats::merge(const ar_one_sec_cmd_stats& other) {
-    for (size_t i = 0; i<m_commands.size(); i++) {
+void ar_one_sec_cmd_stats::merge(const ar_one_sec_cmd_stats &other)
+{
+    for (size_t i = 0; i < m_commands.size(); i++) {
         m_commands[i].merge(other.m_commands[i]);
     }
 }
 
-unsigned long int ar_one_sec_cmd_stats::ops() {
+unsigned long int ar_one_sec_cmd_stats::ops()
+{
     unsigned long int total_ops = 0;
-    for (size_t i = 0; i<m_commands.size(); i++) {
+    for (size_t i = 0; i < m_commands.size(); i++) {
         total_ops += m_commands[i].m_ops;
     }
 
@@ -138,9 +150,10 @@ unsigned long int ar_one_sec_cmd_stats::ops() {
 }
 
 
-unsigned long int ar_one_sec_cmd_stats::bytes() {
+unsigned long int ar_one_sec_cmd_stats::bytes()
+{
     unsigned long int total_bytes = 0;
-    for (size_t i = 0; i<m_commands.size(); i++) {
+    for (size_t i = 0; i < m_commands.size(); i++) {
         total_bytes += m_commands[i].m_bytes_rx;
         total_bytes += m_commands[i].m_bytes_tx;
     }
@@ -148,16 +161,18 @@ unsigned long int ar_one_sec_cmd_stats::bytes() {
     return total_bytes;
 }
 
-unsigned long long int ar_one_sec_cmd_stats::total_latency() {
+unsigned long long int ar_one_sec_cmd_stats::total_latency()
+{
     unsigned long long int latency = 0;
-    for (size_t i = 0; i<m_commands.size(); i++) {
+    for (size_t i = 0; i < m_commands.size(); i++) {
         latency += m_commands[i].m_total_latency;
     }
 
     return latency;
 }
 
-size_t ar_one_sec_cmd_stats::size() const {
+size_t ar_one_sec_cmd_stats::size() const
+{
     return m_commands.size();
 }
 
@@ -165,21 +180,18 @@ size_t ar_one_sec_cmd_stats::size() const {
 
 
 one_second_stats::one_second_stats(unsigned int second) :
-        m_set_cmd(),
-        m_get_cmd(),
-        m_wait_cmd(),
-        m_total_cmd(),
-        m_ar_commands(),
-        m_connection_errors(0)
-        {
+        m_set_cmd(), m_get_cmd(), m_wait_cmd(), m_total_cmd(), m_ar_commands(), m_connection_errors(0)
+{
     reset(second);
 }
 
-void one_second_stats::setup_arbitrary_commands(size_t n_arbitrary_commands) {
+void one_second_stats::setup_arbitrary_commands(size_t n_arbitrary_commands)
+{
     m_ar_commands.setup(n_arbitrary_commands);
 }
 
-void one_second_stats::reset(unsigned int second) {
+void one_second_stats::reset(unsigned int second)
+{
     m_second = second;
     m_get_cmd.reset();
     m_set_cmd.reset();
@@ -189,7 +201,8 @@ void one_second_stats::reset(unsigned int second) {
     m_connection_errors = 0;
 }
 
-void one_second_stats::merge(const one_second_stats& other) {
+void one_second_stats::merge(const one_second_stats &other)
+{
     m_get_cmd.merge(other.m_get_cmd);
     m_set_cmd.merge(other.m_set_cmd);
     m_wait_cmd.merge(other.m_wait_cmd);
@@ -209,10 +222,12 @@ totals_cmd::totals_cmd() :
         m_ask_sec(0),
         m_latency(0),
         m_total_latency(0),
-        m_ops(0) {
+        m_ops(0)
+{
 }
 
-void totals_cmd::add(const totals_cmd& other) {
+void totals_cmd::add(const totals_cmd &other)
+{
     m_ops_sec += other.m_ops_sec;
     m_moved_sec += other.m_moved_sec;
     m_ask_sec += other.m_ask_sec;
@@ -224,7 +239,8 @@ void totals_cmd::add(const totals_cmd& other) {
     m_ops += other.m_ops;
 }
 
-void totals_cmd::aggregate_average(size_t stats_size) {
+void totals_cmd::aggregate_average(size_t stats_size)
+{
     m_ops_sec /= stats_size;
     m_moved_sec /= stats_size;
     m_ask_sec /= stats_size;
@@ -234,7 +250,8 @@ void totals_cmd::aggregate_average(size_t stats_size) {
     m_latency /= stats_size;
 }
 
-void totals_cmd::summarize(const one_sec_cmd_stats& other, unsigned long test_duration_usec) {
+void totals_cmd::summarize(const one_sec_cmd_stats &other, unsigned long test_duration_usec)
+{
     m_ops = other.m_ops;
     m_total_latency = other.m_total_latency;
 
@@ -251,29 +268,34 @@ void totals_cmd::summarize(const one_sec_cmd_stats& other, unsigned long test_du
     m_ask_sec = (double) other.m_ask / test_duration_usec * 1000000;
 }
 
-void ar_totals_cmd::setup(size_t n_arbitrary_commands) {
+void ar_totals_cmd::setup(size_t n_arbitrary_commands)
+{
     m_commands.resize(n_arbitrary_commands);
 }
 
-void ar_totals_cmd::add(const ar_totals_cmd& other) {
-    for (size_t i = 0; i<m_commands.size(); i++) {
+void ar_totals_cmd::add(const ar_totals_cmd &other)
+{
+    for (size_t i = 0; i < m_commands.size(); i++) {
         m_commands[i].add(other.m_commands[i]);
     }
 }
 
-void ar_totals_cmd::aggregate_average(size_t stats_size) {
-    for (size_t i = 0; i<m_commands.size(); i++) {
+void ar_totals_cmd::aggregate_average(size_t stats_size)
+{
+    for (size_t i = 0; i < m_commands.size(); i++) {
         m_commands[i].aggregate_average(stats_size);
     }
 }
 
-void ar_totals_cmd::summarize(const ar_one_sec_cmd_stats& other, unsigned long test_duration_usec) {
-    for (size_t i = 0; i<m_commands.size(); i++) {
+void ar_totals_cmd::summarize(const ar_one_sec_cmd_stats &other, unsigned long test_duration_usec)
+{
+    for (size_t i = 0; i < m_commands.size(); i++) {
         m_commands[i].summarize(other.at(i), test_duration_usec);
     }
 }
 
-size_t ar_totals_cmd::size() const {
+size_t ar_totals_cmd::size() const
+{
     return m_commands.size();
 }
 
@@ -297,14 +319,17 @@ totals::totals() :
         m_bytes_tx(0),
         m_ops(0),
         m_connection_errors(0),
-        m_connection_errors_sec(0) {
+        m_connection_errors_sec(0)
+{
 }
 
-void totals::setup_arbitrary_commands(size_t n_arbitrary_commands) {
+void totals::setup_arbitrary_commands(size_t n_arbitrary_commands)
+{
     m_ar_commands.setup(n_arbitrary_commands);
 }
 
-void totals::add(const totals& other) {
+void totals::add(const totals &other)
+{
     m_set_cmd.add(other.m_set_cmd);
     m_get_cmd.add(other.m_get_cmd);
     m_wait_cmd.add(other.m_wait_cmd);
@@ -326,18 +351,20 @@ void totals::add(const totals& other) {
     m_connection_errors_sec += other.m_connection_errors_sec;
 
     // aggregate latency data
-    hdr_add(latency_histogram,other.latency_histogram);
+    hdr_add(latency_histogram, other.latency_histogram);
 }
 
-void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency) {
+void totals::update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency)
+{
     m_bytes_rx += bytes_rx;
     m_bytes_tx += bytes_tx;
     m_ops++;
     m_latency += latency;
     m_total_latency += latency;
-    hdr_record_value_capped(latency_histogram,latency);
+    hdr_record_value_capped(latency_histogram, latency);
 }
 
-void totals::update_connection_error() {
+void totals::update_connection_error()
+{
     m_connection_errors++;
 }

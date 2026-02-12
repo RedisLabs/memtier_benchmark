@@ -29,35 +29,40 @@
 #include <string>
 #include <atomic>
 
-struct config_range {
+struct config_range
+{
     int min;
     int max;
 
-    config_range() : min(0), max(0) { }
+    config_range() : min(0), max(0) {}
     config_range(const char *range_str);
     bool is_defined(void) { return max > 0; }
 };
 
-struct config_ratio {
+struct config_ratio
+{
     unsigned int a;
     unsigned int b;
 
-    config_ratio() : a(0), b(0) { }
+    config_ratio() : a(0), b(0) {}
     config_ratio(const char *ratio_str);
     bool is_defined(void) { return (a > 0 || b > 0); }
 };
 
-struct config_quantiles {
+struct config_quantiles
+{
     std::vector<float> quantile_list;
     config_quantiles();
     config_quantiles(const char *ratio_str);
     bool is_defined(void);
-    inline std::vector<float>::iterator begin()  { return quantile_list.begin(); }
-    inline std::vector<float>::iterator end()  { return quantile_list.end(); }
+    inline std::vector<float>::iterator begin() { return quantile_list.begin(); }
+    inline std::vector<float>::iterator end() { return quantile_list.end(); }
 };
 
-struct config_weight_list {
-    struct weight_item {
+struct config_weight_list
+{
+    struct weight_item
+    {
         unsigned int size;
         unsigned int weight;
     };
@@ -67,9 +72,9 @@ struct config_weight_list {
     unsigned int next_size_weight;
 
     config_weight_list();
-    config_weight_list(const char* str);
-    config_weight_list(const config_weight_list& copy);
-    config_weight_list& operator=(const config_weight_list& rhs);
+    config_weight_list(const char *str);
+    config_weight_list(const config_weight_list &copy);
+    config_weight_list &operator=(const config_weight_list &rhs);
 
     bool is_defined(void);
     unsigned int largest(void);
@@ -77,7 +82,8 @@ struct config_weight_list {
     unsigned int get_next_size(void);
 };
 
-struct connect_info {
+struct connect_info
+{
     int ci_family;
     int ci_socktype;
     int ci_protocol;
@@ -86,12 +92,14 @@ struct connect_info {
     char addr_buf[sizeof(struct sockaddr_storage)];
 };
 
-struct server_addr {
+struct server_addr
+{
     server_addr(const char *hostname, int port, int resolution);
     virtual ~server_addr();
 
     int get_connect_info(struct connect_info *ci);
-    const char* get_last_error(void) const;
+    const char *get_last_error(void) const;
+
 protected:
     int resolve(void);
     pthread_mutex_t m_mutex;
@@ -101,7 +109,7 @@ protected:
     struct addrinfo *m_server_addr;
     struct addrinfo *m_used_addr;
     int m_resolution;
-    std::atomic<int> m_last_error;  // Atomic to prevent data race between resolve() and get_connect_info()
+    std::atomic<int> m_last_error; // Atomic to prevent data race between resolve() and get_connect_info()
 };
 
 #define KEY_PLACEHOLDER "__key__"
@@ -109,17 +117,23 @@ protected:
 #define MONITOR_PLACEHOLDER_PREFIX "__monitor_c"
 #define MONITOR_RANDOM_PLACEHOLDER "__monitor_c@__"
 
-enum command_arg_type {
-    const_type      = 0,
-    key_type        = 1,
-    data_type       = 2,
-    monitor_type    = 3,
+enum command_arg_type
+{
+    const_type = 0,
+    key_type = 1,
+    data_type = 2,
+    monitor_type = 3,
     monitor_random_type = 4,
-    undefined_type  = 5
+    undefined_type = 5
 };
 
-struct command_arg {
-    command_arg(const char* arg, unsigned int arg_len) : type(undefined_type), data(arg, arg_len), monitor_index(0), has_key_affixes(false) {;}
+struct command_arg
+{
+    command_arg(const char *arg, unsigned int arg_len) :
+            type(undefined_type), data(arg, arg_len), monitor_index(0), has_key_affixes(false)
+    {
+        ;
+    }
     command_arg_type type;
     std::string data;
     // For monitor_type, stores the index (1-based)
@@ -131,11 +145,12 @@ struct command_arg {
     bool has_key_affixes;
 };
 
-struct arbitrary_command {
-    arbitrary_command(const char* cmd);
+struct arbitrary_command
+{
+    arbitrary_command(const char *cmd);
 
-    bool set_key_pattern(const char* pattern_str);
-    bool set_ratio(const char* pattern_str);
+    bool set_key_pattern(const char *pattern_str);
+    bool set_ratio(const char *pattern_str);
     bool split_command_to_args();
 
     std::vector<command_arg> command_args;
@@ -146,40 +161,34 @@ struct arbitrary_command {
     unsigned int ratio;
 };
 
-struct arbitrary_command_list {
+struct arbitrary_command_list
+{
 private:
     std::vector<arbitrary_command> commands_list;
 
 public:
-    arbitrary_command_list() {;}
+    arbitrary_command_list() { ; }
 
-    arbitrary_command& at(size_t idx) { return commands_list.at(idx); }
-    const arbitrary_command& at(std::size_t idx) const { return commands_list.at(idx); }
+    arbitrary_command &at(size_t idx) { return commands_list.at(idx); }
+    const arbitrary_command &at(std::size_t idx) const { return commands_list.at(idx); }
 
     // array subscript operator
-    arbitrary_command& operator[](std::size_t idx) { return commands_list[idx]; }
-    const arbitrary_command& operator[](std::size_t idx) const { return commands_list[idx]; }
+    arbitrary_command &operator[](std::size_t idx) { return commands_list[idx]; }
+    const arbitrary_command &operator[](std::size_t idx) const { return commands_list[idx]; }
 
-    void add_command(const arbitrary_command& command) {
-        commands_list.push_back(command);
-    }
+    void add_command(const arbitrary_command &command) { commands_list.push_back(command); }
 
-    arbitrary_command& get_last_command() {
-        return commands_list.back();
-    }
+    arbitrary_command &get_last_command() { return commands_list.back(); }
 
-    size_t size() const {
-        return commands_list.size();
-    }
+    size_t size() const { return commands_list.size(); }
 
-    bool is_defined() const {
-        return !commands_list.empty();
-    }
+    bool is_defined() const { return !commands_list.empty(); }
 
-    unsigned int get_max_command_name_length() const {
+    unsigned int get_max_command_name_length() const
+    {
         unsigned int max_length = 0;
 
-        for (size_t i=0; i<size(); i++) {
+        for (size_t i = 0; i < size(); i++) {
             if (commands_list[i].command_name.length() > max_length) {
                 max_length = commands_list[i].command_name.length();
             }
@@ -189,19 +198,20 @@ public:
     }
 };
 
-struct monitor_command_list {
+struct monitor_command_list
+{
 private:
     std::vector<std::string> commands;
-	    std::atomic<size_t> next_index;
+    std::atomic<size_t> next_index;
 
 public:
-	    monitor_command_list() : next_index(0) {;}
+    monitor_command_list() : next_index(0) { ; }
 
-    bool load_from_file(const char* filename);
-    const std::string& get_command(size_t index) const;
-    const std::string& get_random_command() const;
-    const std::string& get_random_command(size_t* out_index) const;
-	    const std::string& get_next_sequential_command(size_t* out_index);
+    bool load_from_file(const char *filename);
+    const std::string &get_command(size_t index) const;
+    const std::string &get_random_command() const;
+    const std::string &get_random_command(size_t *out_index) const;
+    const std::string &get_next_sequential_command(size_t *out_index);
     size_t size() const { return commands.size(); }
 };
 

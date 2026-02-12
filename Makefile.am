@@ -70,3 +70,26 @@ dist_man1_MANS = memtier_benchmark.1
 .PHONY: rebuild-man
 rebuild-man:
 	help2man --name="NoSQL benchmark tool" --no-info --no-discard-stderr --output=memtier_benchmark.1 $(builddir)/memtier_benchmark
+
+# Code formatting
+.PHONY: format format-check
+format:
+	@echo "Formatting C++ source files..."
+	@find $(srcdir) -name "*.cpp" -o -name "*.h" | grep -v deps/ | grep -v autom4te.cache/ | xargs clang-format -i
+	@echo "Done."
+
+format-check:
+	@echo "Checking C++ source file formatting..."
+	@FAILED=0; \
+	for file in $$(find $(srcdir) -name "*.cpp" -o -name "*.h" | grep -v deps/ | grep -v autom4te.cache/); do \
+		if ! clang-format --dry-run --Werror "$$file" 2>/dev/null; then \
+			echo "Needs formatting: $$file"; \
+			FAILED=1; \
+		fi; \
+	done; \
+	if [ $$FAILED -eq 1 ]; then \
+		echo ""; \
+		echo "Some files need formatting. Run: make format"; \
+		exit 1; \
+	fi; \
+	echo "All C++ files are properly formatted!"
