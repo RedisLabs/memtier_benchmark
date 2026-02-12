@@ -478,6 +478,83 @@ err:
 }
 
 // Monitor command list implementation
+
+// Extract key from a command string (second argument after command name)
+// Returns empty string for keyless commands (FT.SEARCH, FT.AGGREGATE, or commands with no args)
+std::string monitor_command_list::extract_key_from_command(const std::string &command)
+{
+    const char *p = command.c_str();
+    std::string first_word;
+    std::string second_word;
+    int word_count = 0;
+
+    while (*p && word_count < 2) {
+        // Skip blanks
+        while (*p && isspace(*p)) {
+            p++;
+        }
+        if (!*p) break;
+
+        std::string current_word;
+        bool in_quotes = false;
+        bool in_single_quotes = false;
+
+        while (*p) {
+            if (in_quotes) {
+                if (*p == '"') {
+                    in_quotes = false;
+                    p++;
+                    break;
+                }
+                current_word += *p++;
+            } else if (in_single_quotes) {
+                if (*p == '\'') {
+                    in_single_quotes = false;
+                    p++;
+                    break;
+                }
+                current_word += *p++;
+            } else {
+                if (*p == '"') {
+                    in_quotes = true;
+                    p++;
+                } else if (*p == '\'') {
+                    in_single_quotes = true;
+                    p++;
+                } else if (isspace(*p)) {
+                    break;
+                } else {
+                    current_word += *p++;
+                }
+            }
+        }
+
+        if (!current_word.empty()) {
+            if (word_count == 0) {
+                first_word = current_word;
+            } else {
+                second_word = current_word;
+            }
+            word_count++;
+        }
+    }
+
+    // No second argument - keyless command
+    if (second_word.empty()) {
+        return "";
+    }
+
+    // Check for FT.SEARCH and FT.AGGREGATE - these are keyless (can be sent to any connection)
+    std::string upper_cmd = first_word;
+    std::transform(upper_cmd.begin(), upper_cmd.end(), upper_cmd.begin(), ::toupper);
+    if (upper_cmd == "FT.SEARCH" || upper_cmd == "FT.AGGREGATE") {
+        return "";
+    }
+
+    // Return the second argument as the key
+    return second_word;
+}
+
 bool monitor_command_list::load_from_file(const char *filename)
 {
     FILE *file = fopen(filename, "r");
@@ -509,6 +586,10 @@ bool monitor_command_list::load_from_file(const char *filename)
         }
 
         commands.push_back(command_str);
+
+        // Extract and store the key for cluster routing
+        std::string key = extract_key_from_command(command_str);
+        keys.push_back(key);
     }
 
     fclose(file);
@@ -556,4 +637,29 @@ const std::string &monitor_command_list::get_next_sequential_command(size_t *out
     index = index % commands.size();
     if (out_index) *out_index = index;
     return commands[index];
+}
+
+const std::string &monitor_command_list::get_key(size_t index) const
+{
+    static std::string empty;
+    if (index >= keys.size()) {
+        return empty;
+    }
+    return keys[index];
+}
+
+bool monitor_command_list::has_key(size_t index) const
+{
+    if (index >= keys.size()) {
+        return false;
+    }
+    return !keys[index].empty();
+}
+
+size_t monitor_command_list::peek_next_sequential_index() const
+{
+    if (commands.empty()) {
+        return 0;
+    }
+    return next_index.load(std::memory_order_relaxed) % commands.size();
 }

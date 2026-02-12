@@ -127,7 +127,8 @@ enum command_arg_type
     data_type = 2,
     monitor_type = 3,
     monitor_random_type = 4,
-    undefined_type = 5
+    literal_key_type = 5, // Key is a literal value (from monitor commands) - used for cluster routing
+    undefined_type = 6
 };
 
 struct command_arg
@@ -205,7 +206,11 @@ struct monitor_command_list
 {
 private:
     std::vector<std::string> commands;
+    std::vector<std::string> keys; // Pre-computed key for each command (empty if keyless)
     std::atomic<size_t> next_index;
+
+    // Extract key from a command string (second argument, or empty for keyless commands)
+    static std::string extract_key_from_command(const std::string &command);
 
 public:
     monitor_command_list() : next_index(0) { ; }
@@ -214,6 +219,14 @@ public:
     const std::string &get_command(size_t index) const;
     const std::string &get_random_command(object_generator *obj_gen, size_t *out_index) const;
     const std::string &get_next_sequential_command(size_t *out_index);
+
+    // Get the pre-computed key for a command (empty string if keyless)
+    const std::string &get_key(size_t index) const;
+    bool has_key(size_t index) const;
+
+    // Peek at next sequential index without advancing (for cluster routing)
+    size_t peek_next_sequential_index() const;
+
     size_t size() const { return commands.size(); }
 };
 

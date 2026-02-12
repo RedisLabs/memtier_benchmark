@@ -327,6 +327,13 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
             return false;
         }
 
+        // Mark the first argument as a literal key for cluster routing
+        // Most Redis commands have the key as the first argument after the command name
+        if (temp_cmd.command_args.size() > 0) {
+            temp_cmd.command_args[0].type = literal_key_type;
+            temp_cmd.keys_count = 1;
+        }
+
         // Format the command for the protocol (adds RESP headers)
         if (!m_connections[conn_id]->get_protocol()->format_arbitrary_command(temp_cmd)) {
             fprintf(stderr, "error: failed to format random monitor command at runtime: %s\n", monitor_cmd.c_str());
@@ -344,6 +351,9 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
                 assert(res == available_for_conn);
                 cmd_size +=
                     m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
+            } else if (arg->type == literal_key_type) {
+                // Send the literal key value from the monitor command
+                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, arg->data.c_str(), arg->data.length());
             } else if (arg->type == data_type) {
                 unsigned int value_len;
                 const char *value = m_obj_gen->get_value(0, &value_len);
@@ -409,6 +419,9 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
                 cmd_size +=
                     m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
             }
+        } else if (arg->type == literal_key_type) {
+            // Send the literal key value from the monitor command
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, arg->data.c_str(), arg->data.length());
         } else if (arg->type == data_type) {
             unsigned int value_len;
             const char *value = m_obj_gen->get_value(0, &value_len);

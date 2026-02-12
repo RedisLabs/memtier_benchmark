@@ -588,15 +588,12 @@ def test_command_stats_breakdown_by_command(env):
     # Check stdout for aggregated output
     with open("{0}/mb.stdout".format(config.results_dir)) as stdout:
         stdout_content = stdout.read()
-        env.debugPrint("stdout content:\n{}".format(stdout_content), True)
 
         # Count occurrences of "Sets" and "Gets" in the output
         # With aggregation, we should see exactly one "Sets" row and one "Gets" row
         lines = stdout_content.split("\n")
         sets_count = sum(1 for line in lines if line.strip().startswith("Sets"))
         gets_count = sum(1 for line in lines if line.strip().startswith("Gets"))
-
-        env.debugPrint("Sets rows: {}, Gets rows: {}".format(sets_count, gets_count), True)
 
         # Should have exactly 1 Sets row and 1 Gets row (aggregated)
         env.assertEqual(sets_count, 1)
@@ -648,15 +645,12 @@ def test_command_stats_breakdown_by_line(env):
     # Check stdout for per-command output
     with open("{0}/mb.stdout".format(config.results_dir)) as stdout:
         stdout_content = stdout.read()
-        env.debugPrint("stdout content:\n{}".format(stdout_content), True)
 
         # Count occurrences of "Sets" and "Gets" in the output
         # Without aggregation, we should see 2 "Sets" rows and 2 "Gets" rows
         lines = stdout_content.split("\n")
         sets_count = sum(1 for line in lines if line.strip().startswith("Sets"))
         gets_count = sum(1 for line in lines if line.strip().startswith("Gets"))
-
-        env.debugPrint("Sets rows: {}, Gets rows: {}".format(sets_count, gets_count), True)
 
         # Should have 2 Sets rows and 2 Gets rows (one per command)
         env.assertEqual(sets_count, 2)

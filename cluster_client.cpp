@@ -349,12 +349,91 @@ bool cluster_client::create_arbitrary_request(unsigned int command_index, struct
      * if the generated key belongs to this connection before starting to send it */
     assert(m_key_index_pools[conn_id]->empty());
 
-    /* keyless command can be used by any connection */
-    if (get_arbitrary_command(command_index).keys_count == 0) {
+    const arbitrary_command &cmd = get_arbitrary_command(command_index);
+
+    /* Check if this command has a literal key (from monitor input) */
+    for (unsigned int i = 0; i < cmd.command_args.size(); i++) {
+        if (cmd.command_args[i].type == literal_key_type) {
+            /* For literal keys, calculate slot directly from the key value */
+            const std::string &literal_key = cmd.command_args[i].data;
+            unsigned int hslot = calc_hslot_crc16_cluster(literal_key.c_str(), literal_key.length());
+            unsigned int target_conn_id = m_slot_to_shard[hslot];
+
+            /* If this connection owns the slot, send the request */
+            if (target_conn_id == conn_id) {
+                client::create_arbitrary_request(command_index, timestamp, conn_id);
+                return true;
+            }
+
+            /* If the target connection is disconnected, trigger slot refresh */
+            if (m_connections[target_conn_id]->get_connection_state() == conn_disconnected) {
+                m_connections[conn_id]->set_cluster_slots();
+                return false;
+            }
+
+            /* If target connection is refreshing slots, skip */
+            if (m_connections[target_conn_id]->get_cluster_slots_state() != setup_done) {
+                return false;
+            }
+
+            /* Queue is full, skip for now */
+            key_index_pool *key_idx_pool = m_key_index_pools[target_conn_id];
+            if (key_idx_pool->size() >= KEY_INDEX_QUEUE_MAX_SIZE) {
+                return false;
+            }
+
+            /* Store command index for the target connection (no key_index needed for literal keys) */
+            key_idx_pool->push(command_index);
+            key_idx_pool->push(0); /* Dummy key_index - not used for literal keys */
+            return true;
+        }
+    }
+
+    /* Handle monitor_random_type: use pre-computed keys for cluster routing.
+     * For sequential mode, we peek at the index before advancing to check ownership.
+     * For random mode, we send from any connection and rely on MOVED/ASK because
+     * we can't predict which random command will be selected. */
+    if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
+        bool is_random = (m_config->monitor_pattern == 'R');
+
+        if (is_random) {
+            // For random mode, just send from this connection.
+            // MOVED/ASK will redirect if needed. We can't pre-route because
+            // the random command selection happens inside client::create_arbitrary_request()
+            // and would differ from any check we do here.
+            client::create_arbitrary_request(command_index, timestamp, conn_id);
+            return true;
+        }
+
+        // For sequential mode, peek at the next index without advancing
+        size_t monitor_index = m_config->monitor_commands->peek_next_sequential_index();
+
+        // Check if this command has a key (using pre-computed key)
+        if (m_config->monitor_commands->has_key(monitor_index)) {
+            const std::string &key = m_config->monitor_commands->get_key(monitor_index);
+            unsigned int hslot = calc_hslot_crc16_cluster(key.c_str(), key.length());
+            unsigned int target_conn_id = m_slot_to_shard[hslot];
+
+            // If this connection doesn't own the slot, skip this request
+            // The connection that owns this slot will pick it up later
+            if (target_conn_id != conn_id) {
+                return false;
+            }
+        }
+        // If no key (keyless command like FT.SEARCH/FT.AGGREGATE), any connection can send it
+
+        // This connection owns the slot (or command is keyless), proceed with sending
         client::create_arbitrary_request(command_index, timestamp, conn_id);
         return true;
     }
 
+    /* keyless command can be used by any connection */
+    if (cmd.keys_count == 0) {
+        client::create_arbitrary_request(command_index, timestamp, conn_id);
+        return true;
+    }
+
+    /* Normal key placeholder handling */
     unsigned long long key_index;
     get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
 
