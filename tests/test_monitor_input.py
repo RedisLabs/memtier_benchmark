@@ -10,7 +10,7 @@ def test_monitor_input_specific_command(env):
 
     This test:
     1. Creates a monitor input file with multiple commands
-    2. Uses __monitor_c1__ to select the first command (SET)
+    2. Uses __monitor_line1__ to select the first command (SET)
     3. Verifies the command executes correctly
     """
     # Create monitor input file
@@ -36,7 +36,7 @@ def test_monitor_input_specific_command(env):
         "name": env.testName,
         "args": [
             "--monitor-input={}".format(monitor_file),
-            "--command=__monitor_c1__",  # Use first command (SET)
+            "--command=__monitor_line1__",  # Use first command (SET)
         ],
     }
     addTLSArgs(benchmark_specs, env)
@@ -83,11 +83,11 @@ def test_monitor_input_specific_command(env):
 
 def test_monitor_input_random_runtime(env):
     """
-    Test that __monitor_c@__ picks random commands at runtime.
+    Test that __monitor_line@__ picks random commands at runtime.
 
     This test:
     1. Creates a monitor input file with multiple different command types
-    2. Uses __monitor_c@__ to randomly select commands at runtime
+    2. Uses __monitor_line@__ to randomly select commands at runtime
     3. Verifies that multiple different command types were executed
     """
     # Create monitor input file with diverse commands
@@ -113,8 +113,8 @@ def test_monitor_input_random_runtime(env):
         "name": env.testName,
         "args": [
             "--monitor-input={}".format(monitor_file),
-	            "--command=__monitor_c@__",  # Command selection at runtime
-	            "--monitor-pattern=R",  # Random selection
+            "--command=__monitor_line@__",  # Command selection at runtime
+            "--monitor-pattern=R",  # Random selection
         ],
     }
     addTLSArgs(benchmark_specs, env)
@@ -178,73 +178,73 @@ def test_monitor_input_random_runtime(env):
 
 
 def test_monitor_input_sequential_default(env):
-	    """
-	    Test that __monitor_c@__ picks commands sequentially when monitor-pattern is explicitly set to S.
+    """
+    Test that __monitor_line@__ picks commands sequentially when monitor-pattern is explicitly set to S.
 
-	    This test:
-	    1. Creates a monitor input file with multiple SET commands for the same key but different values
-	    2. Uses __monitor_c@__ with --monitor-pattern=S (sequential pattern, which is also the default)
-	    3. Verifies that the commands are applied in sequential order (with wrap-around)
-	    """
-	    # Create monitor input file with sequential SET commands
-	    test_dir = tempfile.mkdtemp()
-	    monitor_file = os.path.join(test_dir, "monitor.txt")
-	    with open(monitor_file, "w") as f:
-	        f.write(
-	            '[ proxy60 ] 1764031576.604009 [0 172.16.10.147:51682] "SET" "seq_key" "v1"\n'
-	        )
-	        f.write(
-	            '[ proxy61 ] 1764031576.605123 [0 172.16.10.147:41234] "SET" "seq_key" "v2"\n'
-	        )
-	        f.write(
-	            '[ proxy62 ] 1764031576.606456 [0 172.16.10.147:42567] "SET" "seq_key" "v3"\n'
-	        )
+    This test:
+    1. Creates a monitor input file with multiple SET commands for the same key but different values
+    2. Uses __monitor_line@__ with --monitor-pattern=S (sequential pattern, which is also the default)
+    3. Verifies that the commands are applied in sequential order (with wrap-around)
+    """
+    # Create monitor input file with sequential SET commands
+    test_dir = tempfile.mkdtemp()
+    monitor_file = os.path.join(test_dir, "monitor.txt")
+    with open(monitor_file, "w") as f:
+        f.write(
+            '[ proxy60 ] 1764031576.604009 [0 172.16.10.147:51682] "SET" "seq_key" "v1"\n'
+        )
+        f.write(
+            '[ proxy61 ] 1764031576.605123 [0 172.16.10.147:41234] "SET" "seq_key" "v2"\n'
+        )
+        f.write(
+            '[ proxy62 ] 1764031576.606456 [0 172.16.10.147:42567] "SET" "seq_key" "v3"\n'
+        )
 
-	    # Configure memtier to use sequential commands from monitor file with explicit pattern S
-	    benchmark_specs = {
-	        "name": env.testName,
-	        "args": [
-	            "--monitor-input={}".format(monitor_file),
-	            "--command=__monitor_c@__",  # Sequential selection
-	            "--monitor-pattern=S",       # Explicit sequential pattern
-	        ],
-	    }
-	    addTLSArgs(benchmark_specs, env)
+    # Configure memtier to use sequential commands from monitor file with explicit pattern S
+    benchmark_specs = {
+        "name": env.testName,
+        "args": [
+            "--monitor-input={}".format(monitor_file),
+            "--command=__monitor_line@__",  # Sequential selection
+            "--monitor-pattern=S",       # Explicit sequential pattern
+        ],
+    }
+    addTLSArgs(benchmark_specs, env)
 
-	    # 4 requests: expect sequence q1, q2, q3, q1
-	    config = get_default_memtier_config(threads=1, clients=1, requests=4)
-	    master_nodes_list = env.getMasterNodesList()
+    # 4 requests: expect sequence q1, q2, q3, q1
+    config = get_default_memtier_config(threads=1, clients=1, requests=4)
+    master_nodes_list = env.getMasterNodesList()
 
-	    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
 
-	    config = RunConfig(test_dir, env.testName, config, {})
-	    ensure_clean_benchmark_folder(config.results_dir)
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
 
-	    benchmark = Benchmark.from_json(config, benchmark_specs)
+    benchmark = Benchmark.from_json(config, benchmark_specs)
 
-	    # Run memtier_benchmark
-	    memtier_ok = benchmark.run()
+    # Run memtier_benchmark
+    memtier_ok = benchmark.run()
 
-	    # Verify success
-	    debugPrintMemtierOnError(config, env)
-	    env.assertTrue(memtier_ok == True)
-	    env.assertTrue(os.path.isfile("{0}/mb.stdout".format(config.results_dir)))
-	    env.assertTrue(os.path.isfile("{0}/mb.stderr".format(config.results_dir)))
+    # Verify success
+    debugPrintMemtierOnError(config, env)
+    env.assertTrue(memtier_ok == True)
+    env.assertTrue(os.path.isfile("{0}/mb.stdout".format(config.results_dir)))
+    env.assertTrue(os.path.isfile("{0}/mb.stderr".format(config.results_dir)))
 
-	    # Verify the final value for seq_key corresponds to the expected sequence with wrap-around (v1)
-	    # This must work both on standalone and OSS cluster deployments.
-	    master_nodes_connections = env.getOSSMasterNodesConnectionList()
-	    found = False
-	    for master_connection in master_nodes_connections:
-	        try:
-	            result = master_connection.execute_command("GET", "seq_key")
-	        except Exception:
-	            # In cluster mode, non-owner shards may reply MOVED/ASK; ignore and continue
-	            continue
-	        if result == b"v1":
-	            found = True
-	            break
-	    env.assertTrue(found)
+    # Verify the final value for seq_key corresponds to the expected sequence with wrap-around (v1)
+    # This must work both on standalone and OSS cluster deployments.
+    master_nodes_connections = env.getOSSMasterNodesConnectionList()
+    found = False
+    for master_connection in master_nodes_connections:
+        try:
+            result = master_connection.execute_command("GET", "seq_key")
+        except Exception:
+            # In cluster mode, non-owner shards may reply MOVED/ASK; ignore and continue
+            continue
+        if result == b"v1":
+            found = True
+            break
+    env.assertTrue(found)
 
 
 def test_monitor_input_mixed_commands(env):
@@ -253,7 +253,7 @@ def test_monitor_input_mixed_commands(env):
 
     This test:
     1. Creates a monitor input file
-    2. Uses 30% __monitor_c1__ (specific SET command) and 70% __monitor_c@__ (random)
+    2. Uses 30% __monitor_line1__ (specific SET command) and 70% __monitor_line@__ (random)
     3. Verifies both command types execute correctly
     """
     # Create monitor input file
@@ -279,9 +279,9 @@ def test_monitor_input_mixed_commands(env):
         "name": env.testName,
         "args": [
             "--monitor-input={}".format(monitor_file),
-            "--command=__monitor_c1__",
+            "--command=__monitor_line1__",
             "--command-ratio=30",
-            "--command=__monitor_c@__",
+            "--command=__monitor_line@__",
             "--command-ratio=70",
         ],
     }
@@ -332,10 +332,10 @@ def test_monitor_input_malformed_placeholder_rejected(env):
     Test that malformed monitor placeholders are rejected with an error.
 
     This test verifies that placeholders like:
-    - __monitor_c1 (missing trailing __)
-    - __monitor_c1_ (only one trailing underscore)
-    - __monitor_c1__garbage (trailing characters)
-    - __monitor_c1abc__ (non-numeric characters before __)
+    - __monitor_line1 (missing trailing __)
+    - __monitor_line1_ (only one trailing underscore)
+    - __monitor_line1__garbage (trailing characters)
+    - __monitor_line1abc__ (non-numeric characters before __)
     are properly rejected when --monitor-input is provided.
     """
     # Create monitor input file
@@ -347,11 +347,11 @@ def test_monitor_input_malformed_placeholder_rejected(env):
         )
 
     malformed_placeholders = [
-        "__monitor_c1",        # missing trailing __
-        "__monitor_c1_",       # only one trailing underscore
-        "__monitor_c1__garbage",  # trailing characters after valid placeholder
-        "__monitor_c1abc__",   # non-numeric characters before __
-        "__monitor_c__",       # missing index number
+        "__monitor_line1",        # missing trailing __
+        "__monitor_line1_",       # only one trailing underscore
+        "__monitor_line1__garbage",  # trailing characters after valid placeholder
+        "__monitor_line1abc__",   # non-numeric characters before __
+        "__monitor_line__",       # missing index number
     ]
 
     config = get_default_memtier_config(threads=1, clients=1, requests=10)
@@ -410,7 +410,7 @@ def test_monitor_input_malformed_placeholder_rejected(env):
 
 def test_monitor_placeholder_literal_without_monitor_input(env):
     """
-    Test that __monitor_c1__ is treated as a literal command when --monitor-input is not provided.
+    Test that __monitor_line1__ is treated as a literal command when --monitor-input is not provided.
 
     When monitor input is not configured, placeholder-like strings should be sent
     to Redis as-is (which will result in an unknown command error from Redis).
@@ -422,7 +422,7 @@ def test_monitor_placeholder_literal_without_monitor_input(env):
     benchmark_specs = {
         "name": env.testName,
         "args": [
-            "--command=__monitor_c1__",  # This should be sent literally to Redis
+            "--command=__monitor_line1__",  # This should be sent literally to Redis
         ],
     }
     addTLSArgs(benchmark_specs, env)
@@ -439,7 +439,7 @@ def test_monitor_placeholder_literal_without_monitor_input(env):
 
     # Run memtier_benchmark
     # This should NOT fail with "invalid monitor placeholder" error
-    # It will likely fail because Redis doesn't recognize __monitor_c1__ as a command,
+    # It will likely fail because Redis doesn't recognize __monitor_line1__ as a command,
     # but that's a Redis error, not a memtier validation error
     benchmark.run()  # Result doesn't matter - we only care about the error type
 
@@ -483,7 +483,7 @@ def test_monitor_random_reproducible_without_randomize(env):
     # Run configuration - single thread/client for deterministic ordering
     base_args = [
         "--monitor-input={}".format(monitor_file),
-        "--command=__monitor_c@__",
+        "--command=__monitor_line@__",
         "--monitor-pattern=R",  # Random selection
         # Note: NO --randomize flag - should use constant seed
     ]
@@ -542,3 +542,122 @@ def test_monitor_random_reproducible_without_randomize(env):
 
     # Verify both runs produced the same command distribution
     env.assertEqual(counts_run1, counts_run2)
+
+
+def test_command_stats_breakdown_by_command(env):
+    """
+    Test that --command-stats-breakdown=command (default) aggregates stats by command type.
+
+    This test:
+    1. Runs memtier with multiple SET and GET commands
+    2. Verifies the output shows aggregated "Sets" and "Gets" rows (not per-command)
+    """
+    test_dir = tempfile.mkdtemp()
+
+    # Configure memtier with multiple commands of the same type
+    benchmark_specs = {
+        "name": env.testName,
+        "args": [
+            "--command=SET foo __key__ __data__",
+            "--command=SET bar __key__ __data__",
+            "--command=GET foo",
+            "--command=GET bar",
+            "--hide-histogram",
+            # Default is --command-stats-breakdown=command
+        ],
+    }
+    addTLSArgs(benchmark_specs, env)
+
+    config = get_default_memtier_config(threads=1, clients=1, requests=100)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # Run memtier_benchmark
+    memtier_ok = benchmark.run()
+
+    # Verify success
+    debugPrintMemtierOnError(config, env)
+    env.assertTrue(memtier_ok == True)
+
+    # Check stdout for aggregated output
+    with open("{0}/mb.stdout".format(config.results_dir)) as stdout:
+        stdout_content = stdout.read()
+        env.debugPrint("stdout content:\n{}".format(stdout_content), True)
+
+        # Count occurrences of "Sets" and "Gets" in the output
+        # With aggregation, we should see exactly one "Sets" row and one "Gets" row
+        lines = stdout_content.split("\n")
+        sets_count = sum(1 for line in lines if line.strip().startswith("Sets"))
+        gets_count = sum(1 for line in lines if line.strip().startswith("Gets"))
+
+        env.debugPrint("Sets rows: {}, Gets rows: {}".format(sets_count, gets_count), True)
+
+        # Should have exactly 1 Sets row and 1 Gets row (aggregated)
+        env.assertEqual(sets_count, 1)
+        env.assertEqual(gets_count, 1)
+
+
+def test_command_stats_breakdown_by_line(env):
+    """
+    Test that --command-stats-breakdown=line shows each command line separately.
+
+    This test:
+    1. Runs memtier with multiple SET and GET commands
+    2. Uses --command-stats-breakdown=line
+    3. Verifies the output shows separate rows for each command
+    """
+    test_dir = tempfile.mkdtemp()
+
+    # Configure memtier with multiple commands of the same type
+    benchmark_specs = {
+        "name": env.testName,
+        "args": [
+            "--command=SET foo __key__ __data__",
+            "--command=SET bar __key__ __data__",
+            "--command=GET foo",
+            "--command=GET bar",
+            "--hide-histogram",
+            "--command-stats-breakdown=line",  # Show per-command stats
+        ],
+    }
+    addTLSArgs(benchmark_specs, env)
+
+    config = get_default_memtier_config(threads=1, clients=1, requests=100)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # Run memtier_benchmark
+    memtier_ok = benchmark.run()
+
+    # Verify success
+    debugPrintMemtierOnError(config, env)
+    env.assertTrue(memtier_ok == True)
+
+    # Check stdout for per-command output
+    with open("{0}/mb.stdout".format(config.results_dir)) as stdout:
+        stdout_content = stdout.read()
+        env.debugPrint("stdout content:\n{}".format(stdout_content), True)
+
+        # Count occurrences of "Sets" and "Gets" in the output
+        # Without aggregation, we should see 2 "Sets" rows and 2 "Gets" rows
+        lines = stdout_content.split("\n")
+        sets_count = sum(1 for line in lines if line.strip().startswith("Sets"))
+        gets_count = sum(1 for line in lines if line.strip().startswith("Gets"))
+
+        env.debugPrint("Sets rows: {}, Gets rows: {}".format(sets_count, gets_count), True)
+
+        # Should have 2 Sets rows and 2 Gets rows (one per command)
+        env.assertEqual(sets_count, 2)
+        env.assertEqual(gets_count, 2)

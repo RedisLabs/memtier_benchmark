@@ -117,8 +117,8 @@ class object_generator;
 
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
-#define MONITOR_PLACEHOLDER_PREFIX "__monitor_c"
-#define MONITOR_RANDOM_PLACEHOLDER "__monitor_c@__"
+#define MONITOR_PLACEHOLDER_PREFIX "__monitor_line"
+#define MONITOR_RANDOM_PLACEHOLDER "__monitor_line@__"
 
 enum command_arg_type
 {

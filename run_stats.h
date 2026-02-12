@@ -90,6 +90,15 @@ public:
     void print(FILE *out, const char *header);
 };
 
+// Structure to hold aggregated stats by command type
+struct aggregated_command_type_stats
+{
+    std::string command_type;            // e.g., "SET", "GET"
+    totals_cmd stats;                    // aggregated totals
+    safe_hdr_histogram latency_hist;     // merged histogram
+    std::vector<size_t> command_indices; // indices of commands with this type
+};
+
 class run_stats
 {
 protected:
@@ -180,17 +189,30 @@ public:
 
     // function to handle the results output
     bool print_arbitrary_commands_results();
-    void print_type_column(output_table &table, arbitrary_command_list &command_list);
-    void print_ops_sec_column(output_table &table);
+
+    // Build aggregated stats by command type (e.g., SET, GET) from per-command stats
+    std::vector<aggregated_command_type_stats> build_aggregated_command_stats(arbitrary_command_list &command_list);
+
+    void print_type_column(output_table &table, arbitrary_command_list &command_list,
+                           const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_ops_sec_column(output_table &table,
+                              const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
     void print_hits_sec_column(output_table &table);
     void print_missess_sec_column(output_table &table);
-    void print_moved_sec_column(output_table &table);
-    void print_ask_sec_column(output_table &table);
-    void print_avg_latency_column(output_table &table);
-    void print_quantile_latency_column(output_table &table, double quantile, char *label);
-    void print_kb_sec_column(output_table &table);
-    void print_json(json_handler *jsonhandler, arbitrary_command_list &command_list, bool cluster_mode);
-    void print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_command_list &command_list);
+    void print_moved_sec_column(output_table &table,
+                                const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_ask_sec_column(output_table &table,
+                              const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_avg_latency_column(output_table &table,
+                                  const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_quantile_latency_column(output_table &table, double quantile, char *label,
+                                       const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_kb_sec_column(output_table &table,
+                             const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_json(json_handler *jsonhandler, arbitrary_command_list &command_list, bool cluster_mode,
+                    const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
+    void print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_command_list &command_list,
+                         const std::vector<aggregated_command_type_stats> *aggregated = nullptr);
     void print(FILE *file, benchmark_config *config, const char *header = NULL, json_handler *jsonhandler = NULL);
 
     unsigned int get_duration(void);

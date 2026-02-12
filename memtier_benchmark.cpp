@@ -677,6 +677,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_command_ratio,
         o_monitor_input,
         o_monitor_pattern,
+        o_command_stats_breakdown,
         o_tls,
         o_tls_cert,
         o_tls_key,
@@ -765,6 +766,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         {"command-ratio", 1, 0, o_command_ratio},
         {"monitor-input", 1, 0, o_monitor_input},
         {"monitor-pattern", 1, 0, o_monitor_pattern},
+        {"command-stats-breakdown", 1, 0, o_command_stats_breakdown},
         {"rate-limiting", 1, 0, o_rate_limiting},
         {"uri", 1, 0, o_uri},
         {NULL, 0, 0, 0}};
@@ -1242,6 +1244,21 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
             cfg->monitor_pattern = pattern;
             break;
         }
+        case o_command_stats_breakdown: {
+            if (!optarg) {
+                fprintf(stderr, "error: command-stats-breakdown requires a value: 'command' or 'line'.\n");
+                return -1;
+            }
+            if (strcasecmp(optarg, "command") == 0) {
+                cfg->command_stats_by_type = true;
+            } else if (strcasecmp(optarg, "line") == 0) {
+                cfg->command_stats_by_type = false;
+            } else {
+                fprintf(stderr, "error: command-stats-breakdown must be 'command' or 'line'.\n");
+                return -1;
+            }
+            break;
+        }
         case o_rate_limiting: {
             endptr = NULL;
             cfg->request_rate = (unsigned int) strtoul(optarg, &endptr, 10);
@@ -1412,13 +1429,17 @@ void usage()
         "                                 S for Sequential.\n"
         "                                 P for Parallel (Sequential were each client has a subset of the key-range).\n"
         "      --monitor-input=FILE       Read commands from Redis MONITOR output file.\n"
-        "                                 Commands can be referenced as __monitor_c1__, __monitor_c2__, etc.\n"
-        "                                 Use __monitor_c@__ to select commands from the file.\n"
+        "                                 Commands can be referenced as __monitor_line1__, __monitor_line2__, etc.\n"
+        "                                 Use __monitor_line@__ to select commands from the file.\n"
         "                                 By default, selection is sequential; use --monitor-pattern=R for random.\n"
-        "                                 For example: --monitor-input=monitor.txt --command=\"__monitor_c1__\"\n"
+        "                                 For example: --monitor-input=monitor.txt --command=\"__monitor_line1__\"\n"
         "      --monitor-pattern=S|R      Pattern for selecting monitor commands (default: S for Sequential)\n"
         "                                 S for Sequential selection.\n"
         "                                 R for Random selection.\n"
+        "      --command-stats-breakdown=command|line\n"
+        "                                 How to group command statistics in the output (default: command)\n"
+        "                                 command: aggregate by command name (first word, e.g., SET, GET)\n"
+        "                                 line: show each command line separately\n"
         "\n"
         "Object Options:\n"
         "  -d  --data-size=SIZE           Object data size in bytes (default: 32)\n"
@@ -1956,6 +1977,7 @@ int main(int argc, char *argv[])
     benchmark_config cfg = benchmark_config();
     cfg.arbitrary_commands = new arbitrary_command_list();
     cfg.monitor_commands = new monitor_command_list();
+    cfg.command_stats_by_type = true; // Default: aggregate by command type
 
     if (config_parse_args(argc, argv, &cfg) < 0) {
         usage();
@@ -1984,7 +2006,7 @@ int main(int argc, char *argv[])
             }
 
             // Check if command is a specific monitor placeholder
-            // Expected format: __monitor_cN__ where N is a 1-based index
+            // Expected format: __monitor_lineN__ where N is a 1-based index
             const size_t prefix_len = sizeof(MONITOR_PLACEHOLDER_PREFIX) - 1; // compile-time constant
             const size_t suffix_len = 2;                                      // "__"
             size_t cmd_len = cmd.command.length();
@@ -1997,7 +2019,7 @@ int main(int argc, char *argv[])
 
                 if (cmd_len > prefix_len + suffix_len && cmd.command[cmd_len - 2] == '_' &&
                     cmd.command[cmd_len - 1] == '_') {
-                    // Extract the index from __monitor_cN__
+                    // Extract the index from __monitor_lineN__
                     const char *num_start = cmd.command.c_str() + prefix_len;
                     char *endptr;
                     index = strtol(num_start, &endptr, 10);
@@ -2011,8 +2033,8 @@ int main(int argc, char *argv[])
 
                 if (!valid) {
                     fprintf(stderr,
-                            "error: invalid monitor placeholder '%s' (valid range: __monitor_c1__ to __monitor_c%zu__ "
-                            "or __monitor_c@__)\n",
+                            "error: invalid monitor placeholder '%s' (valid range: __monitor_line1__ to "
+                            "__monitor_line%zu__ or __monitor_line@__)\n",
                             cmd.command.c_str(), cfg.monitor_commands->size());
                     exit(1);
                 }

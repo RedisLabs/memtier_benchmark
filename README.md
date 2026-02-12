@@ -97,10 +97,10 @@ for command line options.
 
 ### Using monitor input files
 
-You can replay real command streams by pointing memtier_benchmark to a monitor log file with the `--monitor-input=/path/to/file` option. Special commands such as `__monitor_c1__` pick a specific entry from the file, while `__monitor_c@__` selects commands at runtime (optionally combined with `--monitor-pattern` and `--command-ratio`). For example, the following command replays the first command from the file on each request:
+You can replay real command streams by pointing memtier_benchmark to a monitor log file with the `--monitor-input=/path/to/file` option. Special commands such as `__monitor_line1__` pick a specific entry from the file, while `__monitor_line@__` selects commands at runtime (optionally combined with `--monitor-pattern` and `--command-ratio`). For example, the following command replays the first command from the file on each request:
 
 ```
-$ memtier_benchmark --monitor-input=monitor.txt --command=__monitor_c1__
+$ memtier_benchmark --monitor-input=monitor.txt --command=__monitor_line1__
 ```
 
 This lets you mix synthetic workloads with realistic captured traffic in both standalone and Redis Cluster deployments.
@@ -115,6 +115,21 @@ OK
 ```
 
 You can pipe this output and filter specific patterns with tools such as `grep`, then save it to a file and use it as a `--monitor-input` source. For more details, see the official Redis documentation on [monitoring commands executed in Redis](https://redis.io/docs/latest/develop/tools/cli/#monitor-commands-executed-in-redis).
+
+### Command statistics breakdown
+
+By default, when using arbitrary commands (`--command`), statistics are aggregated by command type (e.g., all SET commands are grouped together, all GET commands are grouped together). You can control this behavior with the `--command-stats-breakdown` option:
+
+- `--command-stats-breakdown=command` (default): Aggregate statistics by command name (first word, e.g., SET, GET)
+- `--command-stats-breakdown=line`: Show each command line separately
+
+For example, if you run:
+
+```
+$ memtier_benchmark --command="SET foo __key__ __data__" --command="SET bar __key__ __data__" --command="GET foo"
+```
+
+With the default `command` breakdown, you'll see aggregated stats for "Sets" and "Gets". With `--command-stats-breakdown=line`, you'll see separate rows for each command line.
 
 ## Crash Reporting
 
