@@ -8,7 +8,11 @@ name: TSAN (ThreadSanitizer)
 # This workflow is informational and will not fail the build.
 # See: https://github.com/google/sanitizers/issues/1716 for TSAN/ASLR issues
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
 
 jobs:
   test-with-thread-sanitizer:

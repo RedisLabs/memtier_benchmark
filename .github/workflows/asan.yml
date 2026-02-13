@@ -4,7 +4,11 @@ name: ASAN (AddressSanitizer & LeakSanitizer)
 # This workflow builds memtier_benchmark with sanitizers enabled and runs
 # the full test suite to detect memory leaks and address errors.
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
 
 jobs:
   test-with-sanitizers:

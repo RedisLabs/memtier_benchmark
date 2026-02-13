@@ -4,7 +4,11 @@ name: UBSan (UndefinedBehaviorSanitizer)
 # This workflow builds memtier_benchmark with UBSan enabled and runs
 # the full test suite to detect undefined behavior issues.
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
 
 jobs:
   test-with-ubsan:
