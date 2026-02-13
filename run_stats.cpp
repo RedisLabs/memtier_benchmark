@@ -1378,10 +1378,13 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
                 // Note: per-second stats are not available for aggregated types
                 std::vector<one_sec_cmd_stats> empty_stats;
 
+                // Compute proper weighted average latency from histogram (not sum of averages)
+                double avg_latency = hdr_mean(agg.latency_hist) / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+
                 result_print_to_json(jsonhandler, command_name.c_str(), agg.stats.m_ops_sec, 0.0, 0.0,
                                      cluster_mode ? agg.stats.m_moved_sec : -1, cluster_mode ? agg.stats.m_ask_sec : -1,
                                      agg.stats.m_bytes_sec, agg.stats.m_bytes_sec_rx, agg.stats.m_bytes_sec_tx,
-                                     agg.stats.m_latency, agg.stats.m_total_latency, agg.stats.m_ops,
+                                     avg_latency, agg.stats.m_total_latency, agg.stats.m_ops,
                                      0.0, // connection_errors_sec (not tracked per command)
                                      0,   // connection_errors (not tracked per command)
                                      quantiles_list, agg.latency_hist, timestamps, empty_stats);

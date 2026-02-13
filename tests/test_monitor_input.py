@@ -601,6 +601,8 @@ def test_command_stats_breakdown_by_command(env):
 
 
 def test_command_stats_breakdown_by_line(env):
+    # cluster mode dose not support reconnect-interval option
+    env.skipOnCluster()
     """
     Test that --command-stats-breakdown=line shows each command line separately.
 
