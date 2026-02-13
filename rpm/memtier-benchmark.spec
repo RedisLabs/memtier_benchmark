@@ -52,6 +52,7 @@ autoreconf -ivf
 %doc README.md
 %{_bindir}/memtier_benchmark
 %{_mandir}/man1/memtier_benchmark.1*
+%{_datadir}/bash-completion/completions/memtier_benchmark
 
 %changelog
 * %(date "+%a %b %d %Y") Redis Team <oss@redis.com> - %{version}-%{release}
