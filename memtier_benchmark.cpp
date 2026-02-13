@@ -2082,10 +2082,6 @@ int main(int argc, char *argv[])
 
     // Process URI if provided
     if (cfg.uri) {
-        // Save original values before URI parsing
-        const char *orig_server = cfg.server;
-        const char *orig_authenticate = cfg.authenticate;
-
         // Check for conflicts with individual connection parameters
         if (cfg.server && strcmp(cfg.server, "localhost") != 0) {
             fprintf(stderr, "warning: both URI and --host/--server specified, URI takes precedence.\n");
@@ -2107,15 +2103,6 @@ int main(int argc, char *argv[])
 
         if (parse_uri(cfg.uri, &cfg) < 0) {
             exit(1);
-        }
-
-        // If URI parsing didn't change these values, clear them so we don't try to free them later
-        // (they point to optarg or static strings, not malloc'd memory)
-        if (cfg.server == orig_server) {
-            cfg.server = NULL;
-        }
-        if (cfg.authenticate == orig_authenticate) {
-            cfg.authenticate = NULL;
         }
 
         // Validate cluster mode constraints
