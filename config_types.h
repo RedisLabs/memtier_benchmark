@@ -158,8 +158,8 @@ struct arbitrary_command
 
     std::vector<command_arg> command_args;
     std::string command;
-    std::string command_name;  // Display name (e.g., "SET (Line 1)" or "SET")
-    std::string command_type;  // Base command type for aggregation (e.g., "SET")
+    std::string command_name; // Display name (e.g., "SET (Line 1)" or "SET")
+    std::string command_type; // Base command type for aggregation (e.g., "SET")
     char key_pattern;
     unsigned int keys_count;
     unsigned int ratio;
