@@ -299,7 +299,8 @@ static int hex_digit_to_int(char c)
     }
 }
 
-arbitrary_command::arbitrary_command(const char *cmd) : command(cmd), key_pattern('R'), keys_count(0), ratio(1)
+arbitrary_command::arbitrary_command(const char *cmd) :
+        command(cmd), key_pattern('R'), keys_count(0), ratio(1), stats_only(false)
 {
     // command name is the first word in the command
     size_t pos = command.find(" ");
@@ -481,6 +482,26 @@ err:
 
 // Monitor command list implementation
 
+// Helper function to extract command type (first word) from a monitor command string
+static std::string extract_command_type(const std::string &command_str)
+{
+    // Command format: "SET" "key" "value" or "GET" "key"
+    // Find the first word between quotes
+    size_t start = command_str.find('"');
+    if (start == std::string::npos) {
+        return "";
+    }
+    start++; // Skip the opening quote
+    size_t end = command_str.find('"', start);
+    if (end == std::string::npos) {
+        return "";
+    }
+    std::string cmd_type = command_str.substr(start, end - start);
+    // Convert to uppercase
+    std::transform(cmd_type.begin(), cmd_type.end(), cmd_type.begin(), ::toupper);
+    return cmd_type;
+}
+
 bool monitor_command_list::load_from_file(const char *filename)
 {
     FILE *file = fopen(filename, "r");
@@ -516,6 +537,10 @@ bool monitor_command_list::load_from_file(const char *filename)
         }
 
         commands.push_back(command_str);
+
+        // Extract and store the command type (e.g., "SET", "GET")
+        std::string cmd_type = extract_command_type(command_str);
+        command_types.push_back(cmd_type);
     }
 
     free(line);
@@ -564,4 +589,47 @@ const std::string &monitor_command_list::get_next_sequential_command(size_t *out
     index = index % commands.size();
     if (out_index) *out_index = index;
     return commands[index];
+}
+
+std::vector<std::string> monitor_command_list::get_unique_command_types() const
+{
+    std::vector<std::string> unique_types;
+    for (const auto &type : command_types) {
+        if (!type.empty() && std::find(unique_types.begin(), unique_types.end(), type) == unique_types.end()) {
+            unique_types.push_back(type);
+        }
+    }
+    return unique_types;
+}
+
+void monitor_command_list::setup_stats_indices(size_t base_index)
+{
+    // Build mapping from command type to stats index
+    type_to_stats_index.clear();
+    std::vector<std::string> unique_types = get_unique_command_types();
+    for (size_t i = 0; i < unique_types.size(); i++) {
+        type_to_stats_index[unique_types[i]] = base_index + i;
+    }
+}
+
+size_t monitor_command_list::get_stats_index(size_t cmd_index) const
+{
+    if (cmd_index >= command_types.size()) {
+        return 0;
+    }
+    const std::string &type = command_types[cmd_index];
+    auto it = type_to_stats_index.find(type);
+    if (it != type_to_stats_index.end()) {
+        return it->second;
+    }
+    return 0; // Fallback (should not happen if setup_stats_indices was called)
+}
+
+const std::string &monitor_command_list::get_command_type(size_t cmd_index) const
+{
+    if (cmd_index >= command_types.size()) {
+        static std::string empty;
+        return empty;
+    }
+    return command_types[cmd_index];
 }

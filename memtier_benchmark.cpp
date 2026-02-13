@@ -2007,13 +2007,44 @@ int main(int argc, char *argv[])
 
             // Check if command is a random monitor placeholder
             if (strcmp(cmd.command.c_str(), MONITOR_RANDOM_PLACEHOLDER) == 0) {
+                // Get unique command types from the monitor file
+                std::vector<std::string> unique_types = cfg.monitor_commands->get_unique_command_types();
+
+                if (unique_types.empty()) {
+                    fprintf(stderr, "error: no valid commands found in monitor input file\n");
+                    exit(1);
+                }
+
+                // The current command index is where we'll add the stats slots
+                // Add new arbitrary_command entries for each unique command type
+                size_t base_stats_index = cfg.arbitrary_commands->size();
+
+                for (const auto &cmd_type : unique_types) {
+                    // Create a placeholder command for stats tracking
+                    std::string placeholder = "MONITOR_" + cmd_type;
+                    arbitrary_command stats_cmd(placeholder.c_str());
+                    stats_cmd.command_name = cmd_type;
+                    stats_cmd.command_type = cmd_type;
+                    // Mark it as a stats-only slot (no actual command to send)
+                    stats_cmd.command_args.clear();
+                    stats_cmd.stats_only = true;
+                    cfg.arbitrary_commands->add_command(stats_cmd);
+                }
+
+                // Set up the stats index mapping in monitor_command_list
+                cfg.monitor_commands->setup_stats_indices(base_stats_index);
+
+                // Re-get the reference since vector may have reallocated
+                arbitrary_command &placeholder_cmd = cfg.arbitrary_commands->at(i);
+
                 // Mark this command as random monitor type - will be expanded at runtime
-                cmd.command_args.clear();
+                placeholder_cmd.command_args.clear();
                 command_arg arg(MONITOR_RANDOM_PLACEHOLDER, strlen(MONITOR_RANDOM_PLACEHOLDER));
                 arg.type = monitor_random_type;
                 arg.monitor_index = 0; // 0 means random
-                cmd.command_args.push_back(arg);
-                cmd.command_name = "MONITOR_RANDOM";
+                placeholder_cmd.command_args.push_back(arg);
+                placeholder_cmd.command_name = "MONITOR_RANDOM";
+                placeholder_cmd.command_type = "MONITOR_RANDOM";
                 continue;
             }
 
@@ -2142,6 +2173,11 @@ int main(int argc, char *argv[])
 
         // Skip formatting for random monitor commands - they will be formatted at runtime
         if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
+            continue;
+        }
+
+        // Skip stats-only commands - they are not executed, just for stats tracking
+        if (cmd.stats_only) {
             continue;
         }
 

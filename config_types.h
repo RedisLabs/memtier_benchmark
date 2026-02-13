@@ -28,6 +28,7 @@
 #include <vector>
 #include <string>
 #include <atomic>
+#include <map>
 
 struct config_range
 {
@@ -163,6 +164,7 @@ struct arbitrary_command
     char key_pattern;
     unsigned int keys_count;
     unsigned int ratio;
+    bool stats_only; // If true, this is a stats-only slot (not executed, just for stats tracking)
 };
 
 struct arbitrary_command_list
@@ -206,6 +208,8 @@ struct monitor_command_list
 {
 private:
     std::vector<std::string> commands;
+    std::vector<std::string> command_types;            // Command type for each command (e.g., "SET", "GET")
+    std::map<std::string, size_t> type_to_stats_index; // Maps command type to stats slot index
     std::atomic<size_t> next_index;
 
 public:
@@ -217,6 +221,18 @@ public:
     const std::string &get_next_sequential_command(size_t *out_index);
 
     size_t size() const { return commands.size(); }
+
+    // Get unique command types found in the file (for stats allocation)
+    std::vector<std::string> get_unique_command_types() const;
+
+    // Set up stats index mapping - called after allocating stats slots
+    void setup_stats_indices(size_t base_index);
+
+    // Get the stats index for a command at the given file index
+    size_t get_stats_index(size_t cmd_index) const;
+
+    // Get the command type for a command at the given file index
+    const std::string &get_command_type(size_t cmd_index) const;
 };
 
 #endif /* _CONFIG_TYPES_H */
