@@ -31,9 +31,6 @@
 #include "memtier_benchmark.h"
 #include "libmemcached_protocol/binary.h"
 
-// External log level for debug output
-extern int log_level;
-
 /////////////////////////////////////////////////////////////////////////
 
 abstract_protocol::abstract_protocol() : m_read_buf(NULL), m_write_buf(NULL), m_keep_value(false) {}
@@ -494,30 +491,6 @@ int redis_protocol::parse_response(void)
     while (true) {
         switch (m_response_state) {
         case rs_initial:
-            // Debug: dump raw response buffer
-            if (log_level > 0) {
-                size_t buf_len = evbuffer_get_length(m_read_buf);
-                if (buf_len > 0) {
-                    unsigned char *buf_data = evbuffer_pullup(m_read_buf, buf_len);
-                    fprintf(stderr, "RAW RESPONSE [%zu bytes]: ", buf_len);
-                    for (size_t i = 0; i < buf_len && i < 512; i++) {
-                        if (buf_data[i] >= 32 && buf_data[i] <= 126) {
-                            fprintf(stderr, "%c", buf_data[i]);
-                        } else if (buf_data[i] == '\r') {
-                            fprintf(stderr, "\\r");
-                        } else if (buf_data[i] == '\n') {
-                            fprintf(stderr, "\\n");
-                        } else {
-                            fprintf(stderr, "\\x%02x", buf_data[i]);
-                        }
-                    }
-                    if (buf_len > 512) {
-                        fprintf(stderr, "... [truncated]");
-                    }
-                    fprintf(stderr, "\n");
-                }
-            }
-
             // clear last response
             m_last_response.clear();
             m_response_len = 0;
