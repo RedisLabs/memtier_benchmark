@@ -42,7 +42,8 @@ It offers the following features:
 %build
 autoreconf -ivf
 %configure
-%make_build
+# Use distribution flags + fPIC for PIE support (required on el10+)
+%make_build CXXFLAGS="%{optflags} -fPIC"
 
 %install
 %make_install
