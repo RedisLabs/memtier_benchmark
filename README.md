@@ -111,6 +111,8 @@ When the number of requested operations exceeds the number of commands in the mo
 
 This allows you to benchmark with a representative sample of traffic patterns at any scale.
 
+> **Note:** When using `__monitor_line@__` (runtime command selection), all statistics are attributed to the placeholder command ("Monitor_randoms") rather than the actual Redis command types (SET, GET, etc.). This is a known limitation. For per-command-type statistics, use specific line placeholders like `__monitor_line1__`, `__monitor_line2__`, etc.
+
 To generate monitor logs, you can use the Redis `MONITOR` command from `redis-cli`, which prints all commands received by the server. For example:
 
 ```
