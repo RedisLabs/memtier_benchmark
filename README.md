@@ -132,7 +132,7 @@ By default, when using arbitrary commands (`--command`), statistics are aggregat
 For example, if you run:
 
 ```
-$ memtier_benchmark --command="SET foo __key__ __data__" --command="SET bar __key__ __data__" --command="GET foo"
+$ memtier_benchmark --command="SET foo __data__" --command="SET bar __data__" --command="GET foo"
 ```
 
 With the default `command` breakdown, you'll see aggregated stats for "Sets" and "Gets". With `--command-stats-breakdown=line`, you'll see separate rows for each command line.
