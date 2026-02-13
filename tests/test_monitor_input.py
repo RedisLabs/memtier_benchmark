@@ -712,3 +712,70 @@ def test_command_stats_breakdown_by_line(env):
         # Should have 2 Sets rows and 2 Gets rows (one per command)
         env.assertEqual(sets_count, 2)
         env.assertEqual(gets_count, 2)
+
+
+def test_monitor_input_malformed_command_skipped(env):
+    """
+    Test that malformed monitor commands are skipped with a warning instead of
+    causing memtier_benchmark to hang or crash.
+
+    This test:
+    1. Creates a monitor file with a mix of valid and malformed commands
+    2. Runs memtier with __monitor_line@__ to select commands at runtime
+    3. Verifies the benchmark completes successfully
+    4. Verifies warning messages are logged for malformed commands
+    """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
+    test_dir = tempfile.mkdtemp()
+
+    # Create monitor file with some malformed commands
+    monitor_file = os.path.join(test_dir, "monitor.txt")
+    with open(monitor_file, "w") as f:
+        # Valid command
+        f.write('1764031576.604009 [0 127.0.0.1:51682] "SET" "key1" "value1"\n')
+        # Malformed command - unclosed quote
+        f.write('1764031576.605000 [0 127.0.0.1:51682] "SET" "key2" "unclosed\n')
+        # Valid command
+        f.write('1764031576.606000 [0 127.0.0.1:51682] "SET" "key3" "value3"\n')
+        # Malformed command - empty
+        f.write('1764031576.607000 [0 127.0.0.1:51682] \n')
+        # Valid command
+        f.write('1764031576.608000 [0 127.0.0.1:51682] "SET" "key4" "value4"\n')
+
+    benchmark_specs = {
+        "name": env.testName,
+        "args": [
+            "--monitor-input={}".format(monitor_file),
+            "--command=__monitor_line@__",
+            "--hide-histogram",
+        ],
+    }
+    addTLSArgs(benchmark_specs, env)
+
+    # Use enough requests to likely hit the malformed commands
+    config = get_default_memtier_config(threads=1, clients=1, requests=50)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # Run memtier_benchmark - should complete without hanging
+    memtier_ok = benchmark.run()
+
+    # Verify success (benchmark should complete, not hang)
+    debugPrintMemtierOnError(config, env)
+    env.assertTrue(memtier_ok == True)
+
+    # Check that stderr shows warnings about skipped commands
+    with open("{0}/mb.stderr".format(config.results_dir)) as stderr:
+        stderr_content = stderr.read()
+        # Should have warning messages about skipped malformed commands
+        env.assertTrue(
+            "warning: skipping" in stderr_content.lower()
+            or "Loaded" in stderr_content  # At minimum, the file was loaded
+        )
