@@ -234,23 +234,52 @@ jobs:
         ./tests/run_tests.sh
 
   coverage-ubuntu:
-    needs: test-ubuntu
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
-
-    - name: Download build artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: memtier-build-ubuntu-22.04
-
-    - name: Restore executable permissions
-      run: chmod +x memtier_benchmark
 
     - name: Install dependencies
       run: |
         sudo apt-get -qq update
         sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
+
+    - name: Build with coverage
+      # for coverage reports we need to use Ubuntu 22.04 or lower
+      # (given Ubuntu 24.04 uses lcov >= 2.0 which is not supported on autoconf still)
+      run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
+
+    - name: Install Python dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
+      run: |
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Increase connection limit
+      run: |
+        sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+        sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+        ulimit -n 40960
+
+    - name: Run tests for coverage
+      timeout-minutes: 10
+      env:
+        OSS_STANDALONE: "1"
+        OSS_CLUSTER: "0"
+        TLS: "0"
+        VERBOSE: "1"
+      run: |
+        ./tests/run_tests.sh
 
     - name: Capture code coverage
       timeout-minutes: 6
