@@ -142,6 +142,59 @@ jobs:
       # for coverage reports we need to use Ubuntu 22.04 or lower
       # (given Ubuntu 24.04 uses lcov >= 2.0 which is not support on autoconf still)
       run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: memtier-build-${{ matrix.platform }}
+        path: |
+          memtier_benchmark
+          .libs/
+        retention-days: 1
+
+  test-ubuntu:
+    needs: build-ubuntu
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04]
+        test-config:
+          - name: "OSS TCP"
+            env: {}
+            tls: false
+          - name: "OSS TCP TLS"
+            env: { TLS: "1" }
+            tls: true
+          - name: "OSS TCP TLS v1.2"
+            env: { TLS: "1", TLS_PROTOCOLS: "TLSv1.2", VERBOSE: "1" }
+            tls: true
+          - name: "OSS TCP TLS v1.3"
+            env: { TLS: "1", TLS_PROTOCOLS: "TLSv1.3", VERBOSE: "1" }
+            tls: true
+          - name: "OSS-CLUSTER TCP"
+            env: { OSS_STANDALONE: "0", OSS_CLUSTER: "1", VERBOSE: "1" }
+            tls: false
+          - name: "OSS-CLUSTER TCP TLS"
+            env: { OSS_STANDALONE: "0", OSS_CLUSTER: "1", TLS: "1", VERBOSE: "1" }
+            tls: true
+    runs-on: ${{ matrix.platform }}
+    name: Test ${{ matrix.test-config.name }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: memtier-build-${{ matrix.platform }}
+
+    - name: Restore executable permissions
+      run: chmod +x memtier_benchmark
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
+
     - name: Setup Python
       uses: actions/setup-python@v2
       with:
@@ -166,49 +219,37 @@ jobs:
         ulimit -n 40960
 
     - name: Generate TLS test certificates
-      if: matrix.platform == 'ubuntu-latest'
+      if: matrix.test-config.tls
       run: |
           ./tests/gen-test-certs.sh
 
-    - name: Test OSS TCP
+    - name: Run tests
       timeout-minutes: 10
+      env: ${{ matrix.test-config.env }}
       run: |
         ./tests/run_tests.sh
 
-    - name: Test OSS TCP TLS
-      if: matrix.platform == 'ubuntu-latest'
-      timeout-minutes: 10
-      run: |
-        TLS=1 ./tests/run_tests.sh
+  coverage-ubuntu:
+    needs: test-ubuntu
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
 
-    - name: Test OSS TCP TLS v1.2
-      if: matrix.platform == 'ubuntu-latest'
-      timeout-minutes: 10
-      run: |
-        TLS_PROTOCOLS='TLSv1.2' VERBOSE=1 TLS=1 ./tests/run_tests.sh
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: memtier-build-ubuntu-22.04
 
-    - name: Test OSS TCP TLS v1.3
-      if: matrix.platform == 'ubuntu-latest'
-      timeout-minutes: 10
-      run: |
-        TLS_PROTOCOLS='TLSv1.3' VERBOSE=1 TLS=1 ./tests/run_tests.sh
+    - name: Restore executable permissions
+      run: chmod +x memtier_benchmark
 
-    - name: Test OSS-CLUSTER TCP
-      timeout-minutes: 10
+    - name: Install dependencies
       run: |
-        OSS_STANDALONE=0 OSS_CLUSTER=1 VERBOSE=1 \
-        ./tests/run_tests.sh
-
-    - name: Test OSS-CLUSTER TCP TLS
-      timeout-minutes: 10
-      if: matrix.platform == 'ubuntu-latest'
-      run: |
-        OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 VERBOSE=1 \
-        ./tests/run_tests.sh
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
 
     - name: Capture code coverage
       timeout-minutes: 6
-      if: matrix.platform == 'ubuntu-latest'
       run: |
         make code-coverage-capture
         bash <(curl -s https://codecov.io/bash) -f memtier_benchmark-*-coverage.info || echo "Codecov did not collect coverage reports"
