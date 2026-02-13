@@ -1,5 +1,6 @@
 import tempfile
 import os
+import json
 from include import *
 from mb import Benchmark, RunConfig
 
@@ -614,6 +615,44 @@ def test_command_stats_breakdown_by_command(env):
         # Should have exactly 1 Sets row and 1 Gets row (aggregated)
         env.assertEqual(sets_count, 1)
         env.assertEqual(gets_count, 1)
+
+    # Verify JSON output includes time series data for aggregated command types
+    json_filename = "{0}/mb.json".format(config.results_dir)
+    with open(json_filename) as results_json:
+        results_dict = json.load(results_json)
+
+        # Check that aggregated command types have Time-Serie data
+        set_metrics = results_dict["ALL STATS"]["Sets"]
+        get_metrics = results_dict["ALL STATS"]["Gets"]
+
+        # Verify Time-Serie exists and is not empty
+        env.assertTrue("Time-Serie" in set_metrics)
+        env.assertTrue("Time-Serie" in get_metrics)
+
+        set_metrics_ts = set_metrics["Time-Serie"]
+        get_metrics_ts = get_metrics["Time-Serie"]
+
+        # Time series should have at least one second of data
+        env.assertTrue(len(set_metrics_ts) > 0)
+        env.assertTrue(len(get_metrics_ts) > 0)
+
+        # Verify time series data has expected fields
+        for second_data in set_metrics_ts.values():
+            env.assertTrue("Count" in second_data)
+            env.assertTrue("Bytes RX" in second_data)
+            env.assertTrue("Bytes TX" in second_data)
+            # If we had commands on that second, verify latency metrics exist
+            if second_data["Count"] > 0:
+                env.assertTrue("p50.00" in second_data)
+                env.assertTrue("p99.00" in second_data)
+
+        for second_data in get_metrics_ts.values():
+            env.assertTrue("Count" in second_data)
+            env.assertTrue("Bytes RX" in second_data)
+            env.assertTrue("Bytes TX" in second_data)
+            if second_data["Count"] > 0:
+                env.assertTrue("p50.00" in second_data)
+                env.assertTrue("p99.00" in second_data)
 
 
 def test_command_stats_breakdown_by_line(env):
