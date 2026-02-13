@@ -1005,6 +1005,12 @@ run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
 
     for (unsigned int i = 0; i < command_list.size(); i++) {
         std::string cmd_type = command_list[i].command_type;
+
+        // Skip the MONITOR_RANDOM placeholder - it never receives stats
+        // (stats are attributed to the actual command type slots instead)
+        if (cmd_type == "MONITOR_RANDOM") {
+            continue;
+        }
         // command_type is the base command name for aggregation (e.g., "SET")
 
         // Get per-second stats for this command
@@ -1038,6 +1044,12 @@ run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
 
     for (unsigned int i = 0; i < command_list.size(); i++) {
         std::string cmd_type = command_list[i].command_type;
+
+        // Skip the MONITOR_RANDOM placeholder
+        if (cmd_type == "MONITOR_RANDOM") {
+            continue;
+        }
+
         if (std::find(seen_types.begin(), seen_types.end(), cmd_type) == seen_types.end()) {
             seen_types.push_back(cmd_type);
             result.push_back(type_map[cmd_type]);
