@@ -103,7 +103,7 @@ You can replay real command streams by pointing memtier_benchmark to a monitor l
 $ memtier_benchmark --monitor-input=monitor.txt --command=__monitor_line1__
 ```
 
-This lets you mix synthetic workloads with realistic captured traffic in both standalone and Redis Cluster deployments.
+This lets you mix synthetic workloads with realistic captured traffic. Note that monitor input is only supported in single endpoint mode (not cluster mode).
 
 To generate monitor logs, you can use the Redis `MONITOR` command from `redis-cli`, which prints all commands received by the server. For example:
 

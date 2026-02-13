@@ -116,8 +116,7 @@ client::client(client_group *group) :
         m_arbitrary_command_ratio_count(0),
         m_executed_command_index(0),
         m_tot_set_ops(0),
-        m_tot_wait_ops(0),
-        m_selected_monitor_index(SIZE_MAX)
+        m_tot_wait_ops(0)
 {
     m_event_base = group->get_event_base();
 
@@ -145,8 +144,7 @@ client::client(struct event_base *event_base, benchmark_config *config, abstract
         m_executed_command_index(0),
         m_tot_set_ops(0),
         m_tot_wait_ops(0),
-        m_keylist(NULL),
-        m_selected_monitor_index(SIZE_MAX)
+        m_keylist(NULL)
 {
     m_event_base = event_base;
 
@@ -303,28 +301,16 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
 
     // Check if this is a monitor command placeholder - handle it specially
     if (cmd.command_args.size() == 1 && cmd.command_args[0].type == monitor_random_type) {
-        // Check if cluster_client pre-selected a monitor index for us
+        // Select a command from the monitor file at runtime based on the monitor pattern
         size_t selected_index = 0;
         const std::string *monitor_cmd_ptr = NULL;
-
-        if (m_selected_monitor_index != SIZE_MAX) {
-            // Use the pre-selected index (set by cluster_client for proper routing)
-            selected_index = m_selected_monitor_index;
-            monitor_cmd_ptr = &m_config->monitor_commands->get_command(selected_index);
-            m_selected_monitor_index = SIZE_MAX; // Reset for next request
-            benchmark_debug_log("%s: pre-routed monitor command (q%zu): %s\n",
-                                m_connections[conn_id]->get_readable_id(),
-                                selected_index + 1, // 1-based index for user display
-                                monitor_cmd_ptr->c_str());
-        } else if (m_config->monitor_pattern == 'R') {
-            // Random mode - select at runtime (non-cluster mode only)
+        if (m_config->monitor_pattern == 'R') {
             monitor_cmd_ptr = &m_config->monitor_commands->get_random_command(m_obj_gen, &selected_index);
             benchmark_debug_log("%s: random monitor command selected (q%zu): %s\n",
                                 m_connections[conn_id]->get_readable_id(),
                                 selected_index + 1, // 1-based index for user display
                                 monitor_cmd_ptr->c_str());
         } else {
-            // Sequential mode - select at runtime (non-cluster mode only)
             monitor_cmd_ptr = &m_config->monitor_commands->get_next_sequential_command(&selected_index);
             benchmark_debug_log("%s: sequential monitor command selected (q%zu): %s\n",
                                 m_connections[conn_id]->get_readable_id(),
@@ -339,13 +325,6 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
         if (!temp_cmd.split_command_to_args()) {
             fprintf(stderr, "error: failed to parse random monitor command at runtime: %s\n", monitor_cmd.c_str());
             return false;
-        }
-
-        // Mark the first argument as a literal key for cluster routing
-        // Most Redis commands have the key as the first argument after the command name
-        if (temp_cmd.command_args.size() > 0) {
-            temp_cmd.command_args[0].type = literal_key_type;
-            temp_cmd.keys_count = 1;
         }
 
         // Format the command for the protocol (adds RESP headers)
@@ -365,9 +344,6 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
                 assert(res == available_for_conn);
                 cmd_size +=
                     m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
-            } else if (arg->type == literal_key_type) {
-                // Send the literal key value from the monitor command
-                cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, arg->data.c_str(), arg->data.length());
             } else if (arg->type == data_type) {
                 unsigned int value_len;
                 const char *value = m_obj_gen->get_value(0, &value_len);
@@ -433,9 +409,6 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
                 cmd_size +=
                     m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
             }
-        } else if (arg->type == literal_key_type) {
-            // Send the literal key value from the monitor command
-            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, arg->data.c_str(), arg->data.length());
         } else if (arg->type == data_type) {
             unsigned int value_len;
             const char *value = m_obj_gen->get_value(0, &value_len);

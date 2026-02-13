@@ -1991,6 +1991,12 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
+        // Monitor input only works with single endpoint (not cluster mode)
+        if (cfg.cluster_mode) {
+            fprintf(stderr, "error: --monitor-input is not supported in cluster mode.\n");
+            exit(1);
+        }
+
         if (!cfg.monitor_commands->load_from_file(cfg.monitor_input)) {
             exit(1);
         }
@@ -2054,13 +2060,6 @@ int main(int argc, char *argv[])
                 if (!cmd.split_command_to_args()) {
                     fprintf(stderr, "error: failed to parse monitor command: %s\n", monitor_cmd.c_str());
                     exit(1);
-                }
-
-                // Mark the first argument as a literal key for cluster routing
-                // Most Redis commands have the key as the first argument after the command name
-                if (cmd.command_args.size() > 0) {
-                    cmd.command_args[0].type = literal_key_type;
-                    cmd.keys_count = 1;
                 }
 
                 // Update command name (first word of the command)
