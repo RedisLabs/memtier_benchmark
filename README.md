@@ -105,6 +105,12 @@ $ memtier_benchmark --monitor-input=monitor.txt --command=__monitor_line1__
 
 This lets you mix synthetic workloads with realistic captured traffic. Note that monitor input is only supported in single endpoint mode (not cluster mode).
 
+When the number of requested operations exceeds the number of commands in the monitor file, commands are reused:
+- **Sequential mode** (`--monitor-pattern=S`): Commands wrap around and replay in order. For example, with 10K commands and 1M operations, the commands replay 100 times (0, 1, 2, ..., 9999, 0, 1, 2, ...).
+- **Random mode** (`--monitor-pattern=R`, default): Each operation picks a random command from the file.
+
+This allows you to benchmark with a representative sample of traffic patterns at any scale.
+
 To generate monitor logs, you can use the Redis `MONITOR` command from `redis-cli`, which prints all commands received by the server. For example:
 
 ```
