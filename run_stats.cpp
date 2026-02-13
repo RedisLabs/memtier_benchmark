@@ -1004,8 +1004,8 @@ run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
     std::map<std::string, aggregated_command_type_stats> type_map;
 
     for (unsigned int i = 0; i < command_list.size(); i++) {
-        std::string cmd_type = command_list[i].command_name;
-        // command_name is already uppercase (set in arbitrary_command constructor)
+        std::string cmd_type = command_list[i].command_type;
+        // command_type is the base command name for aggregation (e.g., "SET")
 
         // Get per-second stats for this command
         std::vector<one_sec_cmd_stats> cmd_per_sec = get_one_sec_cmd_stats_arbitrary_command(i);
@@ -1037,7 +1037,7 @@ run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
     std::vector<std::string> seen_types;
 
     for (unsigned int i = 0; i < command_list.size(); i++) {
-        std::string cmd_type = command_list[i].command_name;
+        std::string cmd_type = command_list[i].command_type;
         if (std::find(seen_types.begin(), seen_types.end(), cmd_type) == seen_types.end()) {
             seen_types.push_back(cmd_type);
             result.push_back(type_map[cmd_type]);

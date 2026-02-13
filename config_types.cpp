@@ -309,6 +309,8 @@ arbitrary_command::arbitrary_command(const char *cmd) : command(cmd), key_patter
 
     command_name.assign(command.c_str(), pos);
     std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::toupper);
+    // command_type is the same as command_name by default (used for aggregation)
+    command_type = command_name;
 }
 
 bool arbitrary_command::set_key_pattern(const char *pattern_str)
