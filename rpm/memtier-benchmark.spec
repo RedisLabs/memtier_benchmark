@@ -9,7 +9,7 @@ Release:        1%{?dist}
 Summary:        NoSQL Redis and Memcache traffic generation and benchmarking tool
 
 License:        GPLv2
-URL:            https://github.com/RedisLabs/memtier_benchmark
+URL:            https://github.com/redis/memtier_benchmark
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  gcc-c++
@@ -55,5 +55,5 @@ autoreconf -ivf
 
 %changelog
 * %(date "+%a %b %d %Y") Redis Team <oss@redis.com> - %{version}-%{release}
-- See https://github.com/RedisLabs/memtier_benchmark/releases
+- See https://github.com/redis/memtier_benchmark/releases
 
