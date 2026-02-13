@@ -1,10 +1,9 @@
 # RPM spec file for memtier_benchmark
-# Copyright (C) 2011-2026 Redis Labs Ltd.
+# Copyright (C) 2011-2026 Redis Ltd.
 
-%define version_from_configure %(awk -F'[(),]' '/AC_INIT/ {gsub(/ /, "", $3); print $3}' %{_sourcedir}/../configure.ac 2>/dev/null || echo "0.0.0")
-
+# Version is set by the workflow via sed before building
 Name:           memtier-benchmark
-Version:        %{version_from_configure}
+Version:        0.0.0
 Release:        1%{?dist}
 Summary:        NoSQL Redis and Memcache traffic generation and benchmarking tool
 
