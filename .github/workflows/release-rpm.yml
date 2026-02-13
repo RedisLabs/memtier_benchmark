@@ -35,7 +35,7 @@ jobs:
     steps:
     - name: Install git and basic tools
       run: |
-        dnf install -y git rpm-build rpmdevtools
+        dnf install -y git rpm-build rpmdevtools rsync
 
     - name: Checkout code
       uses: actions/checkout@v4
