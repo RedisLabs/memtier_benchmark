@@ -13,6 +13,8 @@ def test_monitor_input_specific_command(env):
     2. Uses __monitor_line1__ to select the first command (SET)
     3. Verifies the command executes correctly
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     # Create monitor input file
     test_dir = tempfile.mkdtemp()
     monitor_file = os.path.join(test_dir, "monitor.txt")
@@ -90,6 +92,8 @@ def test_monitor_input_random_runtime(env):
     2. Uses __monitor_line@__ to randomly select commands at runtime
     3. Verifies that multiple different command types were executed
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     # Create monitor input file with diverse commands
     test_dir = tempfile.mkdtemp()
     monitor_file = os.path.join(test_dir, "monitor.txt")
@@ -186,6 +190,8 @@ def test_monitor_input_sequential_default(env):
     2. Uses __monitor_line@__ with --monitor-pattern=S (sequential pattern, which is also the default)
     3. Verifies that the commands are applied in sequential order (with wrap-around)
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     # Create monitor input file with sequential SET commands
     test_dir = tempfile.mkdtemp()
     monitor_file = os.path.join(test_dir, "monitor.txt")
@@ -256,6 +262,8 @@ def test_monitor_input_mixed_commands(env):
     2. Uses 30% __monitor_line1__ (specific SET command) and 70% __monitor_line@__ (random)
     3. Verifies both command types execute correctly
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     # Create monitor input file
     test_dir = tempfile.mkdtemp()
     monitor_file = os.path.join(test_dir, "monitor.txt")
@@ -338,6 +346,8 @@ def test_monitor_input_malformed_placeholder_rejected(env):
     - __monitor_line1abc__ (non-numeric characters before __)
     are properly rejected when --monitor-input is provided.
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     # Create monitor input file
     test_dir = tempfile.mkdtemp()
     monitor_file = os.path.join(test_dir, "monitor.txt")
@@ -416,6 +426,8 @@ def test_monitor_placeholder_literal_without_monitor_input(env):
     to Redis as-is (which will result in an unknown command error from Redis).
     This verifies that the placeholder validation only applies when monitor is in use.
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     test_dir = tempfile.mkdtemp()
 
     # Configure memtier WITHOUT --monitor-input but WITH a monitor-like placeholder
@@ -469,6 +481,8 @@ def test_monitor_random_reproducible_without_randomize(env):
     2. Runs memtier twice without --randomize
     3. Verifies both runs set the same final values (proving same command sequence)
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     # Create monitor input file with SET commands that write their index
     test_dir = tempfile.mkdtemp()
     monitor_file = os.path.join(test_dir, "monitor.txt")
@@ -552,6 +566,8 @@ def test_command_stats_breakdown_by_command(env):
     1. Runs memtier with multiple SET and GET commands
     2. Verifies the output shows aggregated "Sets" and "Gets" rows (not per-command)
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     test_dir = tempfile.mkdtemp()
 
     # Configure memtier with multiple commands of the same type
@@ -601,8 +617,6 @@ def test_command_stats_breakdown_by_command(env):
 
 
 def test_command_stats_breakdown_by_line(env):
-    # cluster mode dose not support reconnect-interval option
-    env.skipOnCluster()
     """
     Test that --command-stats-breakdown=line shows each command line separately.
 
@@ -611,6 +625,8 @@ def test_command_stats_breakdown_by_line(env):
     2. Uses --command-stats-breakdown=line
     3. Verifies the output shows separate rows for each command
     """
+    # cluster mode does not support monitor-input option
+    env.skipOnCluster()
     test_dir = tempfile.mkdtemp()
 
     # Configure memtier with multiple commands of the same type
