@@ -93,10 +93,11 @@ public:
 // Structure to hold aggregated stats by command type
 struct aggregated_command_type_stats
 {
-    std::string command_type;            // e.g., "SET", "GET"
-    totals_cmd stats;                    // aggregated totals
-    safe_hdr_histogram latency_hist;     // merged histogram
-    std::vector<size_t> command_indices; // indices of commands with this type
+    std::string command_type;                        // e.g., "SET", "GET"
+    totals_cmd stats;                                // aggregated totals
+    safe_hdr_histogram latency_hist;                 // merged histogram
+    std::vector<size_t> command_indices;             // indices of commands with this type
+    std::vector<one_sec_cmd_stats> per_second_stats; // aggregated per-second stats for JSON time series
 };
 
 class run_stats

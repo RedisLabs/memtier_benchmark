@@ -1007,6 +1007,9 @@ run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
         std::string cmd_type = command_list[i].command_name;
         // command_name is already uppercase (set in arbitrary_command constructor)
 
+        // Get per-second stats for this command
+        std::vector<one_sec_cmd_stats> cmd_per_sec = get_one_sec_cmd_stats_arbitrary_command(i);
+
         auto it = type_map.find(cmd_type);
         if (it == type_map.end()) {
             // First command of this type
@@ -1015,12 +1018,17 @@ run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
             agg.stats = m_totals.m_ar_commands[i];
             hdr_add(agg.latency_hist, m_ar_commands_latency_histograms[i]);
             agg.command_indices.push_back(i);
+            agg.per_second_stats = cmd_per_sec;
             type_map[cmd_type] = agg;
         } else {
             // Aggregate with existing stats
             it->second.stats.add(m_totals.m_ar_commands[i]);
             hdr_add(it->second.latency_hist, m_ar_commands_latency_histograms[i]);
             it->second.command_indices.push_back(i);
+            // Merge per-second stats
+            for (size_t s = 0; s < cmd_per_sec.size() && s < it->second.per_second_stats.size(); s++) {
+                it->second.per_second_stats[s].merge(cmd_per_sec[s]);
+            }
         }
     }
 
@@ -1374,10 +1382,6 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
                 command_name[0] = static_cast<char>(toupper(command_name[0]));
                 command_name.append("s");
 
-                // For aggregated stats, we use the merged histogram
-                // Note: per-second stats are not available for aggregated types
-                std::vector<one_sec_cmd_stats> empty_stats;
-
                 // Compute proper weighted average latency from histogram (not sum of averages)
                 double avg_latency = hdr_mean(agg.latency_hist) / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
 
@@ -1387,7 +1391,7 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
                                      avg_latency, agg.stats.m_total_latency, agg.stats.m_ops,
                                      0.0, // connection_errors_sec (not tracked per command)
                                      0,   // connection_errors (not tracked per command)
-                                     quantiles_list, agg.latency_hist, timestamps, empty_stats);
+                                     quantiles_list, agg.latency_hist, timestamps, agg.per_second_stats);
             }
         } else {
             // Original per-command behavior
