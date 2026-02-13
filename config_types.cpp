@@ -487,9 +487,13 @@ bool monitor_command_list::load_from_file(const char *filename)
         return false;
     }
 
-    char line[65536]; // Large buffer for monitor lines
+    char *line = NULL;
+    size_t line_capacity = 0;
+    ssize_t line_len;
     size_t total_lines = 0;
-    while (fgets(line, sizeof(line), file)) {
+
+    // Use getline() for dynamic allocation - handles arbitrarily long lines
+    while ((line_len = getline(&line, &line_capacity, file)) != -1) {
         total_lines++;
         // Find the first quote - this is where the command starts
         char *first_quote = strchr(line, '"');
@@ -512,6 +516,7 @@ bool monitor_command_list::load_from_file(const char *filename)
         commands.push_back(command_str);
     }
 
+    free(line);
     fclose(file);
 
     if (commands.empty()) {
