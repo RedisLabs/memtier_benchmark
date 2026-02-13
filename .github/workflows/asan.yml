@@ -4,12 +4,16 @@ name: ASAN (AddressSanitizer & LeakSanitizer)
 # This workflow builds memtier_benchmark with sanitizers enabled and runs
 # the full test suite to detect memory leaks and address errors.
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
 
 jobs:
-  test-with-sanitizers:
+  build-asan:
     runs-on: ubuntu-latest
-    name: Memory leak detection (ASAN/LSAN)
+    name: Build with ASAN
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -37,6 +41,56 @@ jobs:
         ldd ./memtier_benchmark | grep asan
         echo "✓ AddressSanitizer is linked"
 
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: memtier-asan-build
+        path: |
+          memtier_benchmark
+        retention-days: 1
+
+  test-asan:
+    needs: build-asan
+    strategy:
+      fail-fast: false
+      matrix:
+        test-config:
+          - name: "Single Endpoint: TCP Plaintext"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "0", VERBOSE: "1", ASAN_OPTIONS: "detect_leaks=1" }
+            tls: false
+          - name: "Single Endpoint: TCP TLS"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "1", VERBOSE: "1", ASAN_OPTIONS: "detect_leaks=1" }
+            tls: true
+          - name: "OSS TCP TLS v1.2"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "1", TLS_PROTOCOLS: "TLSv1.2", VERBOSE: "1", ASAN_OPTIONS: "detect_leaks=1" }
+            tls: true
+          - name: "OSS TCP TLS v1.3"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "1", TLS_PROTOCOLS: "TLSv1.3", VERBOSE: "1", ASAN_OPTIONS: "detect_leaks=1" }
+            tls: true
+          - name: "OSS-CLUSTER API: TCP Plaintext"
+            env: { OSS_STANDALONE: "0", OSS_CLUSTER: "1", VERBOSE: "1", ASAN_OPTIONS: "detect_leaks=1" }
+            tls: false
+          - name: "OSS-CLUSTER API: TCP TLS"
+            env: { OSS_STANDALONE: "0", OSS_CLUSTER: "1", TLS: "1", VERBOSE: "1", ASAN_OPTIONS: "detect_leaks=1" }
+            tls: true
+    runs-on: ubuntu-latest
+    name: ASAN ${{ matrix.test-config.name }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: memtier-asan-build
+
+    - name: Restore executable permissions
+      run: chmod +x memtier_benchmark
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install -y pkg-config libevent-dev libssl-dev
+
     - name: Setup Python
       uses: actions/setup-python@v2
       with:
@@ -61,35 +115,12 @@ jobs:
         ulimit -n 40960
 
     - name: Generate TLS test certificates
+      if: matrix.test-config.tls
       run: ./tests/gen-test-certs.sh
 
-    - name: Test OSS TCP with ASAN
+    - name: Run tests
       timeout-minutes: 10
+      env: ${{ matrix.test-config.env }}
       run: |
-        ASAN_OPTIONS=detect_leaks=1 ./tests/run_tests.sh
-
-    - name: Test OSS TCP TLS with ASAN
-      timeout-minutes: 10
-      run: |
-        ASAN_OPTIONS=detect_leaks=1 TLS=1 ./tests/run_tests.sh
-
-    - name: Test OSS TCP TLS v1.2 with ASAN
-      timeout-minutes: 10
-      run: |
-        ASAN_OPTIONS=detect_leaks=1 TLS_PROTOCOLS='TLSv1.2' TLS=1 ./tests/run_tests.sh
-
-    - name: Test OSS TCP TLS v1.3 with ASAN
-      timeout-minutes: 10
-      run: |
-        ASAN_OPTIONS=detect_leaks=1 TLS_PROTOCOLS='TLSv1.3' TLS=1 ./tests/run_tests.sh
-
-    - name: Test OSS-CLUSTER TCP with ASAN
-      timeout-minutes: 10
-      run: |
-        ASAN_OPTIONS=detect_leaks=1 OSS_STANDALONE=0 OSS_CLUSTER=1 ./tests/run_tests.sh
-
-    - name: Test OSS-CLUSTER TCP TLS with ASAN
-      timeout-minutes: 10
-      run: |
-        ASAN_OPTIONS=detect_leaks=1 OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 ./tests/run_tests.sh
+        ./tests/run_tests.sh
 
