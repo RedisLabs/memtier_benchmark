@@ -323,16 +323,16 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
         // Parse and format the monitor command into a temporary arbitrary_command
         arbitrary_command temp_cmd(monitor_cmd.c_str());
         if (!temp_cmd.split_command_to_args()) {
-            fprintf(stderr, "warning: skipping malformed monitor command at line %zu: %s\n",
-                    selected_index + 1, monitor_cmd.c_str());
-            return true;  // Skip this command but continue processing
+            fprintf(stderr, "warning: skipping malformed monitor command at line %zu: %s\n", selected_index + 1,
+                    monitor_cmd.c_str());
+            return true; // Skip this command but continue processing
         }
 
         // Format the command for the protocol (adds RESP headers)
         if (!m_connections[conn_id]->get_protocol()->format_arbitrary_command(temp_cmd)) {
-            fprintf(stderr, "warning: skipping unformattable monitor command at line %zu: %s\n",
-                    selected_index + 1, monitor_cmd.c_str());
-            return true;  // Skip this command but continue processing
+            fprintf(stderr, "warning: skipping unformattable monitor command at line %zu: %s\n", selected_index + 1,
+                    monitor_cmd.c_str());
+            return true; // Skip this command but continue processing
         }
 
         // Send the randomly selected command
