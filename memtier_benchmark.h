@@ -113,6 +113,10 @@ struct benchmark_config
     const char *json_out_file;
     bool cluster_mode;
     struct arbitrary_command_list *arbitrary_commands;
+    const char *monitor_input;
+    struct monitor_command_list *monitor_commands;
+    char monitor_pattern;
+    bool command_stats_by_type; // true = aggregate by command type (default), false = per command line
     const char *hdr_prefix;
     unsigned int request_rate;
     unsigned int request_per_interval;

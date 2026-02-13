@@ -95,6 +95,50 @@ $ memtier_benchmark --help
 
 for command line options.
 
+### Using monitor input files
+
+You can replay real command streams by pointing memtier_benchmark to a monitor log file with the `--monitor-input=/path/to/file` option. Special commands such as `__monitor_line1__` pick a specific entry from the file, while `__monitor_line@__` selects commands at runtime (optionally combined with `--monitor-pattern` and `--command-ratio`). For example, the following command replays the first command from the file on each request:
+
+```
+$ memtier_benchmark --monitor-input=monitor.txt --command=__monitor_line1__
+```
+
+This lets you mix synthetic workloads with realistic captured traffic. Note that monitor input is only supported in single endpoint mode (not cluster mode).
+
+When the number of requested operations exceeds the number of commands in the monitor file, commands are reused:
+- **Sequential mode** (`--monitor-pattern=S`): Commands wrap around and replay in order. For example, with 10K commands and 1M operations, the commands replay 100 times (0, 1, 2, ..., 9999, 0, 1, 2, ...).
+- **Random mode** (`--monitor-pattern=R`, default): Each operation picks a random command from the file.
+
+This allows you to benchmark with a representative sample of traffic patterns at any scale.
+
+To generate monitor logs, you can use the Redis `MONITOR` command from `redis-cli`, which prints all commands received by the server. For example:
+
+```
+$ redis-cli MONITOR
+OK
+1460100081.165665 [0 127.0.0.1:51706] "set" "shipment:8000736522714:status" "sorting"
+1460100083.053365 [0 127.0.0.1:51707] "get" "shipment:8000736522714:status"
+```
+
+You can pipe this output and filter specific patterns with tools such as `grep`, then save it to a file and use it as a `--monitor-input` source. For more details, see the official Redis documentation on [monitoring commands executed in Redis](https://redis.io/docs/latest/develop/tools/cli/#monitor-commands-executed-in-redis).
+
+### Command statistics breakdown
+
+By default, when using arbitrary commands (`--command`), statistics are aggregated by command type (e.g., all SET commands are grouped together, all GET commands are grouped together). You can control this behavior with the `--command-stats-breakdown` option:
+
+- `--command-stats-breakdown=command` (default): Aggregate statistics by command name (first word, e.g., SET, GET)
+- `--command-stats-breakdown=line`: Show each command line separately
+
+For example, if you run:
+
+```
+$ memtier_benchmark --command="SET foo __data__" --command="SET bar __data__" --command="GET foo"
+```
+
+With the default `command` breakdown, you'll see aggregated stats for "Sets" and "Gets". With `--command-stats-breakdown=line`, you'll see separate rows for each command line.
+
+> **Note:** When using `--command-stats-breakdown=command`, the JSON output's Time-Serie percentiles (p50, p99, etc.) for aggregated command types are approximate. They reflect only one of the underlying commands rather than a true merge of all commands of that type. Totals, counts, bytes, and average latency are correctly aggregated.
+
 ## Crash Reporting
 
 memtier_benchmark includes built-in crash handling that automatically generates detailed bug reports when the program crashes. If you encounter a crash, the tool will print a comprehensive report including:

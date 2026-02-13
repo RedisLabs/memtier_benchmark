@@ -355,6 +355,7 @@ bool cluster_client::create_arbitrary_request(unsigned int command_index, struct
         return true;
     }
 
+    /* Normal key placeholder handling */
     unsigned long long key_index;
     get_key_response res = get_key_for_conn(command_index, conn_id, &key_index);
 

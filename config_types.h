@@ -28,6 +28,7 @@
 #include <vector>
 #include <string>
 #include <atomic>
+#include <map>
 
 struct config_range
 {
@@ -112,26 +113,35 @@ protected:
     std::atomic<int> m_last_error; // Atomic to prevent data race between resolve() and get_connect_info()
 };
 
+// Forward declaration for object_generator
+class object_generator;
+
 #define KEY_PLACEHOLDER "__key__"
 #define DATA_PLACEHOLDER "__data__"
+#define MONITOR_PLACEHOLDER_PREFIX "__monitor_line"
+#define MONITOR_RANDOM_PLACEHOLDER "__monitor_line@__"
 
 enum command_arg_type
 {
     const_type = 0,
     key_type = 1,
     data_type = 2,
-    undefined_type = 3
+    monitor_type = 3,
+    monitor_random_type = 4,
+    undefined_type = 5
 };
 
 struct command_arg
 {
     command_arg(const char *arg, unsigned int arg_len) :
-            type(undefined_type), data(arg, arg_len), has_key_affixes(false)
+            type(undefined_type), data(arg, arg_len), monitor_index(0), has_key_affixes(false)
     {
         ;
     }
     command_arg_type type;
     std::string data;
+    // For monitor_type, stores the index (1-based)
+    size_t monitor_index;
     // the prefix and suffix strings are used for mixed key placeholder storing of substrings
     std::string data_prefix;
     std::string data_suffix;
@@ -149,10 +159,12 @@ struct arbitrary_command
 
     std::vector<command_arg> command_args;
     std::string command;
-    std::string command_name;
+    std::string command_name; // Display name (e.g., "SET (Line 1)" or "SET")
+    std::string command_type; // Base command type for aggregation (e.g., "SET")
     char key_pattern;
     unsigned int keys_count;
     unsigned int ratio;
+    bool stats_only; // If true, this is a stats-only slot (not executed, just for stats tracking)
 };
 
 struct arbitrary_command_list
@@ -190,6 +202,37 @@ public:
 
         return max_length;
     }
+};
+
+struct monitor_command_list
+{
+private:
+    std::vector<std::string> commands;
+    std::vector<std::string> command_types;            // Command type for each command (e.g., "SET", "GET")
+    std::map<std::string, size_t> type_to_stats_index; // Maps command type to stats slot index
+    std::atomic<size_t> next_index;
+
+public:
+    monitor_command_list() : next_index(0) { ; }
+
+    bool load_from_file(const char *filename);
+    const std::string &get_command(size_t index) const;
+    const std::string &get_random_command(object_generator *obj_gen, size_t *out_index) const;
+    const std::string &get_next_sequential_command(size_t *out_index);
+
+    size_t size() const { return commands.size(); }
+
+    // Get unique command types found in the file (for stats allocation)
+    std::vector<std::string> get_unique_command_types() const;
+
+    // Set up stats index mapping - called after allocating stats slots
+    void setup_stats_indices(size_t base_index);
+
+    // Get the stats index for a command at the given file index
+    size_t get_stats_index(size_t cmd_index) const;
+
+    // Get the command type for a command at the given file index
+    const std::string &get_command_type(size_t cmd_index) const;
 };
 
 #endif /* _CONFIG_TYPES_H */

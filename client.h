@@ -138,6 +138,15 @@ public:
     void advance_arbitrary_command_index()
     {
         while (true) {
+            // Skip stats-only commands - they are not executed
+            if (get_arbitrary_command(m_executed_command_index).stats_only) {
+                m_executed_command_index++;
+                if (m_executed_command_index == m_config->arbitrary_commands->size()) {
+                    m_executed_command_index = 0;
+                }
+                continue;
+            }
+
             if (m_arbitrary_command_ratio_count < get_arbitrary_command(m_executed_command_index).ratio) {
                 m_arbitrary_command_ratio_count++;
                 return;

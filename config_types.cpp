@@ -41,6 +41,7 @@
 #include <algorithm>
 
 #include "config_types.h"
+#include "obj_gen.h"
 
 config_range::config_range(const char *range_str) : min(0), max(0)
 {
@@ -298,7 +299,8 @@ static int hex_digit_to_int(char c)
     }
 }
 
-arbitrary_command::arbitrary_command(const char *cmd) : command(cmd), key_pattern('R'), keys_count(0), ratio(1)
+arbitrary_command::arbitrary_command(const char *cmd) :
+        command(cmd), key_pattern('R'), keys_count(0), ratio(1), stats_only(false)
 {
     // command name is the first word in the command
     size_t pos = command.find(" ");
@@ -308,6 +310,8 @@ arbitrary_command::arbitrary_command(const char *cmd) : command(cmd), key_patter
 
     command_name.assign(command.c_str(), pos);
     std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::toupper);
+    // command_type is the same as command_name by default (used for aggregation)
+    command_type = command_name;
 }
 
 bool arbitrary_command::set_key_pattern(const char *pattern_str)
@@ -474,4 +478,158 @@ bool arbitrary_command::split_command_to_args()
 
 err:
     return false;
+}
+
+// Monitor command list implementation
+
+// Helper function to extract command type (first word) from a monitor command string
+static std::string extract_command_type(const std::string &command_str)
+{
+    // Command format: "SET" "key" "value" or "GET" "key"
+    // Find the first word between quotes
+    size_t start = command_str.find('"');
+    if (start == std::string::npos) {
+        return "";
+    }
+    start++; // Skip the opening quote
+    size_t end = command_str.find('"', start);
+    if (end == std::string::npos) {
+        return "";
+    }
+    std::string cmd_type = command_str.substr(start, end - start);
+    // Convert to uppercase
+    std::transform(cmd_type.begin(), cmd_type.end(), cmd_type.begin(), ::toupper);
+    return cmd_type;
+}
+
+bool monitor_command_list::load_from_file(const char *filename)
+{
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "error: failed to open monitor input file: %s\n", filename);
+        return false;
+    }
+
+    char *line = NULL;
+    size_t line_capacity = 0;
+    ssize_t line_len;
+    size_t total_lines = 0;
+
+    // Use getline() for dynamic allocation - handles arbitrarily long lines
+    while ((line_len = getline(&line, &line_capacity, file)) != -1) {
+        total_lines++;
+        // Find the first quote - this is where the command starts
+        char *first_quote = strchr(line, '"');
+        if (!first_quote) {
+            continue; // Skip lines without commands
+        }
+
+        // Extract everything from first quote to end of line
+        // We keep the quotes as-is to avoid re-parsing
+        std::string command_str(first_quote);
+
+        // Remove trailing newline if present
+        if (!command_str.empty() && command_str[command_str.length() - 1] == '\n') {
+            command_str.erase(command_str.length() - 1);
+        }
+        if (!command_str.empty() && command_str[command_str.length() - 1] == '\r') {
+            command_str.erase(command_str.length() - 1);
+        }
+
+        commands.push_back(command_str);
+
+        // Extract and store the command type (e.g., "SET", "GET")
+        std::string cmd_type = extract_command_type(command_str);
+        command_types.push_back(cmd_type);
+    }
+
+    free(line);
+    fclose(file);
+
+    if (commands.empty()) {
+        fprintf(stderr, "error: no commands found in monitor input file: %s\n", filename);
+        return false;
+    }
+
+    fprintf(stderr, "Loaded %zu monitor commands from %zu total lines\n", commands.size(), total_lines);
+    return true;
+}
+
+const std::string &monitor_command_list::get_command(size_t index) const
+{
+    if (index >= commands.size()) {
+        static std::string empty;
+        return empty;
+    }
+    return commands[index];
+}
+
+const std::string &monitor_command_list::get_random_command(object_generator *obj_gen, size_t *out_index) const
+{
+    if (commands.empty()) {
+        static std::string empty;
+        if (out_index) *out_index = 0;
+        return empty;
+    }
+    // Use object_generator's random which respects --randomize and --distinct-client-seed
+    size_t random_index = obj_gen->random_range(0, commands.size() - 1);
+    if (out_index) *out_index = random_index;
+    return commands[random_index];
+}
+
+const std::string &monitor_command_list::get_next_sequential_command(size_t *out_index)
+{
+    if (commands.empty()) {
+        static std::string empty;
+        if (out_index) *out_index = 0;
+        return empty;
+    }
+    // Use a global sequential index across all clients/threads.
+    size_t index = next_index.fetch_add(1, std::memory_order_relaxed);
+    index = index % commands.size();
+    if (out_index) *out_index = index;
+    return commands[index];
+}
+
+std::vector<std::string> monitor_command_list::get_unique_command_types() const
+{
+    std::vector<std::string> unique_types;
+    for (const auto &type : command_types) {
+        if (!type.empty() && std::find(unique_types.begin(), unique_types.end(), type) == unique_types.end()) {
+            unique_types.push_back(type);
+        }
+    }
+    return unique_types;
+}
+
+void monitor_command_list::setup_stats_indices(size_t base_index)
+{
+    // Build mapping from command type to stats index
+    type_to_stats_index.clear();
+    std::vector<std::string> unique_types = get_unique_command_types();
+    for (size_t i = 0; i < unique_types.size(); i++) {
+        type_to_stats_index[unique_types[i]] = base_index + i;
+    }
+}
+
+size_t monitor_command_list::get_stats_index(size_t cmd_index) const
+{
+    if (cmd_index >= command_types.size()) {
+        return 0;
+    }
+    const std::string &type = command_types[cmd_index];
+    auto it = type_to_stats_index.find(type);
+    if (it != type_to_stats_index.end()) {
+        return it->second;
+    }
+    return 0; // Fallback (should not happen if setup_stats_indices was called)
+}
+
+const std::string &monitor_command_list::get_command_type(size_t cmd_index) const
+{
+    if (cmd_index >= command_types.size()) {
+        static std::string empty;
+        return empty;
+    }
+    return command_types[cmd_index];
 }

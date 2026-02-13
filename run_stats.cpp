@@ -997,7 +997,70 @@ bool run_stats::print_arbitrary_commands_results()
     return m_totals.m_ar_commands.size() > 0;
 }
 
-void run_stats::print_type_column(output_table &table, arbitrary_command_list &command_list)
+std::vector<aggregated_command_type_stats>
+run_stats::build_aggregated_command_stats(arbitrary_command_list &command_list)
+{
+    // Map from command type (uppercase) to aggregated stats
+    std::map<std::string, aggregated_command_type_stats> type_map;
+
+    for (unsigned int i = 0; i < command_list.size(); i++) {
+        std::string cmd_type = command_list[i].command_type;
+
+        // Skip the MONITOR_RANDOM placeholder - it never receives stats
+        // (stats are attributed to the actual command type slots instead)
+        if (cmd_type == "MONITOR_RANDOM") {
+            continue;
+        }
+        // command_type is the base command name for aggregation (e.g., "SET")
+
+        // Get per-second stats for this command
+        std::vector<one_sec_cmd_stats> cmd_per_sec = get_one_sec_cmd_stats_arbitrary_command(i);
+
+        auto it = type_map.find(cmd_type);
+        if (it == type_map.end()) {
+            // First command of this type
+            aggregated_command_type_stats agg;
+            agg.command_type = cmd_type;
+            agg.stats = m_totals.m_ar_commands[i];
+            hdr_add(agg.latency_hist, m_ar_commands_latency_histograms[i]);
+            agg.command_indices.push_back(i);
+            agg.per_second_stats = cmd_per_sec;
+            type_map[cmd_type] = agg;
+        } else {
+            // Aggregate with existing stats
+            it->second.stats.add(m_totals.m_ar_commands[i]);
+            hdr_add(it->second.latency_hist, m_ar_commands_latency_histograms[i]);
+            it->second.command_indices.push_back(i);
+            // Merge per-second stats
+            for (size_t s = 0; s < cmd_per_sec.size() && s < it->second.per_second_stats.size(); s++) {
+                it->second.per_second_stats[s].merge(cmd_per_sec[s]);
+            }
+        }
+    }
+
+    // Convert map to vector (preserving first-seen order)
+    std::vector<aggregated_command_type_stats> result;
+    std::vector<std::string> seen_types;
+
+    for (unsigned int i = 0; i < command_list.size(); i++) {
+        std::string cmd_type = command_list[i].command_type;
+
+        // Skip the MONITOR_RANDOM placeholder
+        if (cmd_type == "MONITOR_RANDOM") {
+            continue;
+        }
+
+        if (std::find(seen_types.begin(), seen_types.end(), cmd_type) == seen_types.end()) {
+            seen_types.push_back(cmd_type);
+            result.push_back(type_map[cmd_type]);
+        }
+    }
+
+    return result;
+}
+
+void run_stats::print_type_column(output_table &table, arbitrary_command_list &command_list,
+                                  const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column;
@@ -1017,15 +1080,24 @@ void run_stats::print_type_column(output_table &table, arbitrary_command_list &c
     column.elements.push_back(*el.init_str("%s", buf));
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < command_list.size(); i++) {
-            // format command name
-            std::string command_name = command_list[i].command_name;
-
-            std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::tolower);
-            command_name[0] = static_cast<char>(toupper(command_name[0]));
-            command_name.append("s");
-
-            column.elements.push_back(*el.init_str(type_col_format, command_name));
+        if (aggregated != nullptr) {
+            // Use aggregated stats by command type
+            for (const auto &agg : *aggregated) {
+                std::string command_name = agg.command_type;
+                std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::tolower);
+                command_name[0] = static_cast<char>(toupper(command_name[0]));
+                command_name.append("s");
+                column.elements.push_back(*el.init_str(type_col_format, command_name));
+            }
+        } else {
+            // Original per-command behavior
+            for (unsigned int i = 0; i < command_list.size(); i++) {
+                std::string command_name = command_list[i].command_name;
+                std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::tolower);
+                command_name[0] = static_cast<char>(toupper(command_name[0]));
+                command_name.append("s");
+                column.elements.push_back(*el.init_str(type_col_format, command_name));
+            }
         }
     } else {
         column.elements.push_back(*el.init_str(type_col_format, "Sets"));
@@ -1037,7 +1109,7 @@ void run_stats::print_type_column(output_table &table, arbitrary_command_list &c
     table.add_column(column);
 }
 
-void run_stats::print_ops_sec_column(output_table &table)
+void run_stats::print_ops_sec_column(output_table &table, const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column(12);
@@ -1046,8 +1118,14 @@ void run_stats::print_ops_sec_column(output_table &table)
     column.elements.push_back(*el.init_str("%s", "-------------"));
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_ops_sec));
+        if (aggregated != nullptr) {
+            for (const auto &agg : *aggregated) {
+                column.elements.push_back(*el.init_double("%12.2f ", agg.stats.m_ops_sec));
+            }
+        } else {
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_ops_sec));
+            }
         }
     } else {
         column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ops_sec));
@@ -1088,7 +1166,8 @@ void run_stats::print_missess_sec_column(output_table &table)
     table.add_column(column);
 }
 
-void run_stats::print_moved_sec_column(output_table &table)
+void run_stats::print_moved_sec_column(output_table &table,
+                                       const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column(12);
@@ -1097,8 +1176,14 @@ void run_stats::print_moved_sec_column(output_table &table)
     column.elements.push_back(*el.init_str("%s", "-------------"));
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_moved_sec));
+        if (aggregated != nullptr) {
+            for (const auto &agg : *aggregated) {
+                column.elements.push_back(*el.init_double("%12.2f ", agg.stats.m_moved_sec));
+            }
+        } else {
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_moved_sec));
+            }
         }
     } else {
         column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_moved_sec));
@@ -1109,7 +1194,7 @@ void run_stats::print_moved_sec_column(output_table &table)
     table.add_column(column);
 }
 
-void run_stats::print_ask_sec_column(output_table &table)
+void run_stats::print_ask_sec_column(output_table &table, const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column(12);
@@ -1117,8 +1202,14 @@ void run_stats::print_ask_sec_column(output_table &table)
     column.elements.push_back(*el.init_str("%12s ", "ASK/sec"));
     column.elements.push_back(*el.init_str("%s", "-------------"));
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_ask_sec));
+        if (aggregated != nullptr) {
+            for (const auto &agg : *aggregated) {
+                column.elements.push_back(*el.init_double("%12.2f ", agg.stats.m_ask_sec));
+            }
+        } else {
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_ask_sec));
+            }
         }
     } else {
         column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_ask_sec));
@@ -1129,7 +1220,8 @@ void run_stats::print_ask_sec_column(output_table &table)
     table.add_column(column);
 }
 
-void run_stats::print_avg_latency_column(output_table &table)
+void run_stats::print_avg_latency_column(output_table &table,
+                                         const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column(15);
@@ -1143,10 +1235,18 @@ void run_stats::print_avg_latency_column(output_table &table)
     column.elements.push_back(*el.init_str("%s", "----------------"));
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            column.elements.push_back(*el.init_double("%15.05f ", hdr_mean(m_ar_commands_latency_histograms[i]) /
-                                                                      (double) LATENCY_HDR_RESULTS_MULTIPLIER));
-            hdr_add(m_totals_latency_histogram, m_ar_commands_latency_histograms[i]);
+        if (aggregated != nullptr) {
+            for (const auto &agg : *aggregated) {
+                column.elements.push_back(
+                    *el.init_double("%15.05f ", hdr_mean(agg.latency_hist) / (double) LATENCY_HDR_RESULTS_MULTIPLIER));
+                hdr_add(m_totals_latency_histogram, agg.latency_hist);
+            }
+        } else {
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                column.elements.push_back(*el.init_double("%15.05f ", hdr_mean(m_ar_commands_latency_histograms[i]) /
+                                                                          (double) LATENCY_HDR_RESULTS_MULTIPLIER));
+                hdr_add(m_totals_latency_histogram, m_ar_commands_latency_histograms[i]);
+            }
         }
     } else {
         const bool has_set_ops = hdr_total_count(m_set_latency_histogram) > 0;
@@ -1177,7 +1277,8 @@ void run_stats::print_avg_latency_column(output_table &table)
     table.add_column(column);
 }
 
-void run_stats::print_quantile_latency_column(output_table &table, double quantile, char *label)
+void run_stats::print_quantile_latency_column(output_table &table, double quantile, char *label,
+                                              const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column(15);
@@ -1191,11 +1292,20 @@ void run_stats::print_quantile_latency_column(output_table &table, double quanti
     column.elements.push_back(*el.init_str("%s", "----------------"));
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            column.elements.push_back(
-                *el.init_double("%15.05f ", hdr_value_at_percentile(m_ar_commands_latency_histograms[i], quantile) /
-                                                (double) LATENCY_HDR_RESULTS_MULTIPLIER));
-            hdr_add(m_totals_latency_histogram, m_ar_commands_latency_histograms[i]);
+        if (aggregated != nullptr) {
+            for (const auto &agg : *aggregated) {
+                column.elements.push_back(
+                    *el.init_double("%15.05f ", hdr_value_at_percentile(agg.latency_hist, quantile) /
+                                                    (double) LATENCY_HDR_RESULTS_MULTIPLIER));
+                hdr_add(m_totals_latency_histogram, agg.latency_hist);
+            }
+        } else {
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                column.elements.push_back(
+                    *el.init_double("%15.05f ", hdr_value_at_percentile(m_ar_commands_latency_histograms[i], quantile) /
+                                                    (double) LATENCY_HDR_RESULTS_MULTIPLIER));
+                hdr_add(m_totals_latency_histogram, m_ar_commands_latency_histograms[i]);
+            }
         }
     } else {
         const bool has_set_ops = hdr_total_count(m_set_latency_histogram) > 0;
@@ -1231,7 +1341,7 @@ void run_stats::print_quantile_latency_column(output_table &table, double quanti
     table.add_column(column);
 }
 
-void run_stats::print_kb_sec_column(output_table &table)
+void run_stats::print_kb_sec_column(output_table &table, const std::vector<aggregated_command_type_stats> *aggregated)
 {
     table_el el;
     table_column column(12);
@@ -1240,8 +1350,14 @@ void run_stats::print_kb_sec_column(output_table &table)
     column.elements.push_back(*el.init_str("%s", "-------------"));
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_bytes_sec));
+        if (aggregated != nullptr) {
+            for (const auto &agg : *aggregated) {
+                column.elements.push_back(*el.init_double("%12.2f ", agg.stats.m_bytes_sec));
+            }
+        } else {
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_ar_commands[i].m_bytes_sec));
+            }
         }
     } else {
         column.elements.push_back(*el.init_double("%12.2f ", m_totals.m_set_cmd.m_bytes_sec));
@@ -1253,7 +1369,8 @@ void run_stats::print_kb_sec_column(output_table &table)
     table.add_column(column);
 }
 
-void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &command_list, bool cluster_mode)
+void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &command_list, bool cluster_mode,
+                           const std::vector<aggregated_command_type_stats> *aggregated)
 {
     if (jsonhandler != NULL) { // Added for double verification in case someone accidently send NULL.
         jsonhandler->open_nesting("Runtime");
@@ -1269,26 +1386,46 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
     std::vector<unsigned int> timestamps = get_one_sec_cmd_stats_timestamp();
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
-            // format command name
-            std::string command_name = command_list[i].command_name;
+        if (aggregated != nullptr) {
+            // Use aggregated stats by command type
+            for (const auto &agg : *aggregated) {
+                std::string command_name = agg.command_type;
+                std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::tolower);
+                command_name[0] = static_cast<char>(toupper(command_name[0]));
+                command_name.append("s");
 
-            std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::tolower);
-            command_name[0] = static_cast<char>(toupper(command_name[0]));
-            command_name.append("s");
-            struct hdr_histogram *arbitrary_command_latency_histogram = m_ar_commands_latency_histograms.at(i);
-            std::vector<one_sec_cmd_stats> arbitrary_command_stats = get_one_sec_cmd_stats_arbitrary_command(i);
+                // Compute proper weighted average latency from histogram (not sum of averages)
+                double avg_latency = hdr_mean(agg.latency_hist) / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
 
-            result_print_to_json(jsonhandler, command_name.c_str(), m_totals.m_ar_commands[i].m_ops_sec, 0.0, 0.0,
-                                 cluster_mode ? m_totals.m_ar_commands[i].m_moved_sec : -1,
-                                 cluster_mode ? m_totals.m_ar_commands[i].m_ask_sec : -1,
-                                 m_totals.m_ar_commands[i].m_bytes_sec, m_totals.m_ar_commands[i].m_bytes_sec_rx,
-                                 m_totals.m_ar_commands[i].m_bytes_sec_tx, m_totals.m_ar_commands[i].m_latency,
-                                 m_totals.m_ar_commands[i].m_total_latency, m_totals.m_ar_commands[i].m_ops,
-                                 0.0, // connection_errors_sec (not tracked per command)
-                                 0,   // connection_errors (not tracked per command)
-                                 quantiles_list, arbitrary_command_latency_histogram, timestamps,
-                                 arbitrary_command_stats);
+                result_print_to_json(jsonhandler, command_name.c_str(), agg.stats.m_ops_sec, 0.0, 0.0,
+                                     cluster_mode ? agg.stats.m_moved_sec : -1, cluster_mode ? agg.stats.m_ask_sec : -1,
+                                     agg.stats.m_bytes_sec, agg.stats.m_bytes_sec_rx, agg.stats.m_bytes_sec_tx,
+                                     avg_latency, agg.stats.m_total_latency, agg.stats.m_ops,
+                                     0.0, // connection_errors_sec (not tracked per command)
+                                     0,   // connection_errors (not tracked per command)
+                                     quantiles_list, agg.latency_hist, timestamps, agg.per_second_stats);
+            }
+        } else {
+            // Original per-command behavior
+            for (unsigned int i = 0; i < m_totals.m_ar_commands.size(); i++) {
+                std::string command_name = command_list[i].command_name;
+                std::transform(command_name.begin(), command_name.end(), command_name.begin(), ::tolower);
+                command_name[0] = static_cast<char>(toupper(command_name[0]));
+                command_name.append("s");
+                struct hdr_histogram *arbitrary_command_latency_histogram = m_ar_commands_latency_histograms.at(i);
+                std::vector<one_sec_cmd_stats> arbitrary_command_stats = get_one_sec_cmd_stats_arbitrary_command(i);
+
+                result_print_to_json(jsonhandler, command_name.c_str(), m_totals.m_ar_commands[i].m_ops_sec, 0.0, 0.0,
+                                     cluster_mode ? m_totals.m_ar_commands[i].m_moved_sec : -1,
+                                     cluster_mode ? m_totals.m_ar_commands[i].m_ask_sec : -1,
+                                     m_totals.m_ar_commands[i].m_bytes_sec, m_totals.m_ar_commands[i].m_bytes_sec_rx,
+                                     m_totals.m_ar_commands[i].m_bytes_sec_tx, m_totals.m_ar_commands[i].m_latency,
+                                     m_totals.m_ar_commands[i].m_total_latency, m_totals.m_ar_commands[i].m_ops,
+                                     0.0, // connection_errors_sec (not tracked per command)
+                                     0,   // connection_errors (not tracked per command)
+                                     quantiles_list, arbitrary_command_latency_histogram, timestamps,
+                                     arbitrary_command_stats);
+            }
         }
     } else {
         std::vector<one_sec_cmd_stats> get_stats = get_one_sec_cmd_stats_get();
@@ -1325,7 +1462,8 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
                          total_stats);
 }
 
-void run_stats::print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_command_list &command_list)
+void run_stats::print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_command_list &command_list,
+                                const std::vector<aggregated_command_type_stats> *aggregated)
 {
     fprintf(out,
             "\n\n"
@@ -1338,25 +1476,49 @@ void run_stats::print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_
 
 
     if (print_arbitrary_commands_results()) {
-        for (unsigned int i = 0; i < command_list.size(); i++) {
-            std::string command_name = command_list[i].command_name;
+        if (aggregated != nullptr) {
+            // Use aggregated stats by command type
+            for (const auto &agg : *aggregated) {
+                std::string command_name = agg.command_type;
 
-            if (jsonhandler != NULL) {
-                jsonhandler->open_nesting(command_name.c_str(), NESTED_ARRAY);
-            }
+                if (jsonhandler != NULL) {
+                    jsonhandler->open_nesting(command_name.c_str(), NESTED_ARRAY);
+                }
 
-            struct hdr_histogram *arbitrary_command_latency_histogram = m_ar_commands_latency_histograms.at(i);
-            hdr_iter_percentile_init(&iter, arbitrary_command_latency_histogram, LATENCY_HDR_GRANULARITY);
-            percentiles = &iter.specifics.percentiles;
-            while (hdr_iter_next(&iter)) {
-                double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
-                histogram_print(out, jsonhandler, command_name.c_str(), value, percentiles->percentile);
-            }
+                hdr_iter_percentile_init(&iter, agg.latency_hist, LATENCY_HDR_GRANULARITY);
+                percentiles = &iter.specifics.percentiles;
+                while (hdr_iter_next(&iter)) {
+                    double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+                    histogram_print(out, jsonhandler, command_name.c_str(), value, percentiles->percentile);
+                }
 
-            if (jsonhandler != NULL) {
-                jsonhandler->close_nesting();
+                if (jsonhandler != NULL) {
+                    jsonhandler->close_nesting();
+                }
+                fprintf(out, "---\n");
             }
-            fprintf(out, "---\n");
+        } else {
+            // Original per-command behavior
+            for (unsigned int i = 0; i < command_list.size(); i++) {
+                std::string command_name = command_list[i].command_name;
+
+                if (jsonhandler != NULL) {
+                    jsonhandler->open_nesting(command_name.c_str(), NESTED_ARRAY);
+                }
+
+                struct hdr_histogram *arbitrary_command_latency_histogram = m_ar_commands_latency_histograms.at(i);
+                hdr_iter_percentile_init(&iter, arbitrary_command_latency_histogram, LATENCY_HDR_GRANULARITY);
+                percentiles = &iter.specifics.percentiles;
+                while (hdr_iter_next(&iter)) {
+                    double value = iter.highest_equivalent_value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
+                    histogram_print(out, jsonhandler, command_name.c_str(), value, percentiles->percentile);
+                }
+
+                if (jsonhandler != NULL) {
+                    jsonhandler->close_nesting();
+                }
+                fprintf(out, "---\n");
+            }
         }
     } else {
         // SETs
@@ -1416,13 +1578,21 @@ void run_stats::print(FILE *out, benchmark_config *config, const char *header /*
         summarize(m_totals);
     }
 
+    // Build aggregated stats by command type if requested (default behavior)
+    std::vector<aggregated_command_type_stats> aggregated_stats;
+    const std::vector<aggregated_command_type_stats> *aggregated_ptr = nullptr;
+    if (print_arbitrary_commands_results() && config->command_stats_by_type) {
+        aggregated_stats = build_aggregated_command_stats(*config->arbitrary_commands);
+        aggregated_ptr = &aggregated_stats;
+    }
+
     output_table table;
 
     // Type column
-    print_type_column(table, *config->arbitrary_commands);
+    print_type_column(table, *config->arbitrary_commands, aggregated_ptr);
 
     // Ops/sec column
-    print_ops_sec_column(table);
+    print_ops_sec_column(table, aggregated_ptr);
 
     // Hits/sec column (not relevant for arbitrary commands)
     if (!print_arbitrary_commands_results()) {
@@ -1436,12 +1606,12 @@ void run_stats::print(FILE *out, benchmark_config *config, const char *header /*
 
     // Moved & ASK column (relevant only for cluster mode)
     if (config->cluster_mode) {
-        print_moved_sec_column(table);
-        print_ask_sec_column(table);
+        print_moved_sec_column(table, aggregated_ptr);
+        print_ask_sec_column(table, aggregated_ptr);
     }
 
     // Latency column
-    print_avg_latency_column(table);
+    print_avg_latency_column(table, aggregated_ptr);
 
     for (std::size_t i = 0; i < config->print_percentiles.quantile_list.size(); i++) {
         float quantile = config->print_percentiles.quantile_list[i];
@@ -1455,11 +1625,11 @@ void run_stats::print(FILE *out, benchmark_config *config, const char *header /*
             num = num - int(num);
         }
         snprintf(average_header, sizeof(average_header) - 1, "p%.*f Latency", ndigts, quantile);
-        print_quantile_latency_column(table, quantile, (char *) average_header);
+        print_quantile_latency_column(table, quantile, (char *) average_header, aggregated_ptr);
     }
 
     // KB/sec column
-    print_kb_sec_column(table);
+    print_kb_sec_column(table, aggregated_ptr);
 
     // print results
     table.print(out, header);
@@ -1474,11 +1644,11 @@ void run_stats::print(FILE *out, benchmark_config *config, const char *header /*
             jsonhandler->open_nesting("UNKNOWN STATS");
         }
 
-        print_json(jsonhandler, *config->arbitrary_commands, config->cluster_mode);
+        print_json(jsonhandler, *config->arbitrary_commands, config->cluster_mode, aggregated_ptr);
     }
 
     if (!config->hide_histogram) {
-        print_histogram(out, jsonhandler, *config->arbitrary_commands);
+        print_histogram(out, jsonhandler, *config->arbitrary_commands, aggregated_ptr);
     }
 
     // This close_nesting closes either:
