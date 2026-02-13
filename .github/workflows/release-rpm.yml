@@ -223,12 +223,21 @@ jobs:
 
     - name: Install dependencies and RPM
       run: |
+        # Find RPM file (globstar not enabled by default)
+        RPM_FILE=$(find ./rpms -name "*.rpm" -type f ! -name "*debug*" | head -1)
+        if [ -z "$RPM_FILE" ]; then
+          echo "::error::No RPM file found in ./rpms"
+          find ./rpms -type f
+          exit 1
+        fi
+        echo "Installing: $RPM_FILE"
+
         if command -v dnf &> /dev/null; then
           dnf install -y libevent openssl
-          dnf install -y ./rpms/**/*.rpm || dnf install -y ./rpms/*.rpm
+          dnf install -y "$RPM_FILE"
         else
           yum install -y libevent openssl
-          yum install -y ./rpms/**/*.rpm || yum install -y ./rpms/*.rpm
+          yum install -y "$RPM_FILE"
         fi
 
     - name: Verify installation
