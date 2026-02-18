@@ -247,7 +247,8 @@ bool client::finished(void)
 bool client::all_connections_idle(void)
 {
     for (unsigned int i = 0; i < m_connections.size(); i++) {
-        if (m_connections[i]->get_pending_resp() > 0) {
+        shard_connection *sc = m_connections[i];
+        if (sc != NULL && sc->get_pending_resp() > 0) {
             return false;
         }
     }
