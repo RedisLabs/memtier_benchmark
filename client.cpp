@@ -188,6 +188,16 @@ void client::disconnect(void)
     sc->disconnect();
 }
 
+void client::disconnect_all(void)
+{
+    for (unsigned int i = 0; i < m_connections.size(); i++) {
+        shard_connection *sc = m_connections[i];
+        if (sc != NULL) {
+            sc->disconnect();
+        }
+    }
+}
+
 int client::connect(void)
 {
     struct connect_info addr;
@@ -232,6 +242,16 @@ bool client::finished(void)
     if (m_config->requests > 0 && m_reqs_processed >= m_config->requests) return true;
     if (m_config->test_time > 0 && m_stats.get_duration() >= m_config->test_time) return true;
     return false;
+}
+
+bool client::all_connections_idle(void)
+{
+    for (unsigned int i = 0; i < m_connections.size(); i++) {
+        if (m_connections[i]->get_pending_resp() > 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void client::set_start_time()
