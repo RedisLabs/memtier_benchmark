@@ -251,7 +251,7 @@ When a crash occurs, memtier_benchmark will automatically:
 
 === MEMTIER_BENCHMARK BUG REPORT END. Make sure to include from START to END. ===
 
-       Please report this bug by opening an issue on github.com/RedisLabs/memtier_benchmark
+       Please report this bug by opening an issue on github.com/redis/memtier_benchmark
 ```
 
 ### Testing the Crash Handler
@@ -456,7 +456,7 @@ This will include full debugging information in the binary, making stack traces 
 
 ### Reporting Crashes
 
-If you encounter a crash, please report it by opening an issue on [GitHub](https://github.com/RedisLabs/memtier_benchmark/issues) and include:
+If you encounter a crash, please report it by opening an issue on [GitHub](https://github.com/redis/memtier_benchmark/issues) and include:
 
 1. The complete bug report output (from START to END markers)
 2. The command line used to run memtier_benchmark

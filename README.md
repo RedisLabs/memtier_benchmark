@@ -1,8 +1,8 @@
 memtier_benchmark
 =================
-![GitHub](https://img.shields.io/github/license/RedisLabs/memtier_benchmark)
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/RedisLabs/memtier_benchmark)](https://github.com/RedisLabs/memtier_benchmark/releases)
-[![codecov](https://codecov.io/gh/RedisLabs/memtier_benchmark/branch/master/graph/badge.svg)](https://codecov.io/gh/RedisLabs/memtier_benchmark)
+![GitHub](https://img.shields.io/github/license/redis/memtier_benchmark)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/redis/memtier_benchmark)](https://github.com/redis/memtier_benchmark/releases)
+[![codecov](https://codecov.io/gh/redis/memtier_benchmark/branch/master/graph/badge.svg)](https://codecov.io/gh/redis/memtier_benchmark)
 
 
 memtier_benchmark is a command line utility developed by [Redis](https://redis.io) (formerly Garantia Data Ltd.) for load generation and benchmarking NoSQL key-value databases. It offers the following:
@@ -63,10 +63,10 @@ Use available images on Docker Hub:
 
 ```
 # latest stable release
-$ docker run --rm redislabs/memtier_benchmark:latest --help
+$ docker run --rm redis/memtier_benchmark:latest --help
 
 # master branch edge build
-$ docker run --rm redislabs/memtier_benchmark:edge --help
+$ docker run --rm redis/memtier_benchmark:edge --help
 ```
 
 Or, build locally:
