@@ -61,7 +61,7 @@ void cluster_client_timer_handler(evutil_socket_t fd, short what, void *ctx)
 {
     shard_connection *sc = (shard_connection *) ctx;
     assert(sc != NULL);
-    sc->handle_timer_event(ctx);
+    sc->handle_timer_event();
 }
 
 void cluster_client_reconnect_timer_handler(evutil_socket_t fd, short what, void *ctx)
@@ -751,7 +751,7 @@ void shard_connection::handle_event(short events)
     }
 }
 
-void shard_connection::handle_timer_event(void *ctx)
+void shard_connection::handle_timer_event(void)
 {
     m_request_per_cur_interval = m_config->request_per_interval;
 

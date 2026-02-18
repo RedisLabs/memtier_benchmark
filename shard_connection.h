@@ -162,7 +162,7 @@ private:
     void fill_pipeline(void);
 
     void handle_event(short evtype);
-    void handle_timer_event(void *ctx);
+    void handle_timer_event(void);
     void attempt_reconnect(const char *error_context);
 
     unsigned int m_id;
