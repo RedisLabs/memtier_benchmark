@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: memtier-benchmark
 Upstream-Contact: Redis Ltd. <oss@redislabs.com>
-Source: https://github.com/RedisLabs/memtier_benchmark
+Source: https://github.com/redis/memtier_benchmark
 
 Files: *
 Copyright: 2011-2026 Redis Ltd. <info@redislabs.com>

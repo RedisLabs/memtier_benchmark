@@ -190,7 +190,7 @@ static void crash_handler(int sig, siginfo_t *info, void *secret)
     fprintf(stderr, "[%d] %s # Core pattern: /proc/sys/kernel/core_pattern\n", getpid(), timestr);
 
     fprintf(stderr, "\n=== MEMTIER_BENCHMARK BUG REPORT END. Make sure to include from START to END. ===\n\n");
-    fprintf(stderr, "       Please report this bug by opening an issue on github.com/RedisLabs/memtier_benchmark\n\n");
+    fprintf(stderr, "       Please report this bug by opening an issue on github.com/redis/memtier_benchmark\n\n");
 
     // Remove the handler and re-raise the signal to generate core dump
     struct sigaction act;
