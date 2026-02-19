@@ -742,6 +742,7 @@ def test_rate_limited_completion_no_hang(env):
     timeout_per_iteration = test_time_secs + 20
 
     for iteration in range(1, iterations + 1):
+        env.debugPrint(f"Running iteration {iteration}/{iterations}",True)
         benchmark_specs = {"name": f"{env.testName}_iter{iteration}", "args": ['--rate-limiting={}'.format(rps_per_client)]}
         addTLSArgs(benchmark_specs, env)
         config = get_default_memtier_config(thread_count, client_count, None, test_time_secs)
@@ -769,12 +770,13 @@ def test_rate_limited_completion_no_hang(env):
             process.wait()
             env.assertTrue(False, message=f"Benchmark hung on iteration {iteration} (timeout {timeout_per_iteration}s)")
             return
-
-        env.assertTrue(memtier_ok, message=f"Iteration {iteration} failed with non-zero exit code")
+        env.debugPrint(f"Iteration {iteration} memtier exit code: {exit_code}",True)
+        env.assertTrue(memtier_ok, message=f"Iteration {iteration} memtier exit code: {exit_code}")
 
         max_expected_time = test_time_secs + 10
+        env.debugPrint(f"Iteration {iteration} took: {elapsed_time:.1f}s (pass < {max_expected_time}s)",True)
         env.assertTrue(elapsed_time < max_expected_time,
-            message=f"Iteration {iteration} took too long: {elapsed_time:.1f}s (expected < {max_expected_time}s)")
+            message=f"Iteration {iteration} took: {elapsed_time:.1f}s (pass < {max_expected_time}s)")
 
         try:
             shutil.rmtree(test_dir)
