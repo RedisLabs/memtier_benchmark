@@ -76,14 +76,15 @@ MEMTIER_BINARY=$ROOT/memtier_benchmark
 
 RLTEST_ARGS=" --oss-redis-path $REDIS_SERVER --enable-debug-command --cluster_node_timeout 15000"
 [[ "$TEST" != "" ]] && RLTEST_ARGS+=" --test $TEST"
-[[ $VERBOSE == 1 ]] && RLTEST_ARGS+=" -v -s --debug-print"
+[[ $VERBOSE == 1 ]] && RLTEST_ARGS+=" -v"
 [[ $TLS == 1 ]] && RLTEST_ARGS+=" --tls-cert-file $TLS_CERT --tls-key-file $TLS_KEY --tls-ca-cert-file $TLS_CACERT --tls"
 
 LOG_LEVEL=${LOG_LEVEL:-notice}
 RLTEST_ARGS+=" --log-level $LOG_LEVEL"
 
-TEST_TIMEOUT=${TEST_TIMEOUT:-600}
-RLTEST_ARGS+=" --test-timeout $TEST_TIMEOUT"
+if [[ $RLTEST_DEBUG == 1 ]]; then
+	RLTEST_ARGS+=" -s --debug-print"
+fi
 
 cd $ROOT/tests
 
