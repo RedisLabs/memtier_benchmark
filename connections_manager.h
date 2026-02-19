@@ -27,6 +27,7 @@ public:
     virtual unsigned long long get_reqs_generated(void) = 0;
     virtual void inc_reqs_generated(void) = 0;
     virtual bool finished(void) = 0;
+    virtual bool all_connections_idle(void) = 0;
 
     virtual void set_start_time(void) = 0;
     virtual void set_end_time(void) = 0;
@@ -40,6 +41,7 @@ public:
 
     virtual int connect(void) = 0;
     virtual void disconnect(void) = 0;
+    virtual void disconnect_all(void) = 0;
 };
 
 
