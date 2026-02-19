@@ -117,12 +117,14 @@ public:
     virtual void handle_response(unsigned int conn_id, struct timeval timestamp, request *request,
                                  protocol_response *response);
     virtual bool finished(void);
+    virtual bool all_connections_idle(void);
     virtual void set_start_time();
     virtual void set_end_time();
     virtual void create_request(struct timeval timestamp, unsigned int conn_id);
     virtual bool hold_pipeline(unsigned int conn_id);
     virtual int connect(void);
     virtual void disconnect(void);
+    virtual void disconnect_all(void);
     //
 
     /* Get current executed arbitrary command */

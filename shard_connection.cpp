@@ -610,14 +610,16 @@ void shard_connection::fill_pipeline(void)
         m_conns_manager->create_request(now, m_id);
     }
 
-    // update events
+    // Check if done: no pending responses and output buffer empty
     if (m_bev != NULL) {
-        // no pending response (nothing to read) and output buffer empty (nothing to write)
         if ((m_pending_resp == 0) && (evbuffer_get_length(bufferevent_get_output(m_bev)) == 0)) {
             benchmark_debug_log("%s Done, no requests to send no response to wait for\n", get_readable_id());
-            bufferevent_disable(m_bev, EV_WRITE | EV_READ);
-            if (m_config->request_rate) {
-                event_del(m_event_timer);
+
+            if (m_conns_manager->finished() && m_conns_manager->all_connections_idle()) {
+                m_conns_manager->set_end_time();
+                m_conns_manager->disconnect_all();
+            } else if (!m_config->request_rate) {
+                bufferevent_disable(m_bev, EV_WRITE | EV_READ);
             }
         }
     }
@@ -676,9 +678,16 @@ void shard_connection::handle_event(short events)
     }
 }
 
-void shard_connection::handle_timer_event()
+void shard_connection::handle_timer_event(void)
 {
     m_request_per_cur_interval = m_config->request_per_interval;
+
+    if (m_conns_manager->finished() && m_conns_manager->all_connections_idle()) {
+        m_conns_manager->set_end_time();
+        m_conns_manager->disconnect_all();
+        return;
+    }
+
     fill_pipeline();
 }
 

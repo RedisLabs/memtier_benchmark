@@ -3,6 +3,7 @@ import json
 import time
 import signal
 import subprocess
+import shutil
 import os
 from include import *
 from mb import Benchmark, RunConfig
@@ -724,6 +725,63 @@ def test_default_set_get_rate_limited(env):
             merged_command_stats = {'cmdstat_set': {'calls': 0}, 'cmdstat_get': {'calls': 0}}
             overall_request_count = agg_info_commandstats(master_nodes_connections, merged_command_stats)
             assert_minimum_memtier_outcomes(config, env, memtier_ok, overall_expected_request_count, overall_request_count, request_delta)
+
+
+def test_rate_limited_completion_no_hang(env):
+    """
+    Verify rate-limited benchmarks complete without hanging.
+    Runs multiple iterations to catch race conditions in cleanup logic.
+    """
+    master_nodes_list = env.getMasterNodesList()
+
+    rps_per_client = 20
+    test_time_secs = 5
+    thread_count = 4
+    client_count = 10
+    iterations = 3
+    timeout_per_iteration = test_time_secs + 20
+
+    for iteration in range(1, iterations + 1):
+        env.debugPrint(f"Running iteration {iteration}/{iterations}",True)
+        benchmark_specs = {"name": f"{env.testName}_iter{iteration}", "args": ['--rate-limiting={}'.format(rps_per_client)]}
+        addTLSArgs(benchmark_specs, env)
+        config = get_default_memtier_config(thread_count, client_count, None, test_time_secs)
+
+        add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+        test_dir = tempfile.mkdtemp()
+
+        config = RunConfig(test_dir, f"{env.testName}_iter{iteration}", config, {})
+        ensure_clean_benchmark_folder(config.results_dir)
+
+        benchmark = Benchmark.from_json(config, benchmark_specs)
+
+        start_time = time.time()
+        try:
+            process = subprocess.Popen(
+                stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                executable=benchmark.binary, args=benchmark.args)
+            _stdout, _stderr = process.communicate(timeout=timeout_per_iteration)
+            exit_code = process.wait()
+            elapsed_time = time.time() - start_time
+            memtier_ok = (exit_code == 0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            env.assertTrue(False, message=f"Benchmark hung on iteration {iteration} (timeout {timeout_per_iteration}s)")
+            return
+        env.debugPrint(f"Iteration {iteration} memtier exit code: {exit_code}",True)
+        env.assertTrue(memtier_ok, message=f"Iteration {iteration} memtier exit code: {exit_code}")
+
+        max_expected_time = test_time_secs + 10
+        env.debugPrint(f"Iteration {iteration} took: {elapsed_time:.1f}s (pass < {max_expected_time}s)",True)
+        env.assertTrue(elapsed_time < max_expected_time,
+            message=f"Iteration {iteration} took: {elapsed_time:.1f}s (pass < {max_expected_time}s)")
+
+        try:
+            shutil.rmtree(test_dir)
+        except:
+            pass
 
 
 def test_data_import(env):
