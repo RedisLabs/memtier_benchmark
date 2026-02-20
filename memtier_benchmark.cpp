@@ -1230,6 +1230,10 @@ struct cg_thread {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);
 
+        // Set bulk size for fast-header protocol
+        m_protocol->set_bulk_size(m_config->bulk_size);
+        m_protocol->set_no_header(m_config->no_header);
+
         // Pass thread_id to client_group
         m_cg = new client_group(m_config, m_protocol, m_obj_gen, m_thread_id);
     }
