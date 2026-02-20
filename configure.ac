@@ -15,10 +15,10 @@ dnl GNU General Public License for more details.
 dnl You should have received a copy of the GNU General Public License
 dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-AC_PREREQ(2.59)
-AC_INIT(memtier_benchmark,2.2.1,oss@redis.com)
+AC_PREREQ([2.71])
+AC_INIT([memtier_benchmark],[2.2.1],[oss@redis.com])
 AC_CONFIG_SRCDIR([memtier_benchmark.cpp])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
@@ -33,7 +33,15 @@ AC_PROG_CXX
 AX_CODE_COVERAGE
 
 # Checks for header files.
-AC_HEADER_STDC
+m4_warn([obsolete],
+[The preprocessor macro `STDC_HEADERS' is obsolete.
+  Except in unusual embedded environments, you can safely include all
+  ISO C90 headers unconditionally.])dnl
+# Autoupdate added the next two lines to ensure that your configure
+# script's behavior did not change.  They are probably safe to remove.
+AC_CHECK_INCLUDES_DEFAULT
+AC_PROG_EGREP
+
 AC_HEADER_DIRENT
 AC_CHECK_HEADERS([stdlib.h string.h sys/time.h getopt.h limits.h malloc.h stdlib.h unistd.h utime.h assert.h sys/socket.h sys/types.h])
 AC_CHECK_HEADERS([fcntl.h netinet/tcp.h])

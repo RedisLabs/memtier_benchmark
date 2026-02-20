@@ -93,13 +93,14 @@ void benchmark_log(int level, const char *fmt, ...)
 }
 
 bool is_redis_protocol(enum PROTOCOL_TYPE type) {
-    return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3);
+    return (type == PROTOCOL_REDIS_DEFAULT || type == PROTOCOL_RESP2 || type == PROTOCOL_RESP3 || type == PROTOCOL_REDIS_FAST_HEADER);
 }
 
 static const char * get_protocol_name(enum PROTOCOL_TYPE type) {
     if (type == PROTOCOL_REDIS_DEFAULT) return "redis";
     else if (type == PROTOCOL_RESP2) return "resp2";
     else if (type == PROTOCOL_RESP3) return "resp3";
+    else if (type == PROTOCOL_REDIS_FAST_HEADER) return "redis-fast-header";
     else if (type == PROTOCOL_MEMCACHE_TEXT) return "memcache_text";
     else if (type == PROTOCOL_MEMCACHE_BINARY) return "memcache_binary";
     else return "none";
@@ -555,7 +556,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_hdr_file_prefix,
         o_rate_limiting,
         o_uri,
-        o_help
+        o_help,
+        o_bulk_size,
+        o_bulk_slots,
+        o_no_header,
+        o_key_slot_part_size,
+        o_key_rest_size
     };
 
     static struct option long_options[] = {
@@ -627,6 +633,11 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         { "command-ratio",              1, 0, o_command_ratio },
         { "rate-limiting",              1, 0, o_rate_limiting },
         { "uri",                        1, 0, o_uri },
+        { "bulk-size",                  1, 0, o_bulk_size },
+        { "bulk-slots",                 1, 0, o_bulk_slots },
+        { "no-header",                  0, 0, o_no_header },
+        { "key-slot-part-size",         1, 0, o_key_slot_part_size },
+        { "key-rest-size",              1, 0, o_key_rest_size },
         { NULL,                         0, 0, 0 }
     };
 
@@ -679,8 +690,10 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                         cfg->protocol = PROTOCOL_MEMCACHE_TEXT;
                     } else if (strcmp(optarg, "memcache_binary") == 0) {
                         cfg->protocol = PROTOCOL_MEMCACHE_BINARY;
+                    } else if (strcmp(optarg, "redis-fast-header") == 0) {
+                        cfg->protocol = PROTOCOL_REDIS_FAST_HEADER;
                     } else {
-                        fprintf(stderr, "error: supported protocols are 'memcache_text', 'memcache_binary', 'redis', 'resp2' and resp3'.\n");
+                        fprintf(stderr, "error: supported protocols are 'memcache_text', 'memcache_binary', 'redis', 'resp2', 'resp3' and 'redis-fast-header'.\n");
                         return -1;
                     }
                     break;
@@ -1073,6 +1086,41 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 }
 #endif
+                case o_bulk_size:
+                    endptr = NULL;
+                    cfg->bulk_size = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (cfg->bulk_size < 1 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: bulk-size must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_bulk_slots:
+                    endptr = NULL;
+                    cfg->bulk_slots = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (cfg->bulk_slots < 1 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: bulk-slots must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_no_header:
+                    cfg->no_header = true;
+                    break;
+                case o_key_slot_part_size:
+                    endptr = NULL;
+                    cfg->key_slot_part_size = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (cfg->key_slot_part_size < 1 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-slot-part-size must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
+                case o_key_rest_size:
+                    endptr = NULL;
+                    cfg->key_rest_size = (unsigned int) strtoul(optarg, &endptr, 10);
+                    if (cfg->key_rest_size < 1 || !endptr || *endptr != '\0') {
+                        fprintf(stderr, "error: key-rest-size must be greater than zero.\n");
+                        return -1;
+                    }
+                    break;
             default:
                     return -1;
                     break;
@@ -1099,7 +1147,7 @@ void usage() {
             "  -4, --ipv4                     Force IPv4 address resolution.\n"
             "  -6  --ipv6                     Force IPv6 address resolution.\n"
             "  -P, --protocol=PROTOCOL        Protocol to use (default: redis).\n"
-            "                                 other supported protocols are resp2, resp3, memcache_text and memcache_binary.\n"
+            "                                 other supported protocols are resp2, resp3, memcache_text, memcache_binary and redis-fast-header.\n"
             "                                 when using one of resp2 or resp3 the redis protocol version will be set via HELLO command.\n"
             "  -a, --authenticate=CREDENTIALS Authenticate using specified credentials.\n"
             "                                 A simple password is used for memcache_text\n"
