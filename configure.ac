@@ -24,7 +24,7 @@ AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
 LT_INIT
 
-CXXFLAGS="-O2 -g -Wall"
+CXXFLAGS="-O2 -g -Wall $CXXFLAGS"
 
 # Checks for programs.
 AC_PROG_CXX
