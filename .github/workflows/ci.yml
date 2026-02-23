@@ -6,7 +6,11 @@ name: CI
 # - TLS and no-TLS builds
 # - Code coverage and static analysis
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
 
 jobs:
   smoketest-build-distros:
@@ -142,6 +146,65 @@ jobs:
       # for coverage reports we need to use Ubuntu 22.04 or lower
       # (given Ubuntu 24.04 uses lcov >= 2.0 which is not support on autoconf still)
       run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: memtier-build-${{ matrix.platform }}
+        path: |
+          memtier_benchmark
+          .libs/
+        retention-days: 1
+
+  test-ubuntu:
+    needs: build-ubuntu
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04]
+        test-config:
+          - name: "Single Endpoint: TCP Plaintext"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "0", VERBOSE: "1" }
+            tls: false
+          - name: "Single Endpoint: TCP TLS"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "1", VERBOSE: "1" }
+            tls: true
+          - name: "OSS TCP TLS v1.2"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "1", TLS_PROTOCOLS: "TLSv1.2", VERBOSE: "1" }
+            tls: true
+          - name: "OSS TCP TLS v1.3"
+            env: { OSS_STANDALONE: "1", OSS_CLUSTER: "0", TLS: "1", TLS_PROTOCOLS: "TLSv1.3", VERBOSE: "1" }
+            tls: true
+          - name: "OSS-CLUSTER API: TCP Plaintext"
+            env: { OSS_STANDALONE: "0", OSS_CLUSTER: "1", VERBOSE: "1" }
+            tls: false
+          - name: "OSS-CLUSTER API: TCP TLS"
+            env: { OSS_STANDALONE: "0", OSS_CLUSTER: "1", TLS: "1", VERBOSE: "1" }
+            tls: true
+          - name: "OSS-CLUSTER API 49 shards: TCP TLS"
+            env: { RLTEST_DEBUG: "1", LOG_LEVEL: "notice", OSS_STANDALONE: "0", OSS_CLUSTER: "1", TLS: "1", VERBOSE: "1", SHARDS: "49", TEST: "tests_oss_simple_flow:test_rate_limited_completion_no_hang" }
+            tls: true
+          - name: "OSS-CLUSTER API 99 shards: TCP TLS"
+            env: { RLTEST_DEBUG: "1", LOG_LEVEL: "notice", OSS_STANDALONE: "0", OSS_CLUSTER: "1", TLS: "1", VERBOSE: "1", SHARDS: "99", TEST: "tests_oss_simple_flow:test_rate_limited_completion_no_hang" }
+            tls: true
+    runs-on: ${{ matrix.platform }}
+    name: Test ${{ matrix.test-config.name }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: memtier-build-${{ matrix.platform }}
+
+    - name: Restore executable permissions
+      run: chmod +x memtier_benchmark
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
+
     - name: Setup Python
       uses: actions/setup-python@v2
       with:
@@ -166,49 +229,66 @@ jobs:
         ulimit -n 40960
 
     - name: Generate TLS test certificates
-      if: matrix.platform == 'ubuntu-latest'
+      if: matrix.test-config.tls
       run: |
           ./tests/gen-test-certs.sh
 
-    - name: Test OSS TCP
+    - name: Run tests
       timeout-minutes: 10
+      env: ${{ matrix.test-config.env }}
       run: |
         ./tests/run_tests.sh
 
-    - name: Test OSS TCP TLS
-      if: matrix.platform == 'ubuntu-latest'
-      timeout-minutes: 10
-      run: |
-        TLS=1 ./tests/run_tests.sh
+  coverage-ubuntu:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
 
-    - name: Test OSS TCP TLS v1.2
-      if: matrix.platform == 'ubuntu-latest'
-      timeout-minutes: 10
+    - name: Install dependencies
       run: |
-        TLS_PROTOCOLS='TLSv1.2' VERBOSE=1 TLS=1 ./tests/run_tests.sh
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
 
-    - name: Test OSS TCP TLS v1.3
-      if: matrix.platform == 'ubuntu-latest'
-      timeout-minutes: 10
-      run: |
-        TLS_PROTOCOLS='TLSv1.3' VERBOSE=1 TLS=1 ./tests/run_tests.sh
+    - name: Build with coverage
+      # for coverage reports we need to use Ubuntu 22.04 or lower
+      # (given Ubuntu 24.04 uses lcov >= 2.0 which is not supported on autoconf still)
+      run: autoreconf -ivf && ./configure --enable-code-coverage && make -j
 
-    - name: Test OSS-CLUSTER TCP
-      timeout-minutes: 10
-      run: |
-        OSS_STANDALONE=0 OSS_CLUSTER=1 VERBOSE=1 \
-        ./tests/run_tests.sh
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
 
-    - name: Test OSS-CLUSTER TCP TLS
-      timeout-minutes: 10
-      if: matrix.platform == 'ubuntu-latest'
+    - name: Install Python dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
       run: |
-        OSS_STANDALONE=0 OSS_CLUSTER=1 TLS=1 VERBOSE=1 \
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Increase connection limit
+      run: |
+        sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+        sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+        ulimit -n 40960
+
+    - name: Run tests for coverage
+      timeout-minutes: 10
+      env:
+        OSS_STANDALONE: "1"
+        OSS_CLUSTER: "0"
+        TLS: "0"
+        VERBOSE: "1"
+      run: |
         ./tests/run_tests.sh
 
     - name: Capture code coverage
       timeout-minutes: 6
-      if: matrix.platform == 'ubuntu-latest'
       run: |
         make code-coverage-capture
         bash <(curl -s https://codecov.io/bash) -f memtier_benchmark-*-coverage.info || echo "Codecov did not collect coverage reports"

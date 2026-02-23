@@ -17,13 +17,15 @@ The following tools are required:
 * pkg-config
 * GNU make
 * GCC C++ compiler
+* clang-format (for code formatting)
 
 ### CentOS/Red Hat Linux 7 or newer
 
 Use the following to install prerequisites:
 ```
 $ sudo yum install autoconf automake make gcc-c++ \
-    zlib-devel libmemcached-devel libevent-devel openssl-devel
+    zlib-devel libmemcached-devel libevent-devel openssl-devel \
+    clang-tools-extra
 ```
 
 ### Ubuntu/Debian
@@ -32,7 +34,7 @@ Use the following to install prerequisites:
 
 ```
 $ sudo apt-get install build-essential autoconf automake \
-    libevent-dev pkg-config zlib1g-dev libssl-dev
+    libevent-dev pkg-config zlib1g-dev libssl-dev clang-format
 ```
 
 ### macOS
@@ -40,7 +42,7 @@ $ sudo apt-get install build-essential autoconf automake \
 To build natively on macOS, use Homebrew to install the required dependencies:
 
 ```
-$ brew install autoconf automake libtool libevent pkg-config openssl@3.0
+$ brew install autoconf automake libtool libevent pkg-config openssl@3.0 clang-format
 ```
 
 When running `./configure`, if it fails to find libssl it may be necessary to
@@ -73,6 +75,22 @@ $ ./configure CXXFLAGS="-g -O0 -Wall"
 ```
 
 This disables optimizations (`-O0`), making it easier to step through code in a debugger, but should not be used for performance testing or production.
+
+### Code Style
+
+This project uses `clang-format` for consistent C++ code formatting. The style configuration is defined in `.clang-format`.
+
+To format all C++ files:
+```
+$ make format
+```
+
+To check formatting without modifying files:
+```
+$ make format-check
+```
+
+CI will automatically check that all C++ files are properly formatted on every push and pull request.
 
 ## Testing
 
@@ -233,7 +251,7 @@ When a crash occurs, memtier_benchmark will automatically:
 
 === MEMTIER_BENCHMARK BUG REPORT END. Make sure to include from START to END. ===
 
-       Please report this bug by opening an issue on github.com/RedisLabs/memtier_benchmark
+       Please report this bug by opening an issue on github.com/redis/memtier_benchmark
 ```
 
 ### Testing the Crash Handler
@@ -438,7 +456,7 @@ This will include full debugging information in the binary, making stack traces 
 
 ### Reporting Crashes
 
-If you encounter a crash, please report it by opening an issue on [GitHub](https://github.com/RedisLabs/memtier_benchmark/issues) and include:
+If you encounter a crash, please report it by opening an issue on [GitHub](https://github.com/redis/memtier_benchmark/issues) and include:
 
 1. The complete bug report output (from START to END markers)
 2. The command line used to run memtier_benchmark

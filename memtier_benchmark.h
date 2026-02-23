@@ -32,19 +32,19 @@ class statsd_client;
 #define LOGLEVEL_ERROR 0
 #define LOGLEVEL_DEBUG 1
 
-#define benchmark_debug_log(...) \
-    benchmark_log_file_line(LOGLEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+#define benchmark_debug_log(...) benchmark_log_file_line(LOGLEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
 
-#define benchmark_error_log(...) \
-    benchmark_log(LOGLEVEL_ERROR, __VA_ARGS__)
+#define benchmark_error_log(...) benchmark_log(LOGLEVEL_ERROR, __VA_ARGS__)
 
-enum key_pattern_index {
-    key_pattern_set       = 0,
+enum key_pattern_index
+{
+    key_pattern_set = 0,
     key_pattern_delimiter = 1,
-    key_pattern_get       = 2
+    key_pattern_get = 2
 };
 
-enum PROTOCOL_TYPE {
+enum PROTOCOL_TYPE
+{
     PROTOCOL_REDIS_DEFAULT,
     PROTOCOL_RESP2,
     PROTOCOL_RESP3,
@@ -52,7 +52,8 @@ enum PROTOCOL_TYPE {
     PROTOCOL_MEMCACHE_BINARY,
 };
 
-struct benchmark_config {
+struct benchmark_config
+{
     const char *server;
     unsigned short port;
     struct server_addr *server_addr;
@@ -114,7 +115,11 @@ struct benchmark_config {
     // JSON additions
     const char *json_out_file;
     bool cluster_mode;
-    struct arbitrary_command_list* arbitrary_commands;
+    struct arbitrary_command_list *arbitrary_commands;
+    const char *monitor_input;
+    struct monitor_command_list *monitor_commands;
+    char monitor_pattern;
+    bool command_stats_by_type; // true = aggregate by command type (default), false = per command line
     const char *hdr_prefix;
     unsigned int request_rate;
     unsigned int request_per_interval;

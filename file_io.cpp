@@ -25,16 +25,12 @@
 #include "file_io.h"
 
 /** largest support line length */
-#define MAX_LINE_BUFFER     1024
+#define MAX_LINE_BUFFER 1024
 
 /** \brief file_reader constructor.
  * \param filename name of file to open.
  */
-file_reader::file_reader(const char *filename) :
-    m_filename(filename), m_file(NULL),
-    m_line(2)
-{
-}
+file_reader::file_reader(const char *filename) : m_filename(filename), m_file(NULL), m_line(2) {}
 
 /** \brief file_reader destructor.
  */
@@ -45,10 +41,7 @@ file_reader::~file_reader()
     }
 }
 
-file_reader::file_reader(const file_reader& from) :
-    m_filename(from.m_filename), m_file(NULL), m_line(2)
-{
-}
+file_reader::file_reader(const file_reader &from) : m_filename(from.m_filename), m_file(NULL), m_line(2) {}
 
 /** \brief open file and prepare to read items.
  *
@@ -60,11 +53,9 @@ bool file_reader::open_file(void)
 {
     char header_line[80];
     const char expected_header_line[] = "dumpflags, time, exptime";
-    if (!m_filename)
-        return false;
+    if (!m_filename) return false;
 
-    if (m_file != NULL)
-        fclose(m_file);
+    if (m_file != NULL) fclose(m_file);
 
     m_file = fopen(m_filename, "r");
     if (!m_file) {
@@ -103,9 +94,7 @@ bool file_reader::open_file(void)
  * \return pointer to allocated buffer, or NULL on error.
  */
 
-char* file_reader::read_string(unsigned int len,
-    unsigned int alloc_len,
-    unsigned int* actual_len)
+char *file_reader::read_string(unsigned int len, unsigned int alloc_len, unsigned int *actual_len)
 {
     char *dest_str = NULL;
     char *d;
@@ -164,8 +153,7 @@ char* file_reader::read_string(unsigned int len,
     }
 
     if (len > 0) {
-        fprintf(stderr, "%s:%d: warning: premature end of string (%d bytes left)\n",
-            m_filename, m_line, len);
+        fprintf(stderr, "%s:%d: warning: premature end of string (%d bytes left)\n", m_filename, m_line, len);
     }
 
     // read ending quote
@@ -173,20 +161,17 @@ char* file_reader::read_string(unsigned int len,
         if (skip_quote) {
             int c = fgetc(m_file);
             if (c != '"') {
-                fprintf(stderr, "%s:%d: warning: string terminated in a quoted character.\n",
-                    m_filename, m_line);
+                fprintf(stderr, "%s:%d: warning: string terminated in a quoted character.\n", m_filename, m_line);
             }
         }
 
         int c = fgetc(m_file);
         if (c != '"') {
-            fprintf(stderr, "%s:%d: warning: missing '\"' at end of column (got '%c').\n",
-                m_filename, m_line, c);
+            fprintf(stderr, "%s:%d: warning: missing '\"' at end of column (got '%c').\n", m_filename, m_line, c);
         }
     }
 
-    if (actual_len != NULL)
-        *actual_len = (d - dest_str);
+    if (actual_len != NULL) *actual_len = (d - dest_str);
 
     return dest_str;
 }
@@ -203,7 +188,7 @@ bool file_reader::is_eof(void)
  * \return pointer to heap-allocated object, or NULL if error/no more items in file.
  */
 
-memcache_item* file_reader::read_item(void)
+memcache_item *file_reader::read_item(void)
 {
     // parse next line
     unsigned int s_dumpflags = 0;
@@ -216,21 +201,11 @@ memcache_item* file_reader::read_item(void)
     unsigned int s_nkey = 0;
 
     // scan int values
-    if (fscanf(m_file, "%u, %u, %u, %u, %u, %u, %u, %u, ",
-        &s_dumpflags,
-        &s_time,
-        &s_exptime,
-        &s_nbytes,
-        &s_nsuffix,
-        &s_flags,
-        &s_clsid,
-        &s_nkey) < 8) {
+    if (fscanf(m_file, "%u, %u, %u, %u, %u, %u, %u, %u, ", &s_dumpflags, &s_time, &s_exptime, &s_nbytes, &s_nsuffix,
+               &s_flags, &s_clsid, &s_nkey) < 8) {
+        if (is_eof()) return NULL;
 
-        if (is_eof())
-            return NULL;
-
-        fprintf(stderr, "%s:%u: error parsing item values.\n",
-            m_filename, m_line);
+        fprintf(stderr, "%s:%u: error parsing item values.\n", m_filename, m_line);
         return NULL;
     }
 
@@ -238,16 +213,15 @@ memcache_item* file_reader::read_item(void)
     unsigned int key_actlen = 0;
     char *key = read_string(s_nkey, s_nkey + 1, &key_actlen);
     if (key_actlen != s_nkey) {
-        fprintf(stderr, "%s:%u: warning: key column is %u bytes, expected %u bytes.\n",
-            m_filename, m_line, key_actlen, s_nkey);
+        fprintf(stderr, "%s:%u: warning: key column is %u bytes, expected %u bytes.\n", m_filename, m_line, key_actlen,
+                s_nkey);
     }
     key[s_nkey] = '\0';
 
     // read data
     int c = fgetc(m_file);
     if (c != ',') {
-        fprintf(stderr, "%s:%u: error parsing csv file, got '%c' instead of delmiter.\n",
-            m_filename, m_line, c);
+        fprintf(stderr, "%s:%u: error parsing csv file, got '%c' instead of delmiter.\n", m_filename, m_line, c);
         free(key);
         return NULL;
     }
@@ -256,8 +230,8 @@ memcache_item* file_reader::read_item(void)
     unsigned int data_actlen = 0;
     char *data = read_string(s_nbytes - 2, s_nbytes, &data_actlen);
     if (data_actlen != s_nbytes - 2) {
-        fprintf(stderr, "%s:%u: warning: data column is %u bytes, expected %u bytes.\n",
-            m_filename, m_line, data_actlen, s_nbytes);
+        fprintf(stderr, "%s:%u: warning: data column is %u bytes, expected %u bytes.\n", m_filename, m_line,
+                data_actlen, s_nbytes);
         free(key);
         free(data);
         return NULL;
@@ -271,15 +245,13 @@ memcache_item* file_reader::read_item(void)
         c = fgetc(m_file);
     }
     if (c != '\n') {
-        fprintf(stderr, "%s:%u: warning: end of line expected but not found.\n",
-            m_filename, m_line);
+        fprintf(stderr, "%s:%u: warning: end of line expected but not found.\n", m_filename, m_line);
     }
 
     m_line++;
 
     // return item
-    memcache_item *item = new memcache_item(s_dumpflags,
-        s_time, s_exptime, s_flags, s_nsuffix, s_clsid);
+    memcache_item *item = new memcache_item(s_dumpflags, s_time, s_exptime, s_flags, s_nsuffix, s_clsid);
     item->set_key(key, s_nkey);
     item->set_data(data, s_nbytes);
 
@@ -292,10 +264,7 @@ memcache_item* file_reader::read_item(void)
  * \param filename name of file to open.
  */
 
-file_writer::file_writer(const char *filename) :
-    m_filename(filename), m_file(NULL)
-{
-}
+file_writer::file_writer(const char *filename) : m_filename(filename), m_file(NULL) {}
 
 /** \brief file_writer destructor.
  *
@@ -305,8 +274,7 @@ file_writer::file_writer(const char *filename) :
 
 file_writer::~file_writer()
 {
-    if (m_file != NULL)
-        fclose(m_file);
+    if (m_file != NULL) fclose(m_file);
 }
 
 /** \brief open file and prepare to write items.
@@ -323,8 +291,7 @@ bool file_writer::open_file(void)
         return false;
     }
 
-    fprintf(m_file,
-        "dumpflags, time, exptime, nbytes, nsuffix, it_flags, clsid, nkey, key, data\n");
+    fprintf(m_file, "dumpflags, time, exptime, nbytes, nsuffix, it_flags, clsid, nkey, key, data\n");
     return true;
 }
 
@@ -340,7 +307,7 @@ bool file_writer::open_file(void)
  * \return pointer to quoted string, or to the same string if quoting is not needed.
  */
 
-char* file_writer::get_quoted_str(char* str, int str_len, int* new_str_len)
+char *file_writer::get_quoted_str(char *str, int str_len, int *new_str_len)
 {
     char *new_str;
     char *d;
@@ -354,7 +321,7 @@ char* file_writer::get_quoted_str(char* str, int str_len, int* new_str_len)
     }
 
     // assume worst case for memory allocation
-    new_str = (char *)malloc(str_len * 2);
+    new_str = (char *) malloc(str_len * 2);
     if (!new_str) {
         fprintf(stderr, "get_quoted_str: error: out of memory\n");
         return str;
@@ -384,21 +351,12 @@ bool file_writer::write_item(memcache_item *item)
     char *quoted_data;
     int quoted_data_len;
 
-    quoted_key = get_quoted_str(item->get_key(),
-        item->get_nkey(), &quoted_key_len);
-    quoted_data = get_quoted_str(item->get_data(),
-        item->get_nbytes() - 2, &quoted_data_len);
+    quoted_key = get_quoted_str(item->get_key(), item->get_nkey(), &quoted_key_len);
+    quoted_data = get_quoted_str(item->get_data(), item->get_nbytes() - 2, &quoted_data_len);
 
-    fprintf(m_file, "%u, %u, %u, %u, %u, %u, %u, %u, \"%.*s\", \"",
-        item->get_dumpflags(),
-        (unsigned int) item->get_time(),
-        (unsigned int) item->get_exptime(),
-        item->get_nbytes(),
-        item->get_nsuffix(),
-        item->get_flags(),
-        item->get_clsid(),
-        item->get_nkey(),
-        quoted_key_len, quoted_key);
+    fprintf(m_file, "%u, %u, %u, %u, %u, %u, %u, %u, \"%.*s\", \"", item->get_dumpflags(),
+            (unsigned int) item->get_time(), (unsigned int) item->get_exptime(), item->get_nbytes(),
+            item->get_nsuffix(), item->get_flags(), item->get_clsid(), item->get_nkey(), quoted_key_len, quoted_key);
     if (fwrite(quoted_data, quoted_data_len, 1, m_file) != 1) {
         perror(m_filename);
         return false;
@@ -408,10 +366,8 @@ bool file_writer::write_item(memcache_item *item)
         return false;
     }
 
-    if (quoted_key != item->get_key())
-        free(quoted_key);
-    if (quoted_data != item->get_data())
-        free(quoted_data);
+    if (quoted_key != item->get_key()) free(quoted_key);
+    if (quoted_data != item->get_data()) free(quoted_data);
 
     return true;
 }
