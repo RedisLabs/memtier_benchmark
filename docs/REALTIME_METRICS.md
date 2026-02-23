@@ -78,21 +78,62 @@ Custom prefix (useful if sharing a Graphite instance):
 
 ## Metrics Reference
 
-The following metrics are sent every ~200ms during the benchmark:
+The following metrics are sent every ~200ms during the benchmark.
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `ops_sec` | gauge | Current operations per second |
-| `ops_sec_avg` | gauge | Running average ops/sec since start |
-| `bytes_sec` | gauge | Current throughput in bytes/sec |
-| `bytes_sec_avg` | gauge | Running average throughput |
-| `latency_ms` | timing | Current average latency (ms) |
-| `latency_avg_ms` | timing | Running average latency since start |
-| `connections` | gauge | Number of active connections |
-| `connection_errors` | gauge | Total connection errors |
-| `progress_pct` | gauge | Benchmark progress percentage |
+### Throughput
 
-Metrics appear in Graphite under the path: `stats.gauges.<prefix>.<run_label>.<metric>`
+| Metric | StatsD type | Graphite path | Description |
+|--------|-------------|---------------|-------------|
+| `ops_sec` | gauge | `stats.gauges.<prefix>.<label>.ops_sec` | Instantaneous ops/sec over the last interval |
+| `ops_sec_avg` | gauge | `stats.gauges.<prefix>.<label>.ops_sec_avg` | Running average ops/sec since benchmark start |
+| `bytes_sec` | gauge | `stats.gauges.<prefix>.<label>.bytes_sec` | Instantaneous byte throughput over the last interval |
+| `bytes_sec_avg` | gauge | `stats.gauges.<prefix>.<label>.bytes_sec_avg` | Running average byte throughput since benchmark start |
+
+### Latency
+
+| Metric | StatsD type | Graphite path | Description |
+|--------|-------------|---------------|-------------|
+| `latency_ms` | timing (ms) | `stats.timers.<prefix>.<label>.latency_ms.*` | Instantaneous average latency (ms) over the last interval |
+| `latency_avg_ms` | timing (ms) | `stats.timers.<prefix>.<label>.latency_avg_ms.*` | Running average latency (ms) since benchmark start |
+| `latency_p<N>` | gauge | `stats.gauges.<prefix>.<label>.latency_p<N>` | Instantaneous latency at percentile N (ms). One metric per percentile configured via `--print-percentiles`. Default: `latency_p50`, `latency_p99`, `latency_p99_9`. Decimal points are replaced with underscores (e.g. `latency_p99_9` for p99.9). |
+
+> **Note:** `latency_ms` and `latency_avg_ms` are sent as StatsD timing metrics (`ms` type). StatsD
+> processes them into derived stats (mean, upper, lower, etc.) that appear under
+> `stats.timers.*` in Graphite — not under `stats.gauges.*` like the other metrics.
+> The per-percentile `latency_p<N>` metrics are plain gauges and appear under `stats.gauges.*`.
+
+### Connections and Errors
+
+| Metric | StatsD type | Graphite path | Description |
+|--------|-------------|---------------|-------------|
+| `connections` | gauge | `stats.gauges.<prefix>.<label>.connections` | Active connection count (`--clients` × active thread count) |
+| `connection_errors` | gauge | `stats.gauges.<prefix>.<label>.connection_errors` | Cumulative connection error count. **Only sent when the count is > 0** and not zeroed at run end — stale values may linger in Graphite after errors clear. Protocol-level command errors are not tracked here. |
+
+### Progress
+
+| Metric | StatsD type | Graphite path | Description |
+|--------|-------------|---------------|-------------|
+| `progress_pct` | gauge | `stats.gauges.<prefix>.<label>.progress_pct` | Benchmark completion percentage (0–100) |
+
+### Events (Graphite annotations)
+
+Two events are sent via HTTP POST to the Graphite events API (not StatsD UDP):
+
+| Event | Tags | When |
+|-------|------|------|
+| `Benchmark Started` | `memtier,start` | Immediately before the benchmark loop begins |
+| `Benchmark Completed` | `memtier,end` | Immediately after all threads finish |
+
+These appear as vertical annotation lines on the Grafana dashboard.
+
+### End-of-run zeroing
+
+When the benchmark completes, the following gauges are explicitly zeroed so graphs
+return to baseline rather than holding the last value:
+`ops_sec`, `ops_sec_avg`, `bytes_sec`, `bytes_sec_avg`, `progress_pct`.
+
+`connections`, `latency_ms`, `latency_avg_ms`, `latency_p<N>`, and `connection_errors`
+are **not** zeroed at run end.
 
 ## Comparing Multiple Benchmark Runs
 
@@ -203,4 +244,3 @@ If you have an existing StatsD-compatible metrics infrastructure:
 ```
 
 You can import the dashboard from `grafana/dashboards/memtier.json` into your Grafana instance. You may need to adjust the datasource UID to match your Graphite datasource.
-

@@ -10,4 +10,3 @@ datasources:
     editable: true
     jsonData:
       graphiteVersion: "1.1"
-

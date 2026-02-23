@@ -50,4 +50,3 @@ services:
 volumes:
   graphite-data:
   grafana-data:
-

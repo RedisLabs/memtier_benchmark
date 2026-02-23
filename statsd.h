@@ -26,10 +26,10 @@
 
 /**
  * Simple StatsD client for sending metrics over UDP.
- * 
+ *
  * StatsD protocol format:
  *   <metric_name>:<value>|<type>[|@<sample_rate>]
- * 
+ *
  * Types:
  *   g = gauge (instantaneous value)
  *   c = counter (increment/decrement)
@@ -124,4 +124,3 @@ public:
 };
 
 #endif // _STATSD_H
-

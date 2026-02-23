@@ -255,4 +255,3 @@ void statsd_client::event(const char* what, const char* data, const char* tags)
 
     ::close(sock);
 }
-
