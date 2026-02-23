@@ -24,6 +24,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <pthread.h>
 
 #include "memtier_benchmark.h"
 #include "run_stats_types.h"
@@ -132,10 +133,14 @@ protected:
     std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
     safe_hdr_histogram inst_m_totals_latency_histogram;
 
+    // Protects inst_m_totals_latency_histogram against concurrent reset and aggregation reads
+    mutable pthread_mutex_t m_inst_histogram_mutex;
+
     void roll_cur_stats(struct timeval *ts);
 
 public:
     run_stats(benchmark_config *config);
+    ~run_stats();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void set_start_time(struct timeval *start_time);
     void set_end_time(struct timeval *end_time);
@@ -174,8 +179,9 @@ public:
     void save_csv_one_sec(FILE *f, unsigned long int &total_get_ops, unsigned long int &total_set_ops,
                           unsigned long int &total_wait_ops);
 
-    // Get instantaneous total latency histogram for aggregation
-    hdr_histogram *get_inst_totals_histogram() const;
+    // Safely copy instantaneous total latency histogram into target under mutex.
+    // Use this instead of a raw pointer getter to avoid data races with worker threads.
+    void copy_inst_histogram(hdr_histogram *target) const;
     void save_csv_one_sec_cluster(FILE *f);
     void save_csv_set_get_commands(FILE *f, bool cluster_mode);
     void save_csv_arbitrary_commands_one_sec(FILE *f, arbitrary_command_list &command_list,

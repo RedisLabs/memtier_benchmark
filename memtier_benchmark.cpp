@@ -564,6 +564,7 @@ static void config_init_defaults(struct benchmark_config *cfg)
     if (!cfg->statsd_port) cfg->statsd_port = 8125;
     if (!cfg->statsd_prefix) cfg->statsd_prefix = "memtier";
     if (!cfg->statsd_run_label) cfg->statsd_run_label = "default";
+    if (!cfg->graphite_port) cfg->graphite_port = 8080;
 
 #ifdef USE_TLS
     if (!cfg->tls_protocols) cfg->tls_protocols = REDIS_TLS_PROTO_DEFAULT;
@@ -698,6 +699,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_statsd_port,
         o_statsd_prefix,
         o_statsd_run_label,
+        o_graphite_port,
         o_help
     };
 
@@ -783,6 +785,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         {"statsd-port", 1, 0, o_statsd_port},
         {"statsd-prefix", 1, 0, o_statsd_prefix},
         {"statsd-run-label", 1, 0, o_statsd_run_label},
+        {"graphite-port", 1, 0, o_graphite_port},
         {NULL, 0, 0, 0}};
 
     int option_index;
@@ -1348,6 +1351,14 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         case o_statsd_run_label:
             cfg->statsd_run_label = optarg;
             break;
+        case o_graphite_port:
+            endptr = NULL;
+            cfg->graphite_port = (unsigned short) strtoul(optarg, &endptr, 10);
+            if (cfg->graphite_port == 0 || !endptr || *endptr != '\0') {
+                fprintf(stderr, "error: graphite-port must be a valid port number.\n");
+                return -1;
+            }
+            break;
         default:
             return -1;
             break;
@@ -1419,6 +1430,8 @@ void usage()
         "      --statsd-prefix=PREFIX     Prefix for StatsD metric names (default: memtier)\n"
         "      --statsd-run-label=LABEL   Label for this benchmark run, used to distinguish runs in dashboards "
         "(default: default)\n"
+        "      --graphite-port=PORT       Graphite HTTP port for event annotations (default: 8080 for host access; "
+        "use 80 when running inside the Docker network)\n"
         "  -h, --help                     Display this help\n"
         "  -v, --version                  Display version information\n"
         "\n"
@@ -2277,6 +2290,7 @@ int main(int argc, char *argv[])
     cfg.statsd = NULL;
     if (cfg.statsd_host != NULL) {
         cfg.statsd = new statsd_client();
+        cfg.statsd->set_graphite_port(cfg.graphite_port);
         if (!cfg.statsd->init(cfg.statsd_host, cfg.statsd_port, cfg.statsd_prefix, cfg.statsd_run_label)) {
             fprintf(stderr, "warning: failed to initialize StatsD client, metrics will not be sent\n");
             delete cfg.statsd;

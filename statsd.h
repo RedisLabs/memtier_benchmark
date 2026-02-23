@@ -72,6 +72,14 @@ public:
     const char *get_run_label() const { return m_run_label; }
 
     /**
+     * Set the Graphite HTTP port for event annotations.
+     * Default is 8080, matching the host-side port in docker-compose.statsd.yml.
+     * Use 80 if running memtier_benchmark inside the same Docker network.
+     * @param port Graphite web UI port
+     */
+    void set_graphite_port(unsigned short port) { m_graphite_port = port; }
+
+    /**
      * Close the UDP socket and cleanup.
      */
     void close();

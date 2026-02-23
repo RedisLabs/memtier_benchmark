@@ -856,7 +856,7 @@ void client_group::merge_run_stats(run_stats *target)
 void client_group::aggregate_inst_histogram(hdr_histogram *target)
 {
     for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        hdr_add(target, (*i)->get_stats()->get_inst_totals_histogram());
+        (*i)->get_stats()->copy_inst_histogram(target);
     }
 }
 

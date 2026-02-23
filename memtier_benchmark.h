@@ -129,6 +129,7 @@ struct benchmark_config
     unsigned short statsd_port;
     const char *statsd_prefix;
     const char *statsd_run_label;
+    unsigned short graphite_port;
     statsd_client *statsd;
 #ifdef USE_TLS
     bool tls;

@@ -31,7 +31,7 @@
 
 #include "statsd.h"
 
-statsd_client::statsd_client() : m_socket(-1), m_graphite_port(80), m_enabled(false), m_initialized(false)
+statsd_client::statsd_client() : m_socket(-1), m_graphite_port(8080), m_enabled(false), m_initialized(false)
 {
     memset(&m_server_addr, 0, sizeof(m_server_addr));
     memset(m_prefix, 0, sizeof(m_prefix));
@@ -240,8 +240,10 @@ void statsd_client::event(const char *what, const char *data, const char *tags)
                            "%s",
                            m_graphite_host, m_graphite_port, json_len, json);
 
-    // Send request (fire and forget)
-    send(sock, request, req_len, 0);
+    // Send request (fire and forget) - only if no truncation occurred
+    if (req_len > 0 && req_len < (int) sizeof(request)) {
+        send(sock, request, req_len, 0);
+    }
 
     ::close(sock);
 }
