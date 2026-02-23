@@ -104,13 +104,15 @@ request::request(request_type type, unsigned int size, struct timeval *sent_time
 
 arbitrary_request::arbitrary_request(size_t request_index, request_type type, unsigned int size,
                                      struct timeval *sent_time) :
-        request(type, size, sent_time, 1), index(request_index)
+        request(type, size, sent_time, 1),
+        index(request_index)
 {
 }
 
 verify_request::verify_request(request_type type, unsigned int size, struct timeval *sent_time, unsigned int keys,
                                const char *key, unsigned int key_len, const char *value, unsigned int value_len) :
-        request(type, size, sent_time, keys), m_key(NULL), m_key_len(0), m_value(NULL), m_value_len(0)
+        request(type, size, sent_time, keys),
+        m_key(NULL), m_key_len(0), m_value(NULL), m_value_len(0)
 {
     m_key_len = key_len;
     m_key = (char *) malloc(key_len);
@@ -136,22 +138,10 @@ verify_request::~verify_request(void)
 shard_connection::shard_connection(unsigned int id, connections_manager *conns_man, benchmark_config *config,
                                    struct event_base *event_base, abstract_protocol *abs_protocol) :
         m_address(NULL),
-        m_port(NULL),
-        m_unix_sockaddr(NULL),
-        m_bev(NULL),
-        m_event_timer(NULL),
-        m_request_per_cur_interval(0),
-        m_pending_resp(0),
-        m_connection_state(conn_disconnected),
-        m_hello(setup_done),
-        m_authentication(setup_done),
-        m_db_selection(setup_done),
-        m_cluster_slots(setup_done),
-        m_reconnect_attempts(0),
-        m_current_backoff_delay(1.0),
-        m_reconnect_timer(NULL),
-        m_reconnecting(false),
-        m_connection_timeout_timer(NULL)
+        m_port(NULL), m_unix_sockaddr(NULL), m_bev(NULL), m_event_timer(NULL), m_request_per_cur_interval(0),
+        m_pending_resp(0), m_connection_state(conn_disconnected), m_hello(setup_done), m_authentication(setup_done),
+        m_db_selection(setup_done), m_cluster_slots(setup_done), m_reconnect_attempts(0), m_current_backoff_delay(1.0),
+        m_reconnect_timer(NULL), m_reconnecting(false), m_connection_timeout_timer(NULL)
 {
     m_id = id;
     m_conns_manager = conns_man;

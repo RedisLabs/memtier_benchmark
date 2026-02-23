@@ -175,13 +175,8 @@ protected:
 
 public:
     redis_protocol() :
-            m_response_state(rs_initial),
-            m_bulk_len(0),
-            m_response_len(0),
-            m_total_bulks_count(0),
-            m_current_mbulk(NULL),
-            m_resp3(false),
-            m_attribute(false)
+            m_response_state(rs_initial), m_bulk_len(0), m_response_len(0), m_total_bulks_count(0),
+            m_current_mbulk(NULL), m_resp3(false), m_attribute(false)
     {
     }
     virtual redis_protocol *clone(void) { return new redis_protocol(); }

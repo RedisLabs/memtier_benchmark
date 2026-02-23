@@ -27,16 +27,8 @@
 
 
 one_sec_cmd_stats::one_sec_cmd_stats() :
-        m_bytes_rx(0),
-        m_bytes_tx(0),
-        m_ops(0),
-        m_hits(0),
-        m_misses(0),
-        m_moved(0),
-        m_ask(0),
-        m_total_latency(0),
-        m_avg_latency(0.0),
-        m_min_latency(std::numeric_limits<double>::max()),
+        m_bytes_rx(0), m_bytes_tx(0), m_ops(0), m_hits(0), m_misses(0), m_moved(0), m_ask(0), m_total_latency(0),
+        m_avg_latency(0.0), m_min_latency(std::numeric_limits<double>::max()),
         m_max_latency(std::numeric_limits<double>::lowest())
 {
 }
@@ -214,15 +206,8 @@ void one_second_stats::merge(const one_second_stats &other)
 ///////////////////////////////////////////////////////////////////////////
 
 totals_cmd::totals_cmd() :
-        m_ops_sec(0),
-        m_bytes_sec(0),
-        m_bytes_sec_rx(0),
-        m_bytes_sec_tx(0),
-        m_moved_sec(0),
-        m_ask_sec(0),
-        m_latency(0),
-        m_total_latency(0),
-        m_ops(0)
+        m_ops_sec(0), m_bytes_sec(0), m_bytes_sec_rx(0), m_bytes_sec_tx(0), m_moved_sec(0), m_ask_sec(0), m_latency(0),
+        m_total_latency(0), m_ops(0)
 {
 }
 
@@ -302,24 +287,9 @@ size_t ar_totals_cmd::size() const
 ///////////////////////////////////////////////////////////////////////////
 
 totals::totals() :
-        m_set_cmd(),
-        m_get_cmd(),
-        m_wait_cmd(),
-        m_total_cmd(),
-        m_ar_commands(),
-        m_ops_sec(0),
-        m_bytes_sec(0),
-        m_hits_sec(0),
-        m_misses_sec(0),
-        m_moved_sec(0),
-        m_ask_sec(0),
-        m_latency(0),
-        m_total_latency(0),
-        m_bytes_rx(0),
-        m_bytes_tx(0),
-        m_ops(0),
-        m_connection_errors(0),
-        m_connection_errors_sec(0)
+        m_set_cmd(), m_get_cmd(), m_wait_cmd(), m_total_cmd(), m_ar_commands(), m_ops_sec(0), m_bytes_sec(0),
+        m_hits_sec(0), m_misses_sec(0), m_moved_sec(0), m_ask_sec(0), m_latency(0), m_total_latency(0), m_bytes_rx(0),
+        m_bytes_tx(0), m_ops(0), m_connection_errors(0), m_connection_errors_sec(0)
 {
 }
 

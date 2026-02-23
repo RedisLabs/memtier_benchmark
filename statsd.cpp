@@ -31,11 +31,7 @@
 
 #include "statsd.h"
 
-statsd_client::statsd_client() :
-    m_socket(-1),
-    m_graphite_port(80),
-    m_enabled(false),
-    m_initialized(false)
+statsd_client::statsd_client() : m_socket(-1), m_graphite_port(80), m_enabled(false), m_initialized(false)
 {
     memset(&m_server_addr, 0, sizeof(m_server_addr));
     memset(m_prefix, 0, sizeof(m_prefix));
@@ -48,7 +44,7 @@ statsd_client::~statsd_client()
     close();
 }
 
-bool statsd_client::init(const char* host, unsigned short port, const char* prefix, const char* run_label)
+bool statsd_client::init(const char *host, unsigned short port, const char *prefix, const char *run_label)
 {
     if (host == NULL || host[0] == '\0') {
         m_enabled = false;
@@ -69,7 +65,7 @@ bool statsd_client::init(const char* host, unsigned short port, const char* pref
     }
 
     // Resolve hostname
-    struct hostent* server = gethostbyname(host);
+    struct hostent *server = gethostbyname(host);
     if (server == NULL) {
         fprintf(stderr, "statsd: failed to resolve host '%s'\n", host);
         ::close(m_socket);
@@ -88,7 +84,7 @@ bool statsd_client::init(const char* host, unsigned short port, const char* pref
         strncpy(m_run_label, run_label, sizeof(m_run_label) - 1);
         m_run_label[sizeof(m_run_label) - 1] = '\0';
         // Sanitize: replace invalid characters with underscore
-        for (char* p = m_run_label; *p; p++) {
+        for (char *p = m_run_label; *p; p++) {
             if (!isalnum(*p) && *p != '_' && *p != '-') {
                 *p = '_';
             }
@@ -111,8 +107,8 @@ bool statsd_client::init(const char* host, unsigned short port, const char* pref
     m_enabled = true;
     m_initialized = true;
 
-    fprintf(stderr, "statsd: initialized, sending metrics to %s:%u with prefix '%s' run_label '%s'\n",
-            host, port, prefix ? prefix : "", m_run_label);
+    fprintf(stderr, "statsd: initialized, sending metrics to %s:%u with prefix '%s' run_label '%s'\n", host, port,
+            prefix ? prefix : "", m_run_label);
 
     return true;
 }
@@ -127,7 +123,7 @@ void statsd_client::close()
     m_initialized = false;
 }
 
-void statsd_client::send_metric(const char* name, const char* value, const char* type)
+void statsd_client::send_metric(const char *name, const char *value, const char *type)
 {
     if (!is_enabled() || m_socket < 0) {
         return;
@@ -136,49 +132,48 @@ void statsd_client::send_metric(const char* name, const char* value, const char*
     char buffer[512];
     int len = snprintf(buffer, sizeof(buffer) - 1, "%s%s:%s|%s", m_prefix, name, value, type);
 
-    if (len > 0 && len < (int)sizeof(buffer)) {
+    if (len > 0 && len < (int) sizeof(buffer)) {
         // Send UDP packet (fire and forget - don't check return value)
-        sendto(m_socket, buffer, len, 0,
-               (struct sockaddr*)&m_server_addr, sizeof(m_server_addr));
+        sendto(m_socket, buffer, len, 0, (struct sockaddr *) &m_server_addr, sizeof(m_server_addr));
     }
 }
 
-void statsd_client::gauge(const char* name, double value)
+void statsd_client::gauge(const char *name, double value)
 {
     char val_str[64];
     snprintf(val_str, sizeof(val_str) - 1, "%.6f", value);
     send_metric(name, val_str, "g");
 }
 
-void statsd_client::gauge(const char* name, long value)
+void statsd_client::gauge(const char *name, long value)
 {
     char val_str[64];
     snprintf(val_str, sizeof(val_str) - 1, "%ld", value);
     send_metric(name, val_str, "g");
 }
 
-void statsd_client::timing(const char* name, double value_ms)
+void statsd_client::timing(const char *name, double value_ms)
 {
     char val_str[64];
     snprintf(val_str, sizeof(val_str) - 1, "%.3f", value_ms);
     send_metric(name, val_str, "ms");
 }
 
-void statsd_client::counter(const char* name, long value)
+void statsd_client::counter(const char *name, long value)
 {
     char val_str[64];
     snprintf(val_str, sizeof(val_str) - 1, "%ld", value);
     send_metric(name, val_str, "c");
 }
 
-void statsd_client::histogram(const char* name, double value)
+void statsd_client::histogram(const char *name, double value)
 {
     char val_str[64];
     snprintf(val_str, sizeof(val_str) - 1, "%.6f", value);
     send_metric(name, val_str, "h");
 }
 
-void statsd_client::event(const char* what, const char* data, const char* tags)
+void statsd_client::event(const char *what, const char *data, const char *tags)
 {
     if (!is_enabled() || m_graphite_host[0] == '\0') {
         return;
@@ -198,7 +193,7 @@ void statsd_client::event(const char* what, const char* data, const char* tags)
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     // Resolve hostname
-    struct hostent* server = gethostbyname(m_graphite_host);
+    struct hostent *server = gethostbyname(m_graphite_host);
     if (server == NULL) {
         ::close(sock);
         return;
@@ -212,7 +207,7 @@ void statsd_client::event(const char* what, const char* data, const char* tags)
     memcpy(&addr.sin_addr.s_addr, server->h_addr, server->h_length);
 
     // Connect
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
         ::close(sock);
         return;
     }
@@ -221,34 +216,29 @@ void statsd_client::event(const char* what, const char* data, const char* tags)
     char json[1024];
     int json_len;
     if (data != NULL && tags != NULL) {
-        json_len = snprintf(json, sizeof(json) - 1,
-            "{\"what\":\"%s\",\"tags\":\"%s,run:%s\",\"data\":\"%s\"}",
-            what, tags, m_run_label, data);
+        json_len = snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"%s,run:%s\",\"data\":\"%s\"}", what,
+                            tags, m_run_label, data);
     } else if (tags != NULL) {
-        json_len = snprintf(json, sizeof(json) - 1,
-            "{\"what\":\"%s\",\"tags\":\"%s,run:%s\"}",
-            what, tags, m_run_label);
+        json_len =
+            snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"%s,run:%s\"}", what, tags, m_run_label);
     } else if (data != NULL) {
-        json_len = snprintf(json, sizeof(json) - 1,
-            "{\"what\":\"%s\",\"tags\":\"run:%s\",\"data\":\"%s\"}",
-            what, m_run_label, data);
+        json_len = snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"run:%s\",\"data\":\"%s\"}", what,
+                            m_run_label, data);
     } else {
-        json_len = snprintf(json, sizeof(json) - 1,
-            "{\"what\":\"%s\",\"tags\":\"run:%s\"}",
-            what, m_run_label);
+        json_len = snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"run:%s\"}", what, m_run_label);
     }
 
     // Build HTTP request
     char request[2048];
     int req_len = snprintf(request, sizeof(request) - 1,
-        "POST /events/ HTTP/1.1\r\n"
-        "Host: %s:%u\r\n"
-        "Content-Type: application/json\r\n"
-        "Content-Length: %d\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "%s",
-        m_graphite_host, m_graphite_port, json_len, json);
+                           "POST /events/ HTTP/1.1\r\n"
+                           "Host: %s:%u\r\n"
+                           "Content-Type: application/json\r\n"
+                           "Content-Length: %d\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "%s",
+                           m_graphite_host, m_graphite_port, json_len, json);
 
     // Send request (fire and forget)
     send(sock, request, req_len, 0);

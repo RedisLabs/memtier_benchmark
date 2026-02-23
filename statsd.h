@@ -37,7 +37,8 @@
  *   h = histogram
  *   s = set
  */
-class statsd_client {
+class statsd_client
+{
 private:
     int m_socket;
     struct sockaddr_in m_server_addr;
@@ -49,7 +50,7 @@ private:
     bool m_initialized;
 
     // Internal method to send a formatted metric
-    void send_metric(const char* name, const char* value, const char* type);
+    void send_metric(const char *name, const char *value, const char *type);
 
 public:
     statsd_client();
@@ -63,12 +64,12 @@ public:
      * @param run_label Label for this benchmark run (e.g., "asm_scaling")
      * @return true if initialization successful, false otherwise
      */
-    bool init(const char* host, unsigned short port, const char* prefix, const char* run_label);
+    bool init(const char *host, unsigned short port, const char *prefix, const char *run_label);
 
     /**
      * Get the run label for this client.
      */
-    const char* get_run_label() const { return m_run_label; }
+    const char *get_run_label() const { return m_run_label; }
 
     /**
      * Close the UDP socket and cleanup.
@@ -85,33 +86,33 @@ public:
      * @param name Metric name (will be prefixed)
      * @param value Current value
      */
-    void gauge(const char* name, double value);
+    void gauge(const char *name, double value);
 
     /**
      * Send a gauge metric with long value.
      */
-    void gauge(const char* name, long value);
+    void gauge(const char *name, long value);
 
     /**
      * Send a timing metric (in milliseconds).
      * @param name Metric name (will be prefixed)
      * @param value_ms Time in milliseconds
      */
-    void timing(const char* name, double value_ms);
+    void timing(const char *name, double value_ms);
 
     /**
      * Send a counter metric (increment).
      * @param name Metric name (will be prefixed)
      * @param value Increment value (can be negative for decrement)
      */
-    void counter(const char* name, long value);
+    void counter(const char *name, long value);
 
     /**
      * Send a histogram metric.
      * @param name Metric name (will be prefixed)
      * @param value Sample value
      */
-    void histogram(const char* name, double value);
+    void histogram(const char *name, double value);
 
     /**
      * Send an event/annotation to Graphite.
@@ -120,7 +121,7 @@ public:
      * @param data Additional event data (optional)
      * @param tags Comma-separated tags (optional)
      */
-    void event(const char* what, const char* data = NULL, const char* tags = NULL);
+    void event(const char *what, const char *data = NULL, const char *tags = NULL);
 };
 
 #endif // _STATSD_H
