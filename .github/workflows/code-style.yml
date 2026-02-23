@@ -15,8 +15,11 @@ jobs:
 
       - name: Install clang-format
         run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
-          sudo apt-get install -y clang-format
+          sudo apt-get install -y clang-format-21
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-21 100
 
       - name: Check C++ formatting
         run: |

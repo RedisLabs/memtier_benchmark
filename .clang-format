@@ -14,7 +14,7 @@ AccessModifierOffset: -4
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterClass: true
-  AfterControlStatement: false
+  AfterControlStatement: Never
   AfterEnum: true
   AfterFunction: true
   AfterNamespace: true
@@ -33,20 +33,21 @@ ColumnLimit: 120
 
 # Pointer/reference alignment - space before * (Right alignment)
 PointerAlignment: Right
+ReferenceAlignment: Right
 
 # Spaces
 SpaceAfterCStyleCast: true
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeParens: ControlStatements
-SpacesInAngles: false
+SpacesInAngles: Never
 SpacesInParentheses: false
 
 # IMPORTANT: Do not sort includes - breaks build due to header dependencies
 IncludeBlocks: Preserve
-SortIncludes: false
+SortIncludes: Never
 
 # Short statements
-AllowShortBlocksOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: false

@@ -93,7 +93,7 @@ unsigned long long random_generator::get_random_max() const
 #ifdef HAVE_RANDOM_R
     return 0x3fffffffffffffff; // 62 bits
 #elif (defined HAVE_DRAND48)
-    return 0x7fffffffffffffff;  // 63 bits
+    return 0x7fffffffffffffff; // 63 bits
 #endif
 }
 

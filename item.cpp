@@ -27,8 +27,8 @@
 
 memcache_item::memcache_item(unsigned int dumpflags, time_t time, time_t exptime, unsigned short flags,
                              unsigned int nsuffix, unsigned int clsid) :
-        m_dumpflags(dumpflags),
-        m_time(time), m_exptime(exptime), m_flags(flags), m_nsuffix(nsuffix), m_clsid(clsid), m_version(0)
+        m_dumpflags(dumpflags), m_time(time), m_exptime(exptime), m_flags(flags), m_nsuffix(nsuffix), m_clsid(clsid),
+        m_version(0)
 {
     m_key = NULL;
     m_data = NULL;

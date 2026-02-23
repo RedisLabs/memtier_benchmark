@@ -120,10 +120,10 @@ client::client(client_group *group) :
 
 client::client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol,
                object_generator *obj_gen) :
-        m_event_base(NULL),
-        m_initialized(false), m_end_set(false), m_config(NULL), m_obj_gen(NULL), m_stats(config), m_reqs_processed(0),
-        m_reqs_generated(0), m_set_ratio_count(0), m_get_ratio_count(0), m_arbitrary_command_ratio_count(0),
-        m_executed_command_index(0), m_tot_set_ops(0), m_tot_wait_ops(0), m_keylist(NULL)
+        m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL), m_obj_gen(NULL), m_stats(config),
+        m_reqs_processed(0), m_reqs_generated(0), m_set_ratio_count(0), m_get_ratio_count(0),
+        m_arbitrary_command_ratio_count(0), m_executed_command_index(0), m_tot_set_ops(0), m_tot_wait_ops(0),
+        m_keylist(NULL)
 {
     m_event_base = event_base;
 
@@ -593,8 +593,7 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp, req
 
 verify_client::verify_client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol,
                              object_generator *obj_gen) :
-        client(event_base, config, protocol, obj_gen),
-        m_finished(false), m_verified_keys(0), m_errors(0)
+        client(event_base, config, protocol, obj_gen), m_finished(false), m_verified_keys(0), m_errors(0)
 {
     MAIN_CONNECTION->get_protocol()->set_keep_value(true);
 }
