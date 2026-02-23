@@ -74,7 +74,7 @@ TLS_CACERT=$ROOT/tests/tls/ca.crt
 REDIS_SERVER=${REDIS_SERVER:-redis-server}
 MEMTIER_BINARY=$ROOT/memtier_benchmark
 
-RLTEST_ARGS=" --oss-redis-path $REDIS_SERVER --enable-debug-command --cluster_node_timeout 15000"
+RLTEST_ARGS=" --cluster-start-timeout 180 --oss-redis-path $REDIS_SERVER --enable-debug-command --cluster_node_timeout 15000"
 [[ "$TEST" != "" ]] && RLTEST_ARGS+=" --test $TEST"
 [[ $VERBOSE == 1 ]] && RLTEST_ARGS+=" -v"
 [[ $TLS == 1 ]] && RLTEST_ARGS+=" --tls-cert-file $TLS_CERT --tls-key-file $TLS_KEY --tls-ca-cert-file $TLS_CACERT --tls"
