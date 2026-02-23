@@ -1,2 +1,2 @@
 redis>=3.0.0
-rltest>=0.7.17
+git+https://github.com/RedisLabsModules/RLTest.git@master
