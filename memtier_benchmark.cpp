@@ -1762,6 +1762,8 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         thread_prev_cpu[t] = get_thread_cpu_usec(threads[t]->m_thread);
     }
     unsigned int cpu_second = 0;
+    struct timeval cpu_prev_tv;
+    gettimeofday(&cpu_prev_tv, NULL);
 
     // provide some feedback...
     // NOTE: Reading stats from worker threads without synchronization is a benign race.
@@ -1880,15 +1882,21 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         per_second_cpu_stats cpu_snap;
         cpu_snap.m_second = cpu_second;
 
+        struct timeval cpu_cur_tv;
+        gettimeofday(&cpu_cur_tv, NULL);
+        double wall_usec = (double)(cpu_cur_tv.tv_sec - cpu_prev_tv.tv_sec) * 1000000.0
+                         + (double)(cpu_cur_tv.tv_usec - cpu_prev_tv.tv_usec);
+        if (wall_usec < 1.0) wall_usec = 1.0;  // guard against division by zero
+
         unsigned long long main_cur_cpu = get_thread_cpu_usec(pthread_self());
         unsigned long long main_delta = (main_cur_cpu > main_prev_cpu) ? main_cur_cpu - main_prev_cpu : 0;
-        cpu_snap.m_main_thread_cpu_pct = (double)main_delta / 1000000.0 * 100.0;
+        cpu_snap.m_main_thread_cpu_pct = (double)main_delta / wall_usec * 100.0;
         main_prev_cpu = main_cur_cpu;
 
         for (size_t t = 0; t < threads.size(); t++) {
             unsigned long long cur_cpu = get_thread_cpu_usec(threads[t]->m_thread);
             unsigned long long delta = (cur_cpu > thread_prev_cpu[t]) ? cur_cpu - thread_prev_cpu[t] : 0;
-            double cpu_pct = (double)delta / 1000000.0 * 100.0;
+            double cpu_pct = (double)delta / wall_usec * 100.0;
             cpu_snap.m_thread_cpu_pct.push_back(cpu_pct);
             thread_prev_cpu[t] = cur_cpu;
 
@@ -1896,6 +1904,7 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
                 fprintf(stderr, "\nWARNING: High CPU on thread %zu: %.1f%% - results may be unreliable\n", t, cpu_pct);
             }
         }
+        cpu_prev_tv = cpu_cur_tv;
         cpu_history.push_back(cpu_snap);
     } while (active_threads > 0);
 
