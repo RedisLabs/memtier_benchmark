@@ -23,7 +23,7 @@ services:
     volumes:
       - graphite-data:/opt/graphite/storage
       - ./graphite/statsd-config.js:/opt/statsd/config/udp.js:ro
-      - ./storage-schemas.conf:/opt/graphite/conf/storage-schemas.conf:ro
+      - ./graphite/storage-schemas.conf:/opt/graphite/conf/storage-schemas.conf:ro
     environment:
       - GRAPHITE_WSGI_PROCESSES=1
       - GRAPHITE_WSGI_THREADS=1
