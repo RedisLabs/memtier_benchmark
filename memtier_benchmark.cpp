@@ -1938,18 +1938,16 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
                         int64_t value = hdr_value_at_percentile(temp_histogram, percentile);
                         double value_ms = value / (double) LATENCY_HDR_RESULTS_MULTIPLIER;
 
-                        // Format the metric name (e.g., "latency_p50", "latency_p99", "latency_p99_9")
+                        // Format the metric name (e.g., "latency_p50", "latency_p99", "latency_p99_9",
+                        // "latency_p99_99"). %g gives the shortest exact representation with no trailing
+                        // zeros, avoiding truncation and collisions for high-precision percentiles.
                         char metric_name[32];
-                        if (percentile == (int) percentile) {
-                            snprintf(metric_name, sizeof(metric_name), "latency_p%d", (int) percentile);
-                        } else {
-                            // Replace decimal point with underscore for metric name
-                            snprintf(metric_name, sizeof(metric_name), "latency_p%.1f", percentile);
-                            // Replace '.' with '_' in the metric name
-                            for (char *p = metric_name; *p; p++) {
-                                if (*p == '.') *p = '_';
-                            }
+                        char pct_str[24];
+                        snprintf(pct_str, sizeof(pct_str), "%g", percentile);
+                        for (char *p = pct_str; *p; p++) {
+                            if (*p == '.') *p = '_';
                         }
+                        snprintf(metric_name, sizeof(metric_name), "latency_p%s", pct_str);
 
                         cfg->statsd->gauge(metric_name, value_ms);
                     }
