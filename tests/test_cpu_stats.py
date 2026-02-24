@@ -22,7 +22,8 @@ def test_cpu_stats_in_json(env):
 
     benchmark = Benchmark.from_json(config, benchmark_specs)
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env)
+    if not memtier_ok:
+        debugPrintMemtierOnError(config, env)
 
     env.assertTrue(memtier_ok == True)
     env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
@@ -80,7 +81,8 @@ def test_cpu_stats_high_load(env):
 
     benchmark = Benchmark.from_json(config, benchmark_specs)
     memtier_ok = benchmark.run()
-    debugPrintMemtierOnError(config, env)
+    if not memtier_ok:
+        debugPrintMemtierOnError(config, env)
 
     env.assertTrue(memtier_ok == True)
     env.assertTrue(os.path.isfile('{0}/mb.json'.format(config.results_dir)))
