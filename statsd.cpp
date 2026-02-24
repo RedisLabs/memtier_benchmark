@@ -93,16 +93,24 @@ bool statsd_client::init(const char *host, unsigned short port, const char *pref
         strncpy(m_run_label, "default", sizeof(m_run_label) - 1);
     }
 
-    // Store prefix with run label: prefix.run_label.
+    // Build prefix with run label: prefix.run_label.
+    // Sanitize prefix: allow alphanumeric, underscore, hyphen, and dot (for hierarchy).
+    char sanitized_prefix[256];
     if (prefix != NULL && prefix[0] != '\0') {
-        snprintf(m_prefix, sizeof(m_prefix) - 1, "%s.%s.", prefix, m_run_label);
+        strncpy(sanitized_prefix, prefix, sizeof(sanitized_prefix) - 1);
+        sanitized_prefix[sizeof(sanitized_prefix) - 1] = '\0';
+        for (char *p = sanitized_prefix; *p; p++) {
+            if (!isalnum(*p) && *p != '_' && *p != '-' && *p != '.') {
+                *p = '_';
+            }
+        }
+        snprintf(m_prefix, sizeof(m_prefix), "%s.%s.", sanitized_prefix, m_run_label);
     } else {
-        snprintf(m_prefix, sizeof(m_prefix) - 1, "%s.", m_run_label);
+        snprintf(m_prefix, sizeof(m_prefix), "%s.", m_run_label);
     }
 
-    // Store graphite host for events (assume same host, port 80)
+    // Store graphite host for events (same host, port set via set_graphite_port())
     strncpy(m_graphite_host, host, sizeof(m_graphite_host) - 1);
-    m_graphite_port = 80;
 
     m_enabled = true;
     m_initialized = true;
@@ -130,7 +138,7 @@ void statsd_client::send_metric(const char *name, const char *value, const char 
     }
 
     char buffer[512];
-    int len = snprintf(buffer, sizeof(buffer) - 1, "%s%s:%s|%s", m_prefix, name, value, type);
+    int len = snprintf(buffer, sizeof(buffer), "%s%s:%s|%s", m_prefix, name, value, type);
 
     if (len > 0 && len < (int) sizeof(buffer)) {
         // Send UDP packet (fire and forget - don't check return value)
@@ -141,21 +149,21 @@ void statsd_client::send_metric(const char *name, const char *value, const char 
 void statsd_client::gauge(const char *name, double value)
 {
     char val_str[64];
-    snprintf(val_str, sizeof(val_str) - 1, "%.6f", value);
+    snprintf(val_str, sizeof(val_str), "%.6f", value);
     send_metric(name, val_str, "g");
 }
 
 void statsd_client::gauge(const char *name, long value)
 {
     char val_str[64];
-    snprintf(val_str, sizeof(val_str) - 1, "%ld", value);
+    snprintf(val_str, sizeof(val_str), "%ld", value);
     send_metric(name, val_str, "g");
 }
 
 void statsd_client::timing(const char *name, double value_ms)
 {
     char val_str[64];
-    snprintf(val_str, sizeof(val_str) - 1, "%.3f", value_ms);
+    snprintf(val_str, sizeof(val_str), "%.3f", value_ms);
     send_metric(name, val_str, "ms");
 }
 
@@ -202,21 +210,20 @@ void statsd_client::event(const char *what, const char *data, const char *tags)
     char json[1024];
     int json_len;
     if (data != NULL && tags != NULL) {
-        json_len = snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"%s,run:%s\",\"data\":\"%s\"}", what,
-                            tags, m_run_label, data);
+        json_len = snprintf(json, sizeof(json), "{\"what\":\"%s\",\"tags\":\"%s,run:%s\",\"data\":\"%s\"}", what, tags,
+                            m_run_label, data);
     } else if (tags != NULL) {
-        json_len =
-            snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"%s,run:%s\"}", what, tags, m_run_label);
+        json_len = snprintf(json, sizeof(json), "{\"what\":\"%s\",\"tags\":\"%s,run:%s\"}", what, tags, m_run_label);
     } else if (data != NULL) {
-        json_len = snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"run:%s\",\"data\":\"%s\"}", what,
+        json_len = snprintf(json, sizeof(json), "{\"what\":\"%s\",\"tags\":\"run:%s\",\"data\":\"%s\"}", what,
                             m_run_label, data);
     } else {
-        json_len = snprintf(json, sizeof(json) - 1, "{\"what\":\"%s\",\"tags\":\"run:%s\"}", what, m_run_label);
+        json_len = snprintf(json, sizeof(json), "{\"what\":\"%s\",\"tags\":\"run:%s\"}", what, m_run_label);
     }
 
     // Build HTTP request
     char request[2048];
-    int req_len = snprintf(request, sizeof(request) - 1,
+    int req_len = snprintf(request, sizeof(request),
                            "POST /events/ HTTP/1.1\r\n"
                            "Host: %s:%u\r\n"
                            "Content-Type: application/json\r\n"

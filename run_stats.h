@@ -145,8 +145,9 @@ protected:
     std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
     safe_hdr_histogram inst_m_totals_latency_histogram;
 
-    // Protects inst_m_totals_latency_histogram against concurrent reset and aggregation reads.
-    // reinit_mutex_t ensures copies initialize a fresh mutex rather than duplicating state.
+    // Protects inst_m_totals_latency_histogram against concurrent reset/aggregation reads.
+    // Worker threads use hdr_record_value_capped_atomic() for lock-free writes;
+    // this mutex serializes hdr_reset and hdr_add from the main thread.
     reinit_mutex_t m_inst_histogram_mutex;
 
     void roll_cur_stats(struct timeval *ts);

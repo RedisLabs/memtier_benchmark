@@ -3,9 +3,9 @@ Tests for StatsD metrics output feature.
 
 Uses a lightweight in-process UDP server to capture StatsD packets emitted
 by memtier_benchmark, so there is no dependency on a real Graphite/StatsD
-installation.  The test is "best effort": if the mock server cannot be set
-up (e.g. no available UDP port) it logs a warning and passes rather than
-failing CI.
+installation.  Infrastructure issues (e.g. can't bind socket, benchmark
+didn't start) cause a graceful skip; once metrics are received, assertions
+are enforced.
 
 Local Graphite testing:
   docker compose -f docker-compose.statsd.yml up -d
@@ -15,6 +15,7 @@ Local Graphite testing:
 import socket
 import threading
 import tempfile
+import shutil
 import time
 import os
 import logging
@@ -161,8 +162,8 @@ def test_statsd_metrics_emitted(env):
         _skip(env, "could not bind UDP socket for mock StatsD server")
         return
 
+    test_dir = tempfile.mkdtemp()
     try:
-        test_dir = tempfile.mkdtemp()
         run_label = "ci_run"
         prefix = "memtier"
 
@@ -199,10 +200,10 @@ def test_statsd_metrics_emitted(env):
         # Every metric line must start with "<prefix>.<run_label>."
         expected_prefix = f"{prefix}.{run_label}."
         bad_lines = [m for m in received if not m.startswith(expected_prefix)]
-        if bad_lines:
-            print(f"WARNING: {len(bad_lines)} lines did not start with expected prefix:")
-            for line in bad_lines[:5]:
-                print(f"  {line}")
+        env.assertEqual(
+            len(bad_lines), 0,
+            f"Lines without expected prefix '{expected_prefix}': {bad_lines[:5]}"
+        )
 
         # Check that the core gauge/timing metrics were seen
         names = server.metric_names()
@@ -217,29 +218,22 @@ def test_statsd_metrics_emitted(env):
         ]
 
         missing = [m for m in required_metrics if m not in names]
-        if missing:
-            # Best-effort: warn but do not fail CI
-            logging.warning(
-                "test_statsd: some expected metrics were not seen: %s "
-                "(total received: %d, all names: %s)",
-                missing, len(received), sorted(names),
-            )
-            print(f"WARNING: missing metrics: {missing}")
-            print("Passing anyway (best-effort)")
-        else:
-            print(f"✓ All required StatsD metrics were received")
+        env.assertEqual(
+            len(missing), 0,
+            f"Missing required metrics (received {len(received)} lines, "
+            f"names: {sorted(names)}): {missing}"
+        )
 
         # Verify StatsD wire format: each line must contain ':' and '|'
         malformed = [m for m in received if ":" not in m or "|" not in m]
-        if malformed:
-            print(f"WARNING: {len(malformed)} malformed metric lines (missing ':' or '|')")
-            for line in malformed[:5]:
-                print(f"  {line!r}")
-
-        env.assertTrue(True)
+        env.assertEqual(
+            len(malformed), 0,
+            f"Malformed metric lines (missing ':' or '|'): {malformed[:5]}"
+        )
 
     finally:
         server.stop()
+        shutil.rmtree(test_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +250,8 @@ def test_statsd_prefix_and_label(env):
         _skip(env, "could not bind UDP socket for mock StatsD server")
         return
 
+    test_dir = tempfile.mkdtemp()
     try:
-        test_dir = tempfile.mkdtemp()
         custom_prefix = "mybench"
         custom_label = "label_test_42"
 
@@ -285,24 +279,24 @@ def test_statsd_prefix_and_label(env):
 
         expected_prefix = f"{custom_prefix}.{custom_label}."
         matching = [m for m in received if m.startswith(expected_prefix)]
+        non_matching = [m for m in received if not m.startswith(expected_prefix)]
 
         print(f"Received {len(received)} total metric lines, "
               f"{len(matching)} with prefix '{expected_prefix}'")
 
-        if not matching:
-            logging.warning(
-                "test_statsd_prefix_and_label: no metrics matched expected prefix '%s'. "
-                "Sample received: %s",
-                expected_prefix, received[:5],
-            )
-            print("WARNING: prefix/label not found in metrics — passing anyway (best-effort)")
-        else:
-            print(f"✓ Prefix and label correctly applied: {matching[0]}")
-
-        env.assertTrue(True)
+        env.assertGreater(
+            len(matching), 0,
+            f"No metrics matched expected prefix '{expected_prefix}'. "
+            f"Sample received: {received[:5]}"
+        )
+        env.assertEqual(
+            len(non_matching), 0,
+            f"All metrics should use prefix '{expected_prefix}': {non_matching[:5]}"
+        )
 
     finally:
         server.stop()
+        shutil.rmtree(test_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -325,8 +319,8 @@ def test_statsd_disabled_by_default(env):
         _skip(env, "port 8125 already in use — cannot verify silence")
         return
 
+    test_dir = tempfile.mkdtemp()
     try:
-        test_dir = tempfile.mkdtemp()
         # No --statsd-host argument
         extra_args = []
         benchmark = _build_benchmark(env, test_dir, extra_args)
@@ -342,19 +336,16 @@ def test_statsd_disabled_by_default(env):
             except socket.timeout:
                 break
 
-        if packets:
-            logging.warning(
-                "test_statsd_disabled_by_default: received %d unexpected UDP packets "
-                "on port 8125 when --statsd-host was not set", len(packets),
-            )
-            print(f"WARNING: {len(packets)} unexpected packets — passing anyway (best-effort)")
-        else:
-            print("✓ No StatsD traffic sent when --statsd-host is omitted")
-
-        env.assertTrue(ok)
+        env.assertTrue(ok, "memtier_benchmark should succeed without --statsd-host")
+        env.assertEqual(
+            len(packets), 0,
+            f"Received {len(packets)} unexpected UDP packets on port 8125 "
+            f"when --statsd-host was not set"
+        )
 
     finally:
         sock.close()
+        shutil.rmtree(test_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -379,39 +370,38 @@ def test_statsd_graphite_integration(env):
         return
 
     test_dir = tempfile.mkdtemp()
-    run_label = "ci_graphite"
-    prefix = "memtier"
-    extra_args = [
-        f"--statsd-host={statsd_host}", "--statsd-port=8125",
-        f"--statsd-prefix={prefix}", f"--statsd-run-label={run_label}",
-    ]
-    benchmark = _build_benchmark(env, test_dir, extra_args)
-    ok = benchmark.run()
-    if not ok:
-        _skip(env, "memtier_benchmark exited with non-zero status")
-        return
+    try:
+        run_label = "ci_graphite"
+        prefix = "memtier"
+        extra_args = [
+            f"--statsd-host={statsd_host}", "--statsd-port=8125",
+            f"--statsd-prefix={prefix}", f"--statsd-run-label={run_label}",
+        ]
+        benchmark = _build_benchmark(env, test_dir, extra_args)
+        ok = benchmark.run()
+        if not ok:
+            _skip(env, "memtier_benchmark exited with non-zero status")
+            return
 
-    # Poll Graphite until metrics appear (handles variable flushInterval)
-    pattern = f"stats.gauges.{prefix}.{run_label}.*"
-    query_url = f"{graphite_base}/metrics/find?query={pattern}"
-    found = []
-    for attempt in range(15):
-        time.sleep(2)
-        try:
-            resp = urllib.request.urlopen(query_url, timeout=5)
-            found = _json.loads(resp.read())
-            if found:
-                break
-        except Exception:
-            pass
-        print(f"  Graphite poll {attempt + 1}/15: {len(found)} metrics so far")
+        # Poll Graphite until metrics appear (handles variable flushInterval)
+        pattern = f"stats.gauges.{prefix}.{run_label}.*"
+        query_url = f"{graphite_base}/metrics/find?query={pattern}"
+        found = []
+        for attempt in range(15):
+            time.sleep(2)
+            try:
+                resp = urllib.request.urlopen(query_url, timeout=5)
+                found = _json.loads(resp.read())
+                if found:
+                    break
+            except Exception:
+                pass
+            print(f"  Graphite poll {attempt + 1}/15: {len(found)} metrics so far")
 
-    if found:
-        print(f"Found {len(found)} metrics in Graphite: {[m['id'] for m in found[:5]]}")
-    else:
-        logging.warning(
-            "test_statsd_graphite_integration: no metrics found after 30s"
+        env.assertGreater(
+            len(found), 0,
+            f"No metrics found in Graphite after 30s polling at {query_url}"
         )
-        print("WARNING: no metrics found in Graphite — passing anyway (best-effort)")
-
-    env.assertTrue(True)
+        print(f"Found {len(found)} metrics in Graphite: {[m['id'] for m in found[:5]]}")
+    finally:
+        shutil.rmtree(test_dir, ignore_errors=True)

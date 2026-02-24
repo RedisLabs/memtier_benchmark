@@ -257,10 +257,10 @@ jobs:
     - name: Start monitoring stack
       run: docker compose -f docker-compose.statsd.yml up -d
 
-    - name: Install dependencies
+    - name: Install runtime dependencies
       run: |
         sudo apt-get -qq update
-        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
+        sudo apt-get install -y libevent-dev libssl-dev
 
     - name: Setup Python
       uses: actions/setup-python@v2
@@ -282,9 +282,13 @@ jobs:
     - name: Wait for Graphite to be ready
       run: |
         for i in $(seq 1 30); do
-          curl -sf http://localhost:8080/render > /dev/null && echo "Graphite ready" && break
+          if curl -sf http://localhost:8080/render > /dev/null; then
+            echo "Graphite ready"
+            exit 0
+          fi
           echo "Waiting for Graphite ($i/30)..." && sleep 2
         done
+        echo "Graphite not ready after 60s" && exit 1
 
     - name: Run StatsD tests
       timeout-minutes: 5

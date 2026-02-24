@@ -52,6 +52,7 @@ docker-compose -f docker-compose.statsd.yml down -v
 | `--statsd-port=PORT` | `8125` | StatsD server UDP port. |
 | `--statsd-prefix=PREFIX` | `memtier` | Prefix for all metric names in Graphite. |
 | `--statsd-run-label=LABEL` | `default` | Label to identify this benchmark run. Use different labels to compare runs. |
+| `--graphite-port=PORT` | `8080` | Graphite HTTP port for event annotations. Use `80` when running inside the same Docker network. |
 
 ### Examples
 
@@ -78,7 +79,7 @@ Custom prefix (useful if sharing a Graphite instance):
 
 ## Metrics Reference
 
-The following metrics are sent every ~200ms during the benchmark.
+The following metrics are sent approximately every 1 second during the benchmark.
 
 ### Throughput
 
