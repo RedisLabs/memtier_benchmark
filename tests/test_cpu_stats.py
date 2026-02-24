@@ -213,32 +213,28 @@ def test_cpu_stats_external_validation(env):
 
     cpu_stats = results_dict['ALL STATS']['CPU Stats']
 
-    # Compute average total worker CPU% from memtier JSON (exclude Main Thread)
-    internal_worker_cpus = []
+    # Compute average total process CPU% from memtier JSON (all threads)
+    internal_total_cpus = []
     for sec_key, sec_data in cpu_stats.items():
-        sec_total = sum(v for k, v in sec_data.items() if k != 'Main Thread')
-        internal_worker_cpus.append(sec_total)
-    internal_avg = sum(internal_worker_cpus) / len(internal_worker_cpus)
+        sec_total = sum(v for k, v in sec_data.items())
+        internal_total_cpus.append(sec_total)
+    internal_avg = sum(internal_total_cpus) / len(internal_total_cpus)
 
-    # Compute average total worker CPU% from psutil
-    # Identify main thread as lowest TID (main thread has lowest ID on both platforms)
-    all_tids = set()
+    # Compute average total process CPU% from psutil (all threads)
+    external_total_cpus = []
     for sample in external_samples:
-        all_tids.update(sample.keys())
-    main_tid = min(all_tids) if all_tids else None
+        sec_total = sum(sample.values())
+        external_total_cpus.append(sec_total)
+    external_avg = sum(external_total_cpus) / len(external_total_cpus)
 
-    external_worker_cpus = []
-    for sample in external_samples:
-        sec_total = sum(v for tid, v in sample.items() if tid != main_tid)
-        external_worker_cpus.append(sec_total)
-    external_avg = sum(external_worker_cpus) / len(external_worker_cpus)
-
-    env.debugPrint("Internal avg worker CPU: {:.1f}%".format(internal_avg), True)
-    env.debugPrint("External avg worker CPU: {:.1f}%".format(external_avg), True)
+    env.debugPrint("Internal avg total CPU: {:.1f}%".format(internal_avg), True)
+    env.debugPrint("External avg total CPU: {:.1f}%".format(external_avg), True)
     env.debugPrint("Delta: {:.1f}pp".format(abs(internal_avg - external_avg)), True)
 
-    # Assert they agree within 15 percentage points
-    env.assertTrue(abs(internal_avg - external_avg) < 15.0)
+    # Assert they agree within 25 percentage points
+    # psutil may see additional internal threads (libevent, I/O) not reported by memtier,
+    # so the external total can be higher; use a wider tolerance to account for this.
+    env.assertTrue(abs(internal_avg - external_avg) < 25.0)
 
     # Verify both show significant CPU usage (not both near zero)
     env.assertTrue(internal_avg > 10.0)
