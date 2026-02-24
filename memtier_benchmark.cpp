@@ -75,10 +75,15 @@
 #include <atomic>
 #include <algorithm>
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
+
 #include "client.h"
 #include "JSON_handler.h"
 #include "obj_gen.h"
 #include "memtier_benchmark.h"
+#include "run_stats_types.h"
 
 
 int log_level = 0;
@@ -1700,6 +1705,23 @@ static void print_all_threads_stack_trace(FILE *fp, int pid, const char *timestr
     }
 }
 
+static unsigned long long get_thread_cpu_usec(pthread_t thread) {
+#ifdef __APPLE__
+    mach_port_t mt = pthread_mach_thread_np(thread);
+    thread_basic_info_data_t info;
+    mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+    if (thread_info(mt, THREAD_BASIC_INFO, (thread_info_t)&info, &count) != KERN_SUCCESS) return 0;
+    return (unsigned long long)info.user_time.seconds * 1000000 + info.user_time.microseconds
+         + (unsigned long long)info.system_time.seconds * 1000000 + info.system_time.microseconds;
+#else
+    clockid_t cid;
+    if (pthread_getcpuclockid(thread, &cid) != 0) return 0;
+    struct timespec ts;
+    if (clock_gettime(cid, &ts) != 0) return 0;
+    return (unsigned long long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+#endif
+}
+
 run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj_gen)
 {
     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
@@ -1731,6 +1753,15 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
     double prev_latency = 0, cur_latency = 0;
     unsigned long int cur_ops_sec = 0;
     unsigned long int cur_bytes_sec = 0;
+
+    // CPU usage tracking: sample initial CPU times for main thread and all worker threads
+    std::vector<per_second_cpu_stats> cpu_history;
+    unsigned long long main_prev_cpu = get_thread_cpu_usec(pthread_self());
+    std::vector<unsigned long long> thread_prev_cpu(threads.size());
+    for (size_t t = 0; t < threads.size(); t++) {
+        thread_prev_cpu[t] = get_thread_cpu_usec(threads[t]->m_thread);
+    }
+    unsigned int cpu_second = 0;
 
     // provide some feedback...
     // NOTE: Reading stats from worker threads without synchronization is a benign race.
@@ -1843,6 +1874,29 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
                     run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_ops,
                     cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
         }
+
+        // Collect per-second CPU usage for main thread and all worker threads
+        cpu_second++;
+        per_second_cpu_stats cpu_snap;
+        cpu_snap.m_second = cpu_second;
+
+        unsigned long long main_cur_cpu = get_thread_cpu_usec(pthread_self());
+        unsigned long long main_delta = (main_cur_cpu > main_prev_cpu) ? main_cur_cpu - main_prev_cpu : 0;
+        cpu_snap.m_main_thread_cpu_pct = (double)main_delta / 1000000.0 * 100.0;
+        main_prev_cpu = main_cur_cpu;
+
+        for (size_t t = 0; t < threads.size(); t++) {
+            unsigned long long cur_cpu = get_thread_cpu_usec(threads[t]->m_thread);
+            unsigned long long delta = (cur_cpu > thread_prev_cpu[t]) ? cur_cpu - thread_prev_cpu[t] : 0;
+            double cpu_pct = (double)delta / 1000000.0 * 100.0;
+            cpu_snap.m_thread_cpu_pct.push_back(cpu_pct);
+            thread_prev_cpu[t] = cur_cpu;
+
+            if (cpu_pct > 95.0) {
+                fprintf(stderr, "\nWARNING: High CPU on thread %zu: %.1f%% - results may be unreliable\n", t, cpu_pct);
+            }
+        }
+        cpu_history.push_back(cpu_snap);
     } while (active_threads > 0);
 
     fprintf(stderr, "\n\n");
@@ -1854,6 +1908,8 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         (*i)->join();
         (*i)->m_cg->merge_run_stats(&stats);
     }
+
+    stats.set_cpu_stats(std::move(cpu_history));
 
     // Do we need to produce client stats?
     if (cfg->client_stats != NULL) {
