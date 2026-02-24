@@ -103,9 +103,19 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
 }
 
 client::client(client_group *group) :
-        m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL), m_obj_gen(NULL),
-        m_stats(group->get_config()), m_reqs_processed(0), m_reqs_generated(0), m_set_ratio_count(0),
-        m_get_ratio_count(0), m_arbitrary_command_ratio_count(0), m_executed_command_index(0), m_tot_set_ops(0),
+        m_event_base(NULL),
+        m_initialized(false),
+        m_end_set(false),
+        m_config(NULL),
+        m_obj_gen(NULL),
+        m_stats(group->get_config()),
+        m_reqs_processed(0),
+        m_reqs_generated(0),
+        m_set_ratio_count(0),
+        m_get_ratio_count(0),
+        m_arbitrary_command_ratio_count(0),
+        m_executed_command_index(0),
+        m_tot_set_ops(0),
         m_tot_wait_ops(0)
 {
     m_event_base = group->get_event_base();
@@ -120,9 +130,20 @@ client::client(client_group *group) :
 
 client::client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol,
                object_generator *obj_gen) :
-        m_event_base(NULL), m_initialized(false), m_end_set(false), m_config(NULL), m_obj_gen(NULL), m_stats(config),
-        m_reqs_processed(0), m_reqs_generated(0), m_set_ratio_count(0), m_get_ratio_count(0),
-        m_arbitrary_command_ratio_count(0), m_executed_command_index(0), m_tot_set_ops(0), m_tot_wait_ops(0),
+        m_event_base(NULL),
+        m_initialized(false),
+        m_end_set(false),
+        m_config(NULL),
+        m_obj_gen(NULL),
+        m_stats(config),
+        m_reqs_processed(0),
+        m_reqs_generated(0),
+        m_set_ratio_count(0),
+        m_get_ratio_count(0),
+        m_arbitrary_command_ratio_count(0),
+        m_executed_command_index(0),
+        m_tot_set_ops(0),
+        m_tot_wait_ops(0),
         m_keylist(NULL)
 {
     m_event_base = event_base;

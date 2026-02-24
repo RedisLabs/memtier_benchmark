@@ -1553,8 +1553,14 @@ struct cg_thread
     unsigned int m_restart_count;
 
     cg_thread(unsigned int id, benchmark_config *config, object_generator *obj_gen) :
-            m_thread_id(id), m_config(config), m_obj_gen(obj_gen), m_cg(NULL), m_protocol(NULL), m_finished(false),
-            m_restart_requested(false), m_restart_count(0)
+            m_thread_id(id),
+            m_config(config),
+            m_obj_gen(obj_gen),
+            m_cg(NULL),
+            m_protocol(NULL),
+            m_finished(false),
+            m_restart_requested(false),
+            m_restart_count(0)
     {
         m_protocol = protocol_factory(m_config->protocol);
         assert(m_protocol != NULL);

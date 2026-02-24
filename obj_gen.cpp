@@ -137,10 +137,26 @@ unsigned long long gaussian_noise::gaussian_distribution_range(double stddev, do
 }
 
 object_generator::object_generator(size_t n_key_iterators /*= OBJECT_GENERATOR_KEY_ITERATORS*/) :
-        m_data_size_type(data_size_unknown), m_data_size_pattern(NULL), m_random_data(false), m_expiry_min(0),
-        m_expiry_max(0), m_key_prefix(NULL), m_key_min(0), m_key_max(0), m_key_stddev(0), m_key_median(0),
-        m_key_zipf_min(0), m_key_zipf_max(0), m_key_zipf_exp(1), m_key_zipf_1mexp(0), m_key_zipf_1mexpInv(0),
-        m_key_zipf_Hmin(0), m_key_zipf_Hmax(0), m_key_zipf_s(0), m_value_buffer(NULL), m_value_buffer_size(0),
+        m_data_size_type(data_size_unknown),
+        m_data_size_pattern(NULL),
+        m_random_data(false),
+        m_expiry_min(0),
+        m_expiry_max(0),
+        m_key_prefix(NULL),
+        m_key_min(0),
+        m_key_max(0),
+        m_key_stddev(0),
+        m_key_median(0),
+        m_key_zipf_min(0),
+        m_key_zipf_max(0),
+        m_key_zipf_exp(1),
+        m_key_zipf_1mexp(0),
+        m_key_zipf_1mexpInv(0),
+        m_key_zipf_Hmin(0),
+        m_key_zipf_Hmax(0),
+        m_key_zipf_s(0),
+        m_value_buffer(NULL),
+        m_value_buffer_size(0),
         m_value_buffer_mutation_pos(0)
 {
     m_next_key.resize(n_key_iterators, 0);
@@ -149,15 +165,28 @@ object_generator::object_generator(size_t n_key_iterators /*= OBJECT_GENERATOR_K
 }
 
 object_generator::object_generator(const object_generator &copy) :
-        m_data_size_type(copy.m_data_size_type), m_data_size(copy.m_data_size),
-        m_data_size_pattern(copy.m_data_size_pattern), m_random_data(copy.m_random_data),
-        m_expiry_min(copy.m_expiry_min), m_expiry_max(copy.m_expiry_max), m_key_prefix(copy.m_key_prefix),
-        m_key_min(copy.m_key_min), m_key_max(copy.m_key_max), m_key_stddev(copy.m_key_stddev),
-        m_key_median(copy.m_key_median), m_key_zipf_min(copy.m_key_zipf_min), m_key_zipf_max(copy.m_key_zipf_max),
-        m_key_zipf_exp(copy.m_key_zipf_exp), m_key_zipf_1mexp(copy.m_key_zipf_1mexp),
-        m_key_zipf_1mexpInv(copy.m_key_zipf_1mexpInv), m_key_zipf_Hmin(copy.m_key_zipf_Hmin),
-        m_key_zipf_Hmax(copy.m_key_zipf_Hmax), m_key_zipf_s(copy.m_key_zipf_s), m_value_buffer(NULL),
-        m_value_buffer_size(0), m_value_buffer_mutation_pos(0)
+        m_data_size_type(copy.m_data_size_type),
+        m_data_size(copy.m_data_size),
+        m_data_size_pattern(copy.m_data_size_pattern),
+        m_random_data(copy.m_random_data),
+        m_expiry_min(copy.m_expiry_min),
+        m_expiry_max(copy.m_expiry_max),
+        m_key_prefix(copy.m_key_prefix),
+        m_key_min(copy.m_key_min),
+        m_key_max(copy.m_key_max),
+        m_key_stddev(copy.m_key_stddev),
+        m_key_median(copy.m_key_median),
+        m_key_zipf_min(copy.m_key_zipf_min),
+        m_key_zipf_max(copy.m_key_zipf_max),
+        m_key_zipf_exp(copy.m_key_zipf_exp),
+        m_key_zipf_1mexp(copy.m_key_zipf_1mexp),
+        m_key_zipf_1mexpInv(copy.m_key_zipf_1mexpInv),
+        m_key_zipf_Hmin(copy.m_key_zipf_Hmin),
+        m_key_zipf_Hmax(copy.m_key_zipf_Hmax),
+        m_key_zipf_s(copy.m_key_zipf_s),
+        m_value_buffer(NULL),
+        m_value_buffer_size(0),
+        m_value_buffer_mutation_pos(0)
 {
     if (m_data_size_type == data_size_weighted && m_data_size.size_list != NULL) {
         m_data_size.size_list = new config_weight_list(*m_data_size.size_list);
@@ -510,7 +539,10 @@ import_object_generator::~import_object_generator()
 }
 
 import_object_generator::import_object_generator(const import_object_generator &from) :
-        object_generator(from), m_keys(from.m_keys), m_reader(from.m_reader), m_cur_item(NULL),
+        object_generator(from),
+        m_keys(from.m_keys),
+        m_reader(from.m_reader),
+        m_cur_item(NULL),
         m_no_expiry(from.m_no_expiry)
 {
     if (m_keys != NULL) {

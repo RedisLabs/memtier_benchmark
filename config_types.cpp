@@ -213,7 +213,11 @@ const char *config_weight_list::print(char *buf, int buf_len)
 
 
 server_addr::server_addr(const char *hostname, int port, int resolution) :
-        m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution),
+        m_hostname(hostname),
+        m_port(port),
+        m_server_addr(NULL),
+        m_used_addr(NULL),
+        m_resolution(resolution),
         m_last_error(0)
 {
     int error = resolve();

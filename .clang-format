@@ -27,6 +27,7 @@ BraceWrapping:
 # Constructor initializer lists - colon on same line, break after colon
 BreakConstructorInitializers: AfterColon
 ConstructorInitializerIndentWidth: 8
+PackConstructorInitializers: NextLine
 
 # Line width
 ColumnLimit: 120
