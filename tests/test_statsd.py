@@ -202,7 +202,7 @@ def test_statsd_metrics_emitted(env):
         bad_lines = [m for m in received if not m.startswith(expected_prefix)]
         env.assertEqual(
             len(bad_lines), 0,
-            f"Lines without expected prefix '{expected_prefix}': {bad_lines[:5]}"
+            message=f"Lines without expected prefix '{expected_prefix}': {bad_lines[:5]}"
         )
 
         # Check that the core gauge/timing metrics were seen
@@ -220,7 +220,7 @@ def test_statsd_metrics_emitted(env):
         missing = [m for m in required_metrics if m not in names]
         env.assertEqual(
             len(missing), 0,
-            f"Missing required metrics (received {len(received)} lines, "
+            message=f"Missing required metrics (received {len(received)} lines, "
             f"names: {sorted(names)}): {missing}"
         )
 
@@ -228,7 +228,7 @@ def test_statsd_metrics_emitted(env):
         malformed = [m for m in received if ":" not in m or "|" not in m]
         env.assertEqual(
             len(malformed), 0,
-            f"Malformed metric lines (missing ':' or '|'): {malformed[:5]}"
+            message=f"Malformed metric lines (missing ':' or '|'): {malformed[:5]}"
         )
 
     finally:
@@ -286,12 +286,12 @@ def test_statsd_prefix_and_label(env):
 
         env.assertGreater(
             len(matching), 0,
-            f"No metrics matched expected prefix '{expected_prefix}'. "
+            message=f"No metrics matched expected prefix '{expected_prefix}'. "
             f"Sample received: {received[:5]}"
         )
         env.assertEqual(
             len(non_matching), 0,
-            f"All metrics should use prefix '{expected_prefix}': {non_matching[:5]}"
+            message=f"All metrics should use prefix '{expected_prefix}': {non_matching[:5]}"
         )
 
     finally:
@@ -336,10 +336,10 @@ def test_statsd_disabled_by_default(env):
             except socket.timeout:
                 break
 
-        env.assertTrue(ok, "memtier_benchmark should succeed without --statsd-host")
+        env.assertTrue(ok, message="memtier_benchmark should succeed without --statsd-host")
         env.assertEqual(
             len(packets), 0,
-            f"Received {len(packets)} unexpected UDP packets on port 8125 "
+            message=f"Received {len(packets)} unexpected UDP packets on port 8125 "
             f"when --statsd-host was not set"
         )
 
@@ -400,7 +400,7 @@ def test_statsd_graphite_integration(env):
 
         env.assertGreater(
             len(found), 0,
-            f"No metrics found in Graphite after 30s polling at {query_url}"
+            message=f"No metrics found in Graphite after 30s polling at {query_url}"
         )
         print(f"Found {len(found)} metrics in Graphite: {[m['id'] for m in found[:5]]}")
     finally:
