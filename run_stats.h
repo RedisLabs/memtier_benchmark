@@ -24,6 +24,19 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <pthread.h>
+
+// Mutex wrapper with correct copy/move semantics: copies always initialize a
+// fresh mutex rather than duplicating mutex state (which is undefined behavior).
+// This allows run_stats to remain copyable without a hand-written copy constructor.
+struct reinit_mutex_t
+{
+    mutable pthread_mutex_t mtx;
+    reinit_mutex_t() { pthread_mutex_init(&mtx, NULL); }
+    ~reinit_mutex_t() { pthread_mutex_destroy(&mtx); }
+    reinit_mutex_t(const reinit_mutex_t &) { pthread_mutex_init(&mtx, NULL); }
+    reinit_mutex_t &operator=(const reinit_mutex_t &) { return *this; }
+};
 
 #include "memtier_benchmark.h"
 #include "run_stats_types.h"
@@ -132,6 +145,11 @@ protected:
     std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
     safe_hdr_histogram inst_m_totals_latency_histogram;
 
+    // Protects inst_m_totals_latency_histogram against concurrent reset/aggregation reads.
+    // Worker threads use hdr_record_value_capped_atomic() for lock-free writes;
+    // this mutex serializes hdr_reset and hdr_add from the main thread.
+    reinit_mutex_t m_inst_histogram_mutex;
+
     void roll_cur_stats(struct timeval *ts);
 
 public:
@@ -176,6 +194,10 @@ public:
     std::vector<unsigned int> get_one_sec_cmd_stats_timestamp();
     void save_csv_one_sec(FILE *f, unsigned long int &total_get_ops, unsigned long int &total_set_ops,
                           unsigned long int &total_wait_ops);
+
+    // Safely copy instantaneous total latency histogram into target under mutex.
+    // Use this instead of a raw pointer getter to avoid data races with worker threads.
+    void copy_inst_histogram(hdr_histogram *target) const;
     void save_csv_one_sec_cluster(FILE *f);
     void save_csv_set_get_commands(FILE *f, bool cluster_mode);
     void save_csv_arbitrary_commands_one_sec(FILE *f, arbitrary_command_list &command_list,
