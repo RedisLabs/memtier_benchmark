@@ -239,6 +239,67 @@ jobs:
       run: |
         ./tests/run_tests.sh
 
+  test-statsd:
+    needs: build-ubuntu
+    runs-on: ubuntu-22.04
+    name: "StatsD: docker-compose Integration"
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: memtier-build-ubuntu-22.04
+
+    - name: Restore executable permissions
+      run: chmod +x memtier_benchmark
+
+    - name: Start monitoring stack
+      run: docker compose -f docker-compose.statsd.yml up -d
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install lcov autoconf automake pkg-config libevent-dev libssl-dev
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        architecture: x64
+
+    - name: Install Python dependencies
+      run: pip install -r ./tests/test_requirements.txt
+
+    - name: Install Redis
+      run: |
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        sudo apt-get -qq update
+        sudo apt-get install redis
+        sudo service redis-server stop
+
+    - name: Wait for Graphite to be ready
+      run: |
+        for i in $(seq 1 30); do
+          curl -sf http://localhost:8080/render > /dev/null && echo "Graphite ready" && break
+          echo "Waiting for Graphite ($i/30)..." && sleep 2
+        done
+
+    - name: Run StatsD tests
+      timeout-minutes: 5
+      env:
+        OSS_STANDALONE: "1"
+        STATSD_HOST: "localhost"
+        VERBOSE: "1"
+        TEST: "test_statsd"
+      run: |
+        ./tests/run_tests.sh
+
+    - name: Teardown monitoring stack
+      if: always()
+      run: docker compose -f docker-compose.statsd.yml down -v
+
   coverage-ubuntu:
     runs-on: ubuntu-22.04
     steps:
