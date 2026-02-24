@@ -8,8 +8,6 @@
 # Then run memtier_benchmark with:
 #   ./memtier_benchmark -s <redis-host> --statsd-host=localhost --statsd-port=8125
 
-version: "3.8"
-
 services:
   graphite:
     image: graphiteapp/graphite-statsd:1.1.10-5
