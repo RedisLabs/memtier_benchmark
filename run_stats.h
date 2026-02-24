@@ -26,6 +26,18 @@
 #include <string>
 #include <pthread.h>
 
+// Mutex wrapper with correct copy/move semantics: copies always initialize a
+// fresh mutex rather than duplicating mutex state (which is undefined behavior).
+// This allows run_stats to remain copyable without a hand-written copy constructor.
+struct reinit_mutex_t
+{
+    mutable pthread_mutex_t mtx;
+    reinit_mutex_t() { pthread_mutex_init(&mtx, NULL); }
+    ~reinit_mutex_t() { pthread_mutex_destroy(&mtx); }
+    reinit_mutex_t(const reinit_mutex_t &) { pthread_mutex_init(&mtx, NULL); }
+    reinit_mutex_t &operator=(const reinit_mutex_t &) { return *this; }
+};
+
 #include "memtier_benchmark.h"
 #include "run_stats_types.h"
 #include "JSON_handler.h"
@@ -133,14 +145,14 @@ protected:
     std::vector<safe_hdr_histogram> inst_m_ar_commands_latency_histograms;
     safe_hdr_histogram inst_m_totals_latency_histogram;
 
-    // Protects inst_m_totals_latency_histogram against concurrent reset and aggregation reads
-    mutable pthread_mutex_t m_inst_histogram_mutex;
+    // Protects inst_m_totals_latency_histogram against concurrent reset and aggregation reads.
+    // reinit_mutex_t ensures copies initialize a fresh mutex rather than duplicating state.
+    reinit_mutex_t m_inst_histogram_mutex;
 
     void roll_cur_stats(struct timeval *ts);
 
 public:
     run_stats(benchmark_config *config);
-    ~run_stats();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void set_start_time(struct timeval *start_time);
     void set_end_time(struct timeval *end_time);

@@ -67,11 +67,6 @@ public:
     bool init(const char *host, unsigned short port, const char *prefix, const char *run_label);
 
     /**
-     * Get the run label for this client.
-     */
-    const char *get_run_label() const { return m_run_label; }
-
-    /**
      * Set the Graphite HTTP port for event annotations.
      * Default is 8080, matching the host-side port in docker-compose.statsd.yml.
      * Use 80 if running memtier_benchmark inside the same Docker network.
@@ -107,20 +102,6 @@ public:
      * @param value_ms Time in milliseconds
      */
     void timing(const char *name, double value_ms);
-
-    /**
-     * Send a counter metric (increment).
-     * @param name Metric name (will be prefixed)
-     * @param value Increment value (can be negative for decrement)
-     */
-    void counter(const char *name, long value);
-
-    /**
-     * Send a histogram metric.
-     * @param name Metric name (will be prefixed)
-     * @param value Sample value
-     */
-    void histogram(const char *name, double value);
 
     /**
      * Send an event/annotation to Graphite.

@@ -116,7 +116,6 @@ run_stats::run_stats(benchmark_config *config) : m_config(config), m_interrupted
 {
     memset(&m_start_time, 0, sizeof(m_start_time));
     memset(&m_end_time, 0, sizeof(m_end_time));
-    pthread_mutex_init(&m_inst_histogram_mutex, NULL);
     std::vector<float> quantiles_list_float = config->print_percentiles.quantile_list;
     std::sort(quantiles_list_float.begin(), quantiles_list_float.end());
     quantiles_list = std::vector<double>(quantiles_list_float.begin(), quantiles_list_float.end());
@@ -125,10 +124,6 @@ run_stats::run_stats(benchmark_config *config) : m_config(config), m_interrupted
     }
 }
 
-run_stats::~run_stats()
-{
-    pthread_mutex_destroy(&m_inst_histogram_mutex);
-}
 
 void run_stats::setup_arbitrary_commands(size_t n_arbitrary_commands)
 {
@@ -174,16 +169,16 @@ void run_stats::summarize_current_second()
     hdr_reset(inst_m_get_latency_histogram);
     hdr_reset(inst_m_set_latency_histogram);
     hdr_reset(inst_m_wait_latency_histogram);
-    pthread_mutex_lock(&m_inst_histogram_mutex);
+    pthread_mutex_lock(&m_inst_histogram_mutex.mtx);
     hdr_reset(inst_m_totals_latency_histogram);
-    pthread_mutex_unlock(&m_inst_histogram_mutex);
+    pthread_mutex_unlock(&m_inst_histogram_mutex.mtx);
 }
 
 void run_stats::copy_inst_histogram(hdr_histogram *target) const
 {
-    pthread_mutex_lock(&m_inst_histogram_mutex);
+    pthread_mutex_lock(&m_inst_histogram_mutex.mtx);
     hdr_add(target, inst_m_totals_latency_histogram);
-    pthread_mutex_unlock(&m_inst_histogram_mutex);
+    pthread_mutex_unlock(&m_inst_histogram_mutex.mtx);
 }
 
 void run_stats::roll_cur_stats(struct timeval *ts)

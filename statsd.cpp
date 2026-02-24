@@ -159,20 +159,6 @@ void statsd_client::timing(const char *name, double value_ms)
     send_metric(name, val_str, "ms");
 }
 
-void statsd_client::counter(const char *name, long value)
-{
-    char val_str[64];
-    snprintf(val_str, sizeof(val_str) - 1, "%ld", value);
-    send_metric(name, val_str, "c");
-}
-
-void statsd_client::histogram(const char *name, double value)
-{
-    char val_str[64];
-    snprintf(val_str, sizeof(val_str) - 1, "%.6f", value);
-    send_metric(name, val_str, "h");
-}
-
 void statsd_client::event(const char *what, const char *data, const char *tags)
 {
     if (!is_enabled() || m_graphite_host[0] == '\0') {
