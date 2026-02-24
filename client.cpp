@@ -873,6 +873,14 @@ void client_group::merge_run_stats(run_stats *target)
     }
 }
 
+void client_group::aggregate_inst_histogram(hdr_histogram *target)
+{
+    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+        (*i)->get_stats()->copy_inst_histogram(target);
+    }
+}
+
+
 void client_group::write_client_stats(const char *prefix)
 {
     unsigned int client_id = 0;
