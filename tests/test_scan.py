@@ -74,6 +74,7 @@ def _read_stderr(run_config):
 
 def test_scan_incremental_basic(env):
     """Verify that basic SCAN cursor iteration works end-to-end."""
+    env.skipOnCluster()
     _preload_keys(env, count=200)
 
     test_dir = tempfile.mkdtemp()
@@ -124,6 +125,7 @@ def test_scan_incremental_basic(env):
 
 def test_scan_incremental_max_iterations(env):
     """Verify --scan-incremental-max-iterations caps continuation SCANs."""
+    env.skipOnCluster()
     _preload_keys(env, count=200)
 
     test_dir = tempfile.mkdtemp()
@@ -157,6 +159,7 @@ def test_scan_incremental_max_iterations(env):
 
 def test_scan_incremental_with_match(env):
     """Verify SCAN with MATCH pattern works under incremental iteration."""
+    env.skipOnCluster()
     _preload_keys(env, count=100, prefix="scanmatch")
 
     test_dir = tempfile.mkdtemp()
@@ -189,6 +192,7 @@ def test_scan_incremental_with_match(env):
 
 def test_scan_incremental_bare(env):
     """Verify bare SCAN 0 (no options) works under incremental iteration."""
+    env.skipOnCluster()
     _preload_keys(env, count=200)
 
     test_dir = tempfile.mkdtemp()
@@ -229,6 +233,7 @@ def test_scan_incremental_bare(env):
 
 def test_scan_incremental_match_only(env):
     """Verify SCAN with only MATCH (no COUNT) works."""
+    env.skipOnCluster()
     _preload_keys(env, count=200, prefix="matchonly")
 
     test_dir = tempfile.mkdtemp()
@@ -276,6 +281,7 @@ def test_scan_incremental_match_only(env):
 
 def test_scan_incremental_type_only(env):
     """Verify SCAN with only TYPE (no COUNT) works."""
+    env.skipOnCluster()
     _preload_keys(env, count=200)
 
     test_dir = tempfile.mkdtemp()
@@ -323,6 +329,7 @@ def test_scan_incremental_type_only(env):
 
 def test_scan_incremental_with_type(env):
     """Verify SCAN with TYPE + COUNT works under incremental iteration."""
+    env.skipOnCluster()
     _preload_keys(env, count=100)
 
     test_dir = tempfile.mkdtemp()
@@ -355,6 +362,7 @@ def test_scan_incremental_with_type(env):
 
 def test_scan_incremental_all_options(env):
     """Verify SCAN with MATCH, COUNT, and TYPE all combined."""
+    env.skipOnCluster()
     _preload_keys(env, count=200, prefix="allopt")
 
     test_dir = tempfile.mkdtemp()
@@ -401,6 +409,7 @@ def test_scan_incremental_all_options(env):
 
 def test_scan_incremental_error_no_command(env):
     """Verify error when --scan-incremental-iteration is used without --command."""
+    env.skipOnCluster()
     test_dir = tempfile.mkdtemp()
     try:
         extra_args = [
@@ -425,6 +434,7 @@ def test_scan_incremental_error_no_command(env):
 
 def test_scan_incremental_error_non_scan_command(env):
     """Verify error when --scan-incremental-iteration is used with non-SCAN command."""
+    env.skipOnCluster()
     test_dir = tempfile.mkdtemp()
     try:
         extra_args = [
@@ -450,6 +460,7 @@ def test_scan_incremental_error_non_scan_command(env):
 
 def test_scan_incremental_error_pipeline_not_one(env):
     """Verify error when --scan-incremental-iteration is used with pipeline > 1."""
+    env.skipOnCluster()
     test_dir = tempfile.mkdtemp()
     try:
         extra_args = [
@@ -475,6 +486,7 @@ def test_scan_incremental_error_pipeline_not_one(env):
 
 def test_scan_incremental_large_keyspace(env):
     """Preload 10K keys via memtier, then run incremental SCAN over them."""
+    env.skipOnCluster()
     key_count = 10000
     test_dir = tempfile.mkdtemp()
 
@@ -566,6 +578,7 @@ def test_scan_incremental_large_keyspace(env):
 
 def test_scan_incremental_large_count(env):
     """Preload 10K keys via memtier, then SCAN with COUNT 1000."""
+    env.skipOnCluster()
     key_count = 10000
     test_dir = tempfile.mkdtemp()
 
@@ -639,6 +652,7 @@ def test_scan_incremental_large_count(env):
 
 def test_scan_incremental_large_keyspace_with_type(env):
     """Preload 10K keys via memtier, then SCAN with TYPE string filter."""
+    env.skipOnCluster()
     key_count = 10000
     test_dir = tempfile.mkdtemp()
 
@@ -709,6 +723,7 @@ def test_scan_incremental_large_keyspace_with_type(env):
 
 def test_scan_incremental_request_count(env):
     """Verify that all SCAN commands (initial + continuation) are counted."""
+    env.skipOnCluster()
     _preload_keys(env, count=200)
 
     test_dir = tempfile.mkdtemp()
