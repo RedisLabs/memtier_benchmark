@@ -700,6 +700,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_statsd_prefix,
         o_statsd_run_label,
         o_graphite_port,
+        o_scan_incremental_iteration,
+        o_scan_incremental_max_iterations,
         o_help
     };
 
@@ -786,6 +788,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         {"statsd-prefix", 1, 0, o_statsd_prefix},
         {"statsd-run-label", 1, 0, o_statsd_run_label},
         {"graphite-port", 1, 0, o_graphite_port},
+        {"scan-incremental-iteration", 0, 0, o_scan_incremental_iteration},
+        {"scan-incremental-max-iterations", 1, 0, o_scan_incremental_max_iterations},
         {NULL, 0, 0, 0}};
 
     int option_index;
@@ -1359,6 +1363,18 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                 return -1;
             }
             break;
+        case o_scan_incremental_iteration:
+            cfg->scan_incremental_iteration = true;
+            break;
+        case o_scan_incremental_max_iterations: {
+            endptr = NULL;
+            cfg->scan_incremental_max_iterations = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!endptr || *endptr != '\0') {
+                fprintf(stderr, "error: scan-incremental-max-iterations must be a positive number.\n");
+                return -1;
+            }
+            break;
+        }
         default:
             return -1;
             break;
@@ -1489,6 +1505,16 @@ void usage()
         "                                 How to group command statistics in the output (default: command)\n"
         "                                 command: aggregate by command name (first word, e.g., SET, GET)\n"
         "                                 line: show each command line separately\n"
+        "      --scan-incremental-iteration\n"
+        "                                 Enable SCAN cursor iteration mode. When used with\n"
+        "                                 --command=\"SCAN 0 [MATCH pattern] [COUNT count] [TYPE type]\",\n"
+        "                                 automatically follows the cursor returned by each SCAN response.\n"
+        "                                 Sends \"SCAN 0 ...\" initially, then \"SCAN <cursor> ...\" until\n"
+        "                                 the cursor returns 0, then restarts. Requires --pipeline 1.\n"
+        "                                 Stats are reported separately for \"SCAN 0\" and \"SCAN <cursor>\".\n"
+        "      --scan-incremental-max-iterations=NUMBER\n"
+        "                                 Maximum number of continuation SCANs per iteration cycle\n"
+        "                                 (default: 0, follow cursor until it returns 0).\n"
         "\n"
         "Object Options:\n"
         "  -d  --data-size=SIZE           Object data size in bytes (default: 32)\n"
@@ -2290,6 +2316,71 @@ int main(int argc, char *argv[])
 
     log_level = cfg.debug;
 
+    // Validate and set up SCAN incremental iteration
+    if (cfg.scan_incremental_iteration) {
+        if (cfg.pipeline != 1) {
+            fprintf(stderr, "error: --scan-incremental-iteration requires --pipeline 1.\n");
+            exit(1);
+        }
+        if (!cfg.arbitrary_commands->is_defined()) {
+            fprintf(stderr, "error: --scan-incremental-iteration requires --command with a SCAN command.\n");
+            exit(1);
+        }
+        if (cfg.cluster_mode) {
+            fprintf(stderr, "error: --scan-incremental-iteration is not supported in cluster mode.\n");
+            exit(1);
+        }
+
+        // Validate exactly one command and it must be SCAN
+        size_t real_cmd_count = 0;
+        for (size_t i = 0; i < cfg.arbitrary_commands->size(); i++) {
+            if (!cfg.arbitrary_commands->at(i).stats_only) real_cmd_count++;
+        }
+        if (real_cmd_count != 1) {
+            fprintf(stderr, "error: --scan-incremental-iteration requires exactly one --command (a SCAN command).\n");
+            exit(1);
+        }
+
+        arbitrary_command &scan_cmd = cfg.arbitrary_commands->at(0);
+        if (strcasecmp(scan_cmd.command_type.c_str(), "SCAN") != 0) {
+            fprintf(stderr, "error: --scan-incremental-iteration requires the command to be a SCAN command.\n");
+            exit(1);
+        }
+        if (scan_cmd.command_args.size() < 2) {
+            fprintf(stderr, "error: SCAN command must have at least a cursor argument (e.g., 'SCAN 0').\n");
+            exit(1);
+        }
+
+        // Set display names for initial SCAN command
+        scan_cmd.command_name = "SCAN 0";
+        scan_cmd.command_type = "SCAN 0";
+
+        // Build continuation command string: replace cursor (arg[1]) with placeholder
+        std::string cont_cmd_str = "SCAN " SCAN_CURSOR_PLACEHOLDER;
+        for (unsigned int i = 2; i < scan_cmd.command_args.size(); i++) {
+            cont_cmd_str += " ";
+            cont_cmd_str += scan_cmd.command_args[i].data;
+        }
+
+        // Create the continuation command (stored separately, not in the list)
+        cfg.scan_continuation_command = new arbitrary_command(cont_cmd_str.c_str());
+        cfg.scan_continuation_command->command_name = "SCAN <cursor>";
+        cfg.scan_continuation_command->command_type = "SCAN <cursor>";
+        if (!cfg.scan_continuation_command->split_command_to_args()) {
+            fprintf(stderr, "error: failed to parse SCAN continuation command.\n");
+            delete cfg.scan_continuation_command;
+            cfg.scan_continuation_command = NULL;
+            return -1;
+        }
+
+        // Add a stats-only entry to arbitrary_commands for continuation stats tracking (index 1)
+        arbitrary_command stats_cmd(cont_cmd_str.c_str());
+        stats_cmd.command_name = "SCAN <cursor>";
+        stats_cmd.command_type = "SCAN <cursor>";
+        stats_cmd.stats_only = true;
+        cfg.arbitrary_commands->add_command(stats_cmd);
+    }
+
     // Initialize StatsD client if configured
     cfg.statsd = NULL;
     if (cfg.statsd_host != NULL) {
@@ -2332,6 +2423,18 @@ int main(int argc, char *argv[])
         // Cluster mode supports only a single key commands
         if (cfg.cluster_mode && cmd.keys_count > 1) {
             benchmark_error_log("error: Cluster mode supports only a single key commands\n");
+            exit(1);
+        }
+        delete tmp_protocol;
+    }
+
+    // Format the SCAN continuation command separately (not in the command list)
+    if (cfg.scan_continuation_command) {
+        abstract_protocol *tmp_protocol = protocol_factory(cfg.protocol);
+        assert(tmp_protocol != NULL);
+
+        if (!tmp_protocol->format_arbitrary_command(*cfg.scan_continuation_command)) {
+            fprintf(stderr, "error: failed to format SCAN continuation command.\n");
             exit(1);
         }
         delete tmp_protocol;
@@ -2720,6 +2823,11 @@ int main(int argc, char *argv[])
 
     delete obj_gen;
     if (keylist != NULL) delete keylist;
+
+    if (cfg.scan_continuation_command != NULL) {
+        delete cfg.scan_continuation_command;
+        cfg.scan_continuation_command = NULL;
+    }
 
     if (cfg.arbitrary_commands != NULL) {
         delete cfg.arbitrary_commands;

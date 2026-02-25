@@ -120,6 +120,7 @@ class object_generator;
 #define DATA_PLACEHOLDER "__data__"
 #define MONITOR_PLACEHOLDER_PREFIX "__monitor_line"
 #define MONITOR_RANDOM_PLACEHOLDER "__monitor_line@__"
+#define SCAN_CURSOR_PLACEHOLDER "__scan_cursor__"
 
 enum command_arg_type
 {
@@ -128,7 +129,8 @@ enum command_arg_type
     data_type = 2,
     monitor_type = 3,
     monitor_random_type = 4,
-    undefined_type = 5
+    undefined_type = 5,
+    scan_cursor_type = 6
 };
 
 struct command_arg

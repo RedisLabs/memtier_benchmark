@@ -56,6 +56,7 @@ make
 - Run `make format` to format code
 - Run `make format-check` to verify formatting
 - CI enforces formatting on all PRs
+- **Always run `make format` after modifying C++ files and before committing.** Verify with `make format-check` that no formatting issues remain.
 
 ## Testing
 
@@ -99,11 +100,18 @@ ASAN_OPTIONS=detect_leaks=1 ./tests/run_tests.sh
 ## Common Development Tasks
 
 ### Adding a new command-line option
-1. Add option definition in `memtier_benchmark.cpp` (options array and getopt_long)
-2. Add field to benchmark_config struct
-3. Handle the option in the main parsing loop
-4. Update man page (`memtier_benchmark.1`) and bash completion
-5. **Add tests** for the new option (see below)
+
+Every new CLI option **must** be added in **all** of these locations:
+
+1. Add option to the `extended_options` enum in `memtier_benchmark.cpp`
+2. Add entry to the `long_options[]` array in `memtier_benchmark.cpp`
+3. Add case handler in the `getopt_long` switch in `memtier_benchmark.cpp`
+4. Add field to `benchmark_config` struct in `memtier_benchmark.h`
+5. Initialize default value in `config_init_defaults()` in `memtier_benchmark.cpp`
+6. Add help text in `usage()` function in `memtier_benchmark.cpp`
+7. Update man page (`memtier_benchmark.1`)
+8. Update bash completion (`bash-completion/memtier_benchmark`) — add to `options_no_comp` (takes a value) or `options_no_args` (flag)
+9. **Add tests** for the new option (see below)
 
 ### Adding a new test
 1. Create Python test file in `tests/` following `tests_oss_simple_flow.py` pattern
@@ -111,6 +119,17 @@ ASAN_OPTIONS=detect_leaks=1 ./tests/run_tests.sh
 3. Tests run against actual Redis server (started by RLTest)
 
 **All new features and bug fixes should include corresponding tests.**
+
+### Test output validation
+
+- Always validate structured JSON output (`mb.json`) for result correctness, not just stdout text. The JSON file under `ALL STATS` contains per-command entries (e.g., `"Sets"`, `"Gets"`, `"Scan 0s"`) with `"Count"`, `"Ops/sec"`, latency metrics, etc.
+- Use `json.load()` to parse `mb.json` and assert on the expected keys and values.
+- See `tests_oss_simple_flow.py` for examples of JSON output validation patterns: `results_dict['ALL STATS']['Sets']`.
+
+### Data preloading in tests
+
+- When possible, prefer preloading data using memtier itself (`--ratio=1:0 --key-pattern=P:P --requests=allkeys`) to match real usage patterns. See `tests_oss_simple_flow.py` `test_preload_and_set_get` for the standard pattern.
+- Direct Redis client calls (Python `redis` pipeline) are acceptable when simpler — e.g., loading a small number of keys with specific prefixes or non-string data types.
 
 ### Modifying protocol handling
 - Protocol implementations are in `protocol.cpp`
