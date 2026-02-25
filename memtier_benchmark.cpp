@@ -2366,7 +2366,12 @@ int main(int argc, char *argv[])
         cfg.scan_continuation_command = new arbitrary_command(cont_cmd_str.c_str());
         cfg.scan_continuation_command->command_name = "SCAN <cursor>";
         cfg.scan_continuation_command->command_type = "SCAN <cursor>";
-        cfg.scan_continuation_command->split_command_to_args();
+        if (!cfg.scan_continuation_command->split_command_to_args()) {
+            fprintf(stderr, "error: failed to parse SCAN continuation command.\n");
+            delete cfg.scan_continuation_command;
+            cfg.scan_continuation_command = NULL;
+            return -1;
+        }
 
         // Add a stats-only entry to arbitrary_commands for continuation stats tracking (index 1)
         arbitrary_command stats_cmd(cont_cmd_str.c_str());
