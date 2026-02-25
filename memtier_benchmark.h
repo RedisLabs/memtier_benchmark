@@ -131,6 +131,10 @@ struct benchmark_config
     const char *statsd_run_label;
     unsigned short graphite_port;
     statsd_client *statsd;
+    // SCAN incremental cursor iteration
+    bool scan_incremental_iteration;
+    unsigned int scan_incremental_max_iterations;
+    arbitrary_command *scan_continuation_command;
 #ifdef USE_TLS
     bool tls;
     const char *tls_cert;

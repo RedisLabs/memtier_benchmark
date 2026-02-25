@@ -23,11 +23,13 @@ _memtier_completions()
                    "--data-size-range" "--data-size-list" "--expiry-range" "--data-import" "--key-prefix"\
                    "--key-minimum" "--key-maximum" "--reconnect-interval" "--multi-key-get" "--authenticate"\
                    "--select-db" "--wait-ratio" "--num-slaves" "--wait-timeout" "--json-out-file"\
-                   "--command" "--command-ratio" "-s" "-p" "-S" "-o" "-x" "-c" "-n" "-t" "-d" "-a")
+                   "--command" "--command-ratio" "--scan-incremental-max-iterations"\
+                   "-s" "-p" "-S" "-o" "-x" "-c" "-n" "-t" "-d" "-a")
 
   options_no_args=("--debug" "--show-config" "--hide-histogram" "--distinct-client-seed" "--randomize"\
                    "--random-data" "--data-verify" "--verify-only" "--generate-keys" "--key-stddev"\
-                   "--key-median" "--key-zipf-exp" "--no-expiry" "--cluster-mode" "--help" "--version"\
+                   "--key-median" "--key-zipf-exp" "--no-expiry" "--cluster-mode" "--scan-incremental-iteration"\
+                   "--help" "--version"\
                    "-D" "-R" "-h" "-v")
 
   options_comp=("--protocol" "-P" "--key-pattern" "--data-size-pattern" "--command-key-pattern")

@@ -83,6 +83,10 @@ protected:
     unsigned long long m_tot_set_ops;  // Total number of SET ops
     unsigned long long m_tot_wait_ops; // Total number of WAIT ops
 
+    // SCAN incremental cursor iteration state
+    std::string m_scan_cursor;
+    unsigned int m_scan_iteration_count;
+
     keylist *m_keylist; // used to construct multi commands
 
 public:
@@ -98,6 +102,8 @@ public:
     virtual get_key_response get_key_for_conn(unsigned int command_index, unsigned int conn_id,
                                               unsigned long long *key_index);
     virtual bool create_arbitrary_request(unsigned int command_index, struct timeval &timestamp, unsigned int conn_id);
+    virtual bool create_scan_continuation_request(struct timeval &timestamp, unsigned int conn_id,
+                                                  unsigned int stats_index);
     virtual bool create_wait_request(struct timeval &timestamp, unsigned int conn_id);
     virtual bool create_set_request(struct timeval &timestamp, unsigned int conn_id);
     virtual bool create_get_request(struct timeval &timestamp, unsigned int conn_id);

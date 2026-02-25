@@ -177,6 +177,18 @@ G for Gaussian distribution.
 R for uniform Random.
 S for Sequential.
 P for Parallel (Sequential were each client has a subset of the key\-range).
+.TP
+\fB\-\-scan\-incremental\-iteration\fR
+Enable SCAN cursor iteration mode. When used with
+\fB\-\-command\fR="SCAN 0 [MATCH pattern] [COUNT count] [TYPE type]",
+automatically follows the cursor returned by each SCAN response.
+Sends "SCAN 0 ..." initially, then "SCAN <cursor> ..." until the cursor
+returns 0, then restarts. Requires \fB\-\-pipeline\fR 1.
+Stats are reported separately for "SCAN 0" and "SCAN <cursor>".
+.TP
+\fB\-\-scan\-incremental\-max\-iterations\fR=\fI\,NUMBER\/\fR
+Maximum number of continuation SCANs per iteration cycle
+(default: 0, follow cursor until it returns 0).
 .SS "Object Options:"
 .TP
 \fB\-d\fR  \fB\-\-data\-size\fR=\fI\,SIZE\/\fR

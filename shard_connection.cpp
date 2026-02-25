@@ -953,6 +953,8 @@ int shard_connection::send_arbitrary_command(const command_arg *arg, const char 
 
     if (arg->type == key_type) {
         benchmark_debug_log("key=[%.*s]\n", val_len, val);
+    } else if (arg->type == scan_cursor_type) {
+        benchmark_debug_log("scan_cursor=[%.*s]\n", val_len, val);
     } else {
         benchmark_debug_log("value_len=%u\n", val_len);
     }

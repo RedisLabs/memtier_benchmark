@@ -79,6 +79,11 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
     // Setup first arbitrary command
     if (config->arbitrary_commands->is_defined()) advance_arbitrary_command_index();
 
+    // Enable value keeping for SCAN incremental iteration (needed to extract cursor from response)
+    if (config->scan_incremental_iteration) {
+        MAIN_CONNECTION->get_protocol()->set_keep_value(true);
+    }
+
     // Parallel key-pattern determined according to the first command
     if ((config->arbitrary_commands->is_defined() && config->arbitrary_commands->at(0).key_pattern == 'P') ||
         (config->key_pattern[key_pattern_set] == 'P')) {
@@ -116,7 +121,9 @@ client::client(client_group *group) :
         m_arbitrary_command_ratio_count(0),
         m_executed_command_index(0),
         m_tot_set_ops(0),
-        m_tot_wait_ops(0)
+        m_tot_wait_ops(0),
+        m_scan_cursor("0"),
+        m_scan_iteration_count(0)
 {
     m_event_base = group->get_event_base();
 
@@ -144,6 +151,8 @@ client::client(struct event_base *event_base, benchmark_config *config, abstract
         m_executed_command_index(0),
         m_tot_set_ops(0),
         m_tot_wait_ops(0),
+        m_scan_cursor("0"),
+        m_scan_iteration_count(0),
         m_keylist(NULL)
 {
     m_event_base = event_base;
@@ -450,6 +459,40 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
     return true;
 }
 
+bool client::create_scan_continuation_request(struct timeval &timestamp, unsigned int conn_id, unsigned int stats_index)
+{
+    int cmd_size = 0;
+    arbitrary_command *cmd = m_config->scan_continuation_command;
+
+    benchmark_debug_log("%s: SCAN continuation cursor=%s\n", m_connections[conn_id]->get_readable_id(),
+                        m_scan_cursor.c_str());
+
+    for (unsigned int i = 0; i < cmd->command_args.size(); i++) {
+        const command_arg *arg = &cmd->command_args[i];
+        if (arg->type == const_type) {
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg);
+        } else if (arg->type == scan_cursor_type) {
+            cmd_size +=
+                m_connections[conn_id]->send_arbitrary_command(arg, m_scan_cursor.c_str(), m_scan_cursor.length());
+        } else if (arg->type == key_type) {
+            unsigned long long key_index;
+            get_key_response res = get_key_for_conn(0, conn_id, &key_index);
+            assert(res == available_for_conn);
+            cmd_size +=
+                m_connections[conn_id]->send_arbitrary_command(arg, m_obj_gen->get_key(), m_obj_gen->get_key_len());
+        } else if (arg->type == data_type) {
+            unsigned int value_len;
+            const char *value = m_obj_gen->get_value(0, &value_len);
+            assert(value != NULL);
+            assert(value_len > 0);
+            cmd_size += m_connections[conn_id]->send_arbitrary_command(arg, value, value_len);
+        }
+    }
+
+    m_connections[conn_id]->send_arbitrary_command_end(stats_index, &timestamp, cmd_size);
+    return true;
+}
+
 bool client::create_wait_request(struct timeval &timestamp, unsigned int conn_id)
 {
     unsigned int num_slaves = m_obj_gen->random_range(m_config->num_slaves.min, m_config->num_slaves.max);
@@ -516,6 +559,22 @@ void client::create_request(struct timeval timestamp, unsigned int conn_id)
 {
     // are we using arbitrary command?
     if (m_config->arbitrary_commands->is_defined()) {
+        // SCAN incremental iteration mode: cursor state drives command selection
+        if (m_config->scan_incremental_iteration) {
+            if (m_scan_cursor != "0") {
+                // Send continuation SCAN with current cursor, stats to index 1
+                if (create_scan_continuation_request(timestamp, conn_id, 1)) {
+                    m_reqs_generated++;
+                }
+            } else {
+                // Send initial SCAN 0, stats to index 0
+                if (create_arbitrary_request(0, timestamp, conn_id)) {
+                    m_reqs_generated++;
+                }
+            }
+            return;
+        }
+
         if (create_arbitrary_request(m_executed_command_index, timestamp, conn_id)) {
             advance_arbitrary_command_index();
             m_reqs_generated++;
@@ -584,6 +643,12 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp, req
     if (response->is_error()) {
         benchmark_error_log("server %s handle error response: %s\n", m_connections[conn_id]->get_readable_id(),
                             response->get_status());
+
+        // On SCAN error, reset cursor to restart iteration
+        if (m_config->scan_incremental_iteration && request->m_type == rt_arbitrary) {
+            m_scan_cursor = "0";
+            m_scan_iteration_count = 0;
+        }
     }
     switch (request->m_type) {
     case rt_get:
@@ -602,6 +667,28 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp, req
         arbitrary_request *ar = static_cast<arbitrary_request *>(request);
         m_stats.update_arbitrary_op(&timestamp, response->get_total_len(), request->m_size,
                                     ts_diff(request->m_sent_time, timestamp), ar->index);
+
+        // Extract cursor from SCAN response for incremental iteration
+        if (m_config->scan_incremental_iteration && !response->is_error()) {
+            mbulk_size_el *top = response->get_mbulk_value();
+            if (top && top->mbulks_elements.size() >= 1) {
+                bulk_el *cursor_el = top->mbulks_elements[0]->as_bulk();
+                if (cursor_el && cursor_el->value && cursor_el->value_len > 0) {
+                    m_scan_cursor.assign(cursor_el->value, cursor_el->value_len);
+                } else {
+                    m_scan_cursor = "0";
+                }
+            } else {
+                m_scan_cursor = "0";
+            }
+
+            m_scan_iteration_count++;
+            if (m_scan_cursor == "0" || (m_config->scan_incremental_max_iterations > 0 &&
+                                         m_scan_iteration_count >= m_config->scan_incremental_max_iterations)) {
+                m_scan_cursor = "0";
+                m_scan_iteration_count = 0;
+            }
+        }
         break;
     }
     default:
