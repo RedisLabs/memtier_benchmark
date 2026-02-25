@@ -124,20 +124,29 @@ def test_scan_incremental_basic(env):
 # ---------------------------------------------------------------------------
 
 def test_scan_incremental_max_iterations(env):
-    """Verify --scan-incremental-max-iterations caps continuation SCANs."""
+    """Verify --scan-incremental-max-iterations caps continuation SCANs.
+
+    With max_iterations=3 and enough keys (COUNT 1 ensures cursor won't
+    return to 0 within 3 iterations), each cycle is exactly:
+      1 initial SCAN 0 + 3 continuation SCANs = 4 requests.
+    With 40 total requests we expect 10 cycles: 10 initials, 30 continuations.
+    """
     env.skipOnCluster()
     _preload_keys(env, count=200)
 
+    max_iter = 3
+    num_requests = 40  # must be divisible by (1 + max_iter)
     test_dir = tempfile.mkdtemp()
     try:
         extra_args = [
             '--command', 'SCAN 0 COUNT 1',
             '--scan-incremental-iteration',
-            '--scan-incremental-max-iterations', '3',
+            '--scan-incremental-max-iterations', str(max_iter),
             '--pipeline', '1',
         ]
         benchmark, run_config = _build_scan_benchmark(
-            env, test_dir, extra_args, threads=1, clients=1, requests=50)
+            env, test_dir, extra_args, threads=1, clients=1,
+            requests=num_requests)
         ok = benchmark.run()
 
         stdout = _read_stdout(run_config)
@@ -146,6 +155,26 @@ def test_scan_incremental_max_iterations(env):
             env.assertTrue(ok)
             env.assertTrue('SCAN 0' in stdout)
             env.assertTrue('SCAN <cursor>' in stdout)
+
+            # Validate exact counts via JSON output
+            json_path = os.path.join(run_config.results_dir, "mb.json")
+            env.assertTrue(os.path.isfile(json_path))
+            with open(json_path) as f:
+                results = json.load(f)
+            all_stats = results.get("ALL STATS", {})
+            env.assertTrue("Scan 0s" in all_stats)
+            env.assertTrue("Scan <cursor>s" in all_stats)
+
+            scan0_count = all_stats["Scan 0s"]["Count"]
+            scan_cursor_count = all_stats["Scan <cursor>s"]["Count"]
+
+            # Each cycle: 1 initial + max_iter continuations
+            expected_cycles = num_requests // (1 + max_iter)
+            env.assertEqual(scan0_count, expected_cycles,
+                            message=f"Expected {expected_cycles} initial SCANs, got {scan0_count}")
+            env.assertEqual(scan_cursor_count, expected_cycles * max_iter,
+                            message=f"Expected {expected_cycles * max_iter} continuation SCANs, got {scan_cursor_count}")
+            env.assertEqual(scan0_count + scan_cursor_count, num_requests)
         finally:
             if env.getNumberOfFailedAssertion() > failed_asserts:
                 debugPrintMemtierOnError(run_config, env)

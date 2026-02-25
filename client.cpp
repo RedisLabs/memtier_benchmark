@@ -682,7 +682,10 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp, req
                 m_scan_cursor = "0";
             }
 
-            m_scan_iteration_count++;
+            // Only count continuation SCANs (index 1), not the initial SCAN 0 (index 0)
+            if (ar->index == 1) {
+                m_scan_iteration_count++;
+            }
             if (m_scan_cursor == "0" || (m_config->scan_incremental_max_iterations > 0 &&
                                          m_scan_iteration_count >= m_config->scan_incremental_max_iterations)) {
                 m_scan_cursor = "0";
