@@ -384,6 +384,40 @@ def test_short_reconnect_interval(env):
 
 
 # run each test on different env
+def test_reconnect_interval_with_rate_limiting(env):
+    # cluster mode does not support reconnect-interval option
+    env.skipOnCluster()
+    # Reproduces the hang when combining --reconnect-interval=1 with --rate-limiting=1.
+    # With rate-limiting=1, each connection sends 1 req/sec, so use short test-time.
+    benchmark_specs = {"name": env.testName, "args": ['--reconnect-interval=1', '--rate-limiting=1', '--test-time=10']}
+    addTLSArgs(benchmark_specs, env)
+    config = get_default_memtier_config(threads=1, clients=1, requests=None, test_time=10)
+    master_nodes_list = env.getMasterNodesList()
+
+    add_required_env_arguments(benchmark_specs, config, env, master_nodes_list)
+
+    # Create a temporary directory
+    test_dir = tempfile.mkdtemp()
+
+    config = RunConfig(test_dir, env.testName, config, {})
+    ensure_clean_benchmark_folder(config.results_dir)
+
+    benchmark = Benchmark.from_json(config, benchmark_specs)
+
+    # benchmark.run() returns True if the return code of memtier_benchmark was 0
+    memtier_ok = benchmark.run()
+    env.assertTrue(memtier_ok)
+
+    # Validate JSON output exists and has results
+    json_filename = '{0}/mb.json'.format(config.results_dir)
+    with open(json_filename) as json_file:
+        results = json.load(json_file)
+    sets_count = results['ALL STATS']['Sets']['Count']
+    gets_count = results['ALL STATS']['Gets']['Count']
+    env.assertGreater(sets_count + gets_count, 0)
+
+
+# run each test on different env
 def test_default_set_get_3_runs(env):
     run_count = 3
     benchmark_specs = {"name": env.testName, "args": ['--run-count={}'.format(run_count)]}

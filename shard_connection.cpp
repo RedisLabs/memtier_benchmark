@@ -709,15 +709,15 @@ void shard_connection::handle_event(short events)
         m_current_backoff_delay = 1.0;
         m_reconnecting = false;
 
-        if (!m_conns_manager->get_reqs_processed()) {
-            /* Set timer for request rate */
-            if (m_config->request_rate) {
-                struct timeval interval = {0, (int) m_config->request_interval_microsecond};
-                m_request_per_cur_interval = m_config->request_per_interval;
-                m_event_timer = event_new(m_event_base, -1, EV_PERSIST, cluster_client_timer_handler, (void *) this);
-                event_add(m_event_timer, &interval);
-            }
+        /* Set timer for request rate (create or recreate after reconnect) */
+        if (m_config->request_rate && m_event_timer == NULL) {
+            struct timeval interval = {0, (int) m_config->request_interval_microsecond};
+            m_request_per_cur_interval = m_config->request_per_interval;
+            m_event_timer = event_new(m_event_base, -1, EV_PERSIST, cluster_client_timer_handler, (void *) this);
+            event_add(m_event_timer, &interval);
+        }
 
+        if (!m_conns_manager->get_reqs_processed()) {
             process_first_request();
         } else {
             benchmark_debug_log("reconnection complete, proceeding with test\n");
