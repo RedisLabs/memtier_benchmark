@@ -2,9 +2,17 @@ name: Code Style
 
 on:
   push:
-    branches: [master, main]
+    branches:
+      - master
+      - main
+      - '[0-9]*.[0-9]*'
+      - '![0-9]*.[0-9]*-*'
   pull_request:
-    branches: [master, main]
+    branches:
+      - master
+      - main
+      - '[0-9]*.[0-9]*'
+      - '![0-9]*.[0-9]*-*'
 
 jobs:
   cpp-format-check:
