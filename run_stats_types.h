@@ -20,10 +20,10 @@
 #define MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
 
 #define LATENCY_HDR_MIN_VALUE 10
-#define LATENCY_HDR_MAX_VALUE 6000000000 ## LL
+#define LATENCY_HDR_MAX_VALUE 6000000000##LL
 #define LATENCY_HDR_SIGDIGTS 3
 #define LATENCY_HDR_SEC_MIN_VALUE 10
-#define LATENCY_HDR_SEC_MAX_VALUE 600000000 ## LL
+#define LATENCY_HDR_SEC_MAX_VALUE 600000000##LL
 #define LATENCY_HDR_SEC_SIGDIGTS 2
 #define LATENCY_HDR_RESULTS_MULTIPLIER 1000
 #define LATENCY_HDR_GRANULARITY 10
@@ -37,31 +37,32 @@
 // TODO: In the future we may want to consider extending this wrapper
 // further to expose all hdr functions as native methods and avoid the
 // casting operator completely.
-class safe_hdr_histogram {
+class safe_hdr_histogram
+{
     hdr_histogram *m_hdr;
+
 public:
-    safe_hdr_histogram() {
-        hdr_init(
-            LATENCY_HDR_MIN_VALUE,          // Minimum value
-            LATENCY_HDR_SEC_MAX_VALUE,      // Maximum value
-            LATENCY_HDR_SEC_SIGDIGTS,       // Number of significant figures
-            &m_hdr);
+    safe_hdr_histogram()
+    {
+        hdr_init(LATENCY_HDR_MIN_VALUE,     // Minimum value
+                 LATENCY_HDR_SEC_MAX_VALUE, // Maximum value
+                 LATENCY_HDR_SEC_SIGDIGTS,  // Number of significant figures
+                 &m_hdr);
     }
 
-    virtual ~safe_hdr_histogram() {
-        hdr_close(m_hdr);
-    }
+    virtual ~safe_hdr_histogram() { hdr_close(m_hdr); }
 
-    safe_hdr_histogram(const safe_hdr_histogram& other) {
-        hdr_init(
-            LATENCY_HDR_MIN_VALUE,          // Minimum value
-            LATENCY_HDR_SEC_MAX_VALUE,      // Maximum value
-            LATENCY_HDR_SEC_SIGDIGTS,       // Number of significant figures
-            &m_hdr);
+    safe_hdr_histogram(const safe_hdr_histogram &other)
+    {
+        hdr_init(LATENCY_HDR_MIN_VALUE,     // Minimum value
+                 LATENCY_HDR_SEC_MAX_VALUE, // Maximum value
+                 LATENCY_HDR_SEC_SIGDIGTS,  // Number of significant figures
+                 &m_hdr);
         hdr_add(m_hdr, other.m_hdr);
     }
 
-    safe_hdr_histogram& operator=(const safe_hdr_histogram& other) {
+    safe_hdr_histogram &operator=(const safe_hdr_histogram &other)
+    {
         if (this != &other) {
             hdr_reset(m_hdr);
             hdr_add(m_hdr, other.m_hdr);
@@ -70,10 +71,11 @@ public:
     }
 
     // Cast safe_hdr_historgram to hdr_histogram to make it transparent
-    operator hdr_histogram* () const { return m_hdr; }
+    operator hdr_histogram *() const { return m_hdr; }
 };
 
-class one_sec_cmd_stats {
+class one_sec_cmd_stats
+{
 public:
     unsigned long int m_bytes_rx;
     unsigned long int m_bytes_tx;
@@ -89,7 +91,7 @@ public:
     double m_max_latency;
     one_sec_cmd_stats();
     void reset();
-    void merge(const one_sec_cmd_stats& other);
+    void merge(const one_sec_cmd_stats &other);
     /**
      * Summarizes quantiles from the given histogram.
      *
@@ -98,37 +100,40 @@ public:
      *                         The caller must ensure the vector is sorted from smallest to largest.
      */
     void summarize_quantiles(safe_hdr_histogram histogram, std::vector<double> sorted_quantiles);
-    void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
-    void update_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency, unsigned int hits, unsigned int misses);
-    void update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
-    void update_ask_op(unsigned int bytes_rx, unsigned int bytes_tx,  unsigned int latency);
+    void update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency, unsigned int hits,
+                   unsigned int misses);
+    void update_moved_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
+    void update_ask_op(unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);
 };
 
 class one_second_stats; // forward declaration
 
-class ar_one_sec_cmd_stats {
+class ar_one_sec_cmd_stats
+{
 public:
-    ar_one_sec_cmd_stats() {;}
+    ar_one_sec_cmd_stats() { ; }
     void setup(size_t n_arbitrary_commands);
     void reset();
-    void merge(const ar_one_sec_cmd_stats& other);
+    void merge(const ar_one_sec_cmd_stats &other);
     unsigned long int ops();
     unsigned long int bytes();
     unsigned long long int total_latency();
     size_t size() const;
-    one_sec_cmd_stats& at(std::size_t idx) { return m_commands.at(idx); }
-    const one_sec_cmd_stats& at(std::size_t idx) const { return m_commands.at(idx); }
+    one_sec_cmd_stats &at(std::size_t idx) { return m_commands.at(idx); }
+    const one_sec_cmd_stats &at(std::size_t idx) const { return m_commands.at(idx); }
 
     // array subscript operator
-    one_sec_cmd_stats& operator[](std::size_t idx) { return m_commands[idx]; }
-    const one_sec_cmd_stats& operator[](std::size_t idx) const { return m_commands[idx]; }
+    one_sec_cmd_stats &operator[](std::size_t idx) { return m_commands[idx]; }
+    const one_sec_cmd_stats &operator[](std::size_t idx) const { return m_commands[idx]; }
 
     std::vector<one_sec_cmd_stats> m_commands;
 };
 
-class one_second_stats {
+class one_second_stats
+{
 public:
-    unsigned int m_second;        // from start of test
+    unsigned int m_second; // from start of test
     one_sec_cmd_stats m_set_cmd;
     one_sec_cmd_stats m_get_cmd;
     one_sec_cmd_stats m_wait_cmd;
@@ -138,10 +143,11 @@ public:
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
     void reset(unsigned int second);
     void summarize();
-    void merge(const one_second_stats& other);
+    void merge(const one_second_stats &other);
 };
 
-class totals_cmd {
+class totals_cmd
+{
 public:
     double m_ops_sec;
     double m_bytes_sec;
@@ -153,31 +159,33 @@ public:
     unsigned long long int m_total_latency;
     unsigned long int m_ops;
     totals_cmd();
-    void add(const totals_cmd& other);
+    void add(const totals_cmd &other);
     void aggregate_average(size_t stats_size);
-    void summarize(const one_sec_cmd_stats& other, unsigned long test_duration_usec);
+    void summarize(const one_sec_cmd_stats &other, unsigned long test_duration_usec);
 };
 
-class ar_totals_cmd {
+class ar_totals_cmd
+{
 public:
-    ar_totals_cmd() {;}
+    ar_totals_cmd() { ; }
     void setup(size_t n_arbitrary_commands);
-    void add(const ar_totals_cmd& other);
+    void add(const ar_totals_cmd &other);
     void aggregate_average(size_t stats_size);
-    void summarize(const ar_one_sec_cmd_stats& other, unsigned long test_duration_usec);
+    void summarize(const ar_one_sec_cmd_stats &other, unsigned long test_duration_usec);
     size_t size() const;
 
-    totals_cmd& at(std::size_t idx) { return m_commands.at(idx); }
-    const totals_cmd& at(std::size_t idx) const { return m_commands.at(idx); }
+    totals_cmd &at(std::size_t idx) { return m_commands.at(idx); }
+    const totals_cmd &at(std::size_t idx) const { return m_commands.at(idx); }
 
     // array subscript operator
-    totals_cmd& operator[](std::size_t idx) { return m_commands[idx]; }
-    const totals_cmd& operator[](std::size_t idx) const { return m_commands[idx]; }
+    totals_cmd &operator[](std::size_t idx) { return m_commands[idx]; }
+    const totals_cmd &operator[](std::size_t idx) const { return m_commands[idx]; }
 
     std::vector<totals_cmd> m_commands;
 };
 
-class totals {
+class totals
+{
 public:
     totals_cmd m_set_cmd;
     totals_cmd m_get_cmd;
@@ -202,9 +210,9 @@ public:
     unsigned long int m_ops;
     totals();
     void setup_arbitrary_commands(size_t n_arbitrary_commands);
-    void add(const totals& other);
+    void add(const totals &other);
     void update_op(unsigned long int bytes_rx, unsigned long int bytes_tx, unsigned int latency);
 };
 
 
-#endif //MEMTIER_BENCHMARK_RUN_STATS_TYPES_H
+#endif // MEMTIER_BENCHMARK_RUN_STATS_TYPES_H

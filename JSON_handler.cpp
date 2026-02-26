@@ -22,7 +22,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <cmath>  // For std::isnan
+#include <cmath> // For std::isnan
 #include "JSON_handler.h"
 
 
@@ -32,7 +32,7 @@
  * Opens the file named jsonfilename and sets the first nesting as NESTED_GENERAL
  * In case of failure to create the file, will state the error perror
  */
-json_handler::json_handler(const char * jsonfilename) : m_json_file(NULL)
+json_handler::json_handler(const char *jsonfilename) : m_json_file(NULL)
 {
     // Try to open a file and add the first level
     m_json_file = fopen(jsonfilename, "w");
@@ -41,7 +41,7 @@ json_handler::json_handler(const char * jsonfilename) : m_json_file(NULL)
     }
     // opening the JSON
     fprintf(stderr, "Json file %s created...\n", jsonfilename);
-    fprintf(m_json_file,"{");
+    fprintf(m_json_file, "{");
     m_nest_closer_types.push_back(NESTED_GENERAL);
     beutify();
 }
@@ -53,9 +53,10 @@ json_handler::json_handler(const char * jsonfilename) : m_json_file(NULL)
  */
 json_handler::~json_handler()
 {
-    if (m_json_file){
+    if (m_json_file) {
         // close nesting...
-        while (close_nesting());
+        while (close_nesting())
+            ;
         fclose(m_json_file);
         fprintf(stderr, "Json file closed.\n");
     }
@@ -66,7 +67,7 @@ json_handler::~json_handler()
  * based on the format defined
  * basically uses fprintf with the same parameters.
  */
-void json_handler::write_obj(const char * objectname, const char * format, ...)
+void json_handler::write_obj(const char *objectname, const char *format, ...)
 {
     fprintf(m_json_file, "\"%s\": ", objectname);
     va_list argptr;
@@ -76,7 +77,7 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
         // Use a temporary va_list to check the string argument without advancing the original
         va_list tmp_argptr;
         va_copy(tmp_argptr, argptr);
-        const char *str_arg = va_arg(tmp_argptr, const char*);
+        const char *str_arg = va_arg(tmp_argptr, const char *);
         va_end(tmp_argptr);
 
         if (str_arg == nullptr) {
@@ -99,8 +100,7 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
         } else {
             vfprintf(m_json_file, format, argptr);
         }
-    }
-    else {
+    } else {
         // For other format specifiers, proceed as usual
         vfprintf(m_json_file, format, argptr);
     }
@@ -114,10 +114,10 @@ void json_handler::write_obj(const char * objectname, const char * format, ...)
  * in case objectname == NULL it will not add the title and just start nesting
  * The type defines the kind of charecters that will be used
  */
-void json_handler::open_nesting(const char * objectname,eJSON_NESTED_TYPE type /*= NESTED_GENERAL*/)
+void json_handler::open_nesting(const char *objectname, eJSON_NESTED_TYPE type /*= NESTED_GENERAL*/)
 {
-    const char * nestStart = (type == NESTED_GENERAL) ? "{" : "[";
-    if (objectname != NULL){
+    const char *nestStart = (type == NESTED_GENERAL) ? "{" : "[";
+    if (objectname != NULL) {
         fprintf(m_json_file, "\"%s\":", objectname);
     }
     fprintf(m_json_file, "%s", nestStart);
@@ -134,17 +134,15 @@ void json_handler::open_nesting(const char * objectname,eJSON_NESTED_TYPE type /
 int json_handler::close_nesting()
 {
     int nest_level = m_nest_closer_types.size();
-    if (nest_level > 0)
-    {
+    if (nest_level > 0) {
         eJSON_NESTED_TYPE type = m_nest_closer_types.back();
         m_nest_closer_types.pop_back();
         // as we assume that the last value is always a ',' or '\n' we need to remove it first
         fseek(m_json_file, -1, SEEK_CUR);
-        const char * nestEnd = (type == NESTED_GENERAL) ? "}" : "]";
+        const char *nestEnd = (type == NESTED_GENERAL) ? "}" : "]";
         fprintf(m_json_file, "%s", nestEnd);
         beutify();
-        if (nest_level > 1)
-        {
+        if (nest_level > 1) {
             fprintf(m_json_file, ",");
         }
     }
@@ -156,14 +154,11 @@ int json_handler::close_nesting()
  */
 void json_handler::beutify(bool only_tabs)
 {
-    if (only_tabs == false)
-    {
+    if (only_tabs == false) {
         fprintf(m_json_file, "\n");
     }
     int nest_level = m_nest_closer_types.size();
-    for(;nest_level>0;nest_level--)
-    {
+    for (; nest_level > 0; nest_level--) {
         fprintf(m_json_file, "\t");
     }
-
 }
