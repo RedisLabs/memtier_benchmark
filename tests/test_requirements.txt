@@ -1,2 +1,3 @@
 redis>=3.0.0
 git+https://github.com/RedisLabsModules/RLTest.git@master
+psutil>=5.9.0

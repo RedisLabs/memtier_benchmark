@@ -1389,6 +1389,11 @@ void run_stats::print_kb_sec_column(output_table &table, const std::vector<aggre
     table.add_column(column);
 }
 
+void run_stats::set_cpu_stats(std::vector<per_second_cpu_stats> cpu_stats)
+{
+    m_cpu_stats = std::move(cpu_stats);
+}
+
 void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &command_list, bool cluster_mode,
                            const std::vector<aggregated_command_type_stats> *aggregated)
 {
@@ -1480,6 +1485,24 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
                          m_totals.m_total_latency, m_totals.m_ops, m_totals.m_connection_errors_sec,
                          m_totals.m_connection_errors, quantiles_list, m_totals.latency_histogram, timestamps,
                          total_stats);
+
+    if (jsonhandler != NULL && !m_cpu_stats.empty()) {
+        jsonhandler->open_nesting("CPU Stats");
+        for (size_t i = 0; i < m_cpu_stats.size(); i++) {
+            const per_second_cpu_stats &cs = m_cpu_stats[i];
+            char sec_str[32];
+            snprintf(sec_str, sizeof(sec_str), "%u", cs.m_second);
+            jsonhandler->open_nesting(sec_str);
+            jsonhandler->write_obj("Main Thread", "%.2f", cs.m_main_thread_cpu_pct);
+            for (size_t t = 0; t < cs.m_thread_cpu_pct.size(); t++) {
+                char thread_name[32];
+                snprintf(thread_name, sizeof(thread_name), "Thread %zu", t);
+                jsonhandler->write_obj(thread_name, "%.2f", cs.m_thread_cpu_pct[t]);
+            }
+            jsonhandler->close_nesting();
+        }
+        jsonhandler->close_nesting();
+    }
 }
 
 void run_stats::print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_command_list &command_list,

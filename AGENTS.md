@@ -225,6 +225,16 @@ All C++ source files must include this header:
  */
 ```
 
+## CPU Stats Testing
+
+Per-thread CPU measurement is implemented using native OS APIs (Mach `thread_info` on macOS, `pthread_getcpuclockid` on Linux). Tests live in `tests/test_cpu_stats.py`:
+
+- **`test_cpu_stats_in_json`**: Verifies CPU stats appear in JSON output with valid structure (per-second, per-thread entries with values in [0, 100))
+- **`test_cpu_stats_high_load`**: Stresses a single thread with 500 clients to drive high CPU; verifies non-trivial usage and the >95% warning
+- **`test_cpu_stats_external_validation`**: Cross-validates memtier's reported CPU percentages against `psutil.Process.threads()` as an independent oracle. Launches memtier via `subprocess.Popen`, polls psutil every ~1s, then compares aggregate average worker CPU% from both sources (±15pp tolerance). Requires `psutil` (listed in `tests/test_requirements.txt`); skips gracefully if unavailable.
+
+All CPU stats tests assert that no individual thread reports exactly 100% CPU usage (values must be strictly less than 100%).
+
 ## Important Notes
 
 - Default build includes debug symbols (`-g`) for crash analysis

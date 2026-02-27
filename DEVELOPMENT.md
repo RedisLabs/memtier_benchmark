@@ -101,6 +101,11 @@ The project includes a basic set of integration tests.
 Integration tests are based on [RLTest](https://github.com/RedisLabsModules/RLTest), and specific setup parameters can be provided
 to configure tests and topologies (OSS standalone and OSS cluster). By default the tests will be ran for all common commands, and with OSS standalone setup.
 
+Test dependencies (installed via `tests/test_requirements.txt`):
+- **redis** — Python Redis client
+- **RLTest** — Redis Labs test framework
+- **psutil** — Cross-platform process/thread CPU monitoring (used by `test_cpu_stats.py` for external validation of per-thread CPU measurements)
+
 To run all integration tests in a Python virtualenv, follow these steps:
 
     $ mkdir -p .env

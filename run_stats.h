@@ -160,6 +160,9 @@ public:
     void set_interrupted(bool interrupted) { m_interrupted = interrupted; }
     bool get_interrupted() const { return m_interrupted; }
 
+    std::vector<per_second_cpu_stats> m_cpu_stats;
+    void set_cpu_stats(std::vector<per_second_cpu_stats> cpu_stats);
+
     void update_get_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency,
                        unsigned int hits, unsigned int misses);
     void update_set_op(struct timeval *ts, unsigned int bytes_rx, unsigned int bytes_tx, unsigned int latency);

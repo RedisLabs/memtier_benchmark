@@ -147,6 +147,12 @@ public:
     void merge(const one_second_stats &other);
 };
 
+struct per_second_cpu_stats {
+    unsigned int m_second;
+    double m_main_thread_cpu_pct;
+    std::vector<double> m_thread_cpu_pct;
+};
+
 class totals_cmd
 {
 public:
