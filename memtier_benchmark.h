@@ -20,6 +20,8 @@
 #define _MEMTIER_BENCHMARK_H
 
 #include <vector>
+#include <atomic>
+#include <sys/time.h>
 #include "config_types.h"
 
 #ifdef USE_TLS
@@ -70,7 +72,7 @@ struct benchmark_config
     bool print_all_runs;
     int distinct_client_seed;
     int randomize;
-    int next_client_idx;
+    std::atomic<int> next_client_idx;
     unsigned long long requests;
     unsigned int clients;
     unsigned int threads;
@@ -124,6 +126,11 @@ struct benchmark_config
     unsigned int request_rate;
     unsigned int request_per_interval;
     unsigned int request_interval_microsecond;
+    // Client staircase ramp-up
+    unsigned int clients_start;
+    unsigned int clients_step;
+    unsigned int step_duration;
+    struct timeval benchmark_start_time;
     // StatsD metrics export
     const char *statsd_host;
     unsigned short statsd_port;

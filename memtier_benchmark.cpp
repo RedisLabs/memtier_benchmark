@@ -411,6 +411,11 @@ static void config_print_to_json(json_handler *jsonhandler, struct benchmark_con
     jsonhandler->write_obj("num-slaves", "\"%u:%u\"", cfg->num_slaves.min, cfg->num_slaves.max);
     jsonhandler->write_obj("wait-timeout", "\"%u-%u\"", cfg->wait_timeout.min, cfg->wait_timeout.max);
     jsonhandler->write_obj("print-all-runs", "\"%s\"", cfg->print_all_runs ? "true" : "false");
+    if (cfg->clients_start > 0) {
+        jsonhandler->write_obj("clients_start", "%u", cfg->clients_start);
+        jsonhandler->write_obj("clients_step", "%u", cfg->clients_step);
+        jsonhandler->write_obj("step_duration", "%u", cfg->step_duration);
+    }
 
     jsonhandler->close_nesting();
 }
@@ -702,6 +707,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_graphite_port,
         o_scan_incremental_iteration,
         o_scan_incremental_max_iterations,
+        o_clients_start,
+        o_clients_step,
+        o_step_duration,
         o_help
     };
 
@@ -790,6 +798,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         {"graphite-port", 1, 0, o_graphite_port},
         {"scan-incremental-iteration", 0, 0, o_scan_incremental_iteration},
         {"scan-incremental-max-iterations", 1, 0, o_scan_incremental_max_iterations},
+        {"clients-start", 1, 0, o_clients_start},
+        {"clients-step", 1, 0, o_clients_step},
+        {"step-duration", 1, 0, o_step_duration},
         {NULL, 0, 0, 0}};
 
     int option_index;
@@ -1375,9 +1386,52 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
             }
             break;
         }
+        case o_clients_start:
+            endptr = NULL;
+            cfg->clients_start = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!cfg->clients_start || !endptr || *endptr != '\0') {
+                fprintf(stderr, "error: clients-start must be greater than zero.\n");
+                return -1;
+            }
+            break;
+        case o_clients_step:
+            endptr = NULL;
+            cfg->clients_step = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!cfg->clients_step || !endptr || *endptr != '\0') {
+                fprintf(stderr, "error: clients-step must be greater than zero.\n");
+                return -1;
+            }
+            break;
+        case o_step_duration:
+            endptr = NULL;
+            cfg->step_duration = (unsigned int) strtoul(optarg, &endptr, 10);
+            if (!cfg->step_duration || !endptr || *endptr != '\0') {
+                fprintf(stderr, "error: step-duration must be greater than zero.\n");
+                return -1;
+            }
+            break;
         default:
             return -1;
             break;
+        }
+    }
+
+    // Validate staircase options (partial - remaining validation after defaults)
+    {
+        bool has_start = cfg->clients_start > 0;
+        bool has_step = cfg->clients_step > 0;
+        bool has_dur = cfg->step_duration > 0;
+
+        if (has_start || has_step || has_dur) {
+            if (!has_start || !has_step || !has_dur) {
+                fprintf(stderr,
+                        "error: --clients-start, --clients-step, and --step-duration must all be specified together.\n");
+                return -1;
+            }
+            if (cfg->requests > 0) {
+                fprintf(stderr, "error: --requests cannot be used with client staircase mode. Use --test-time instead.\n");
+                return -1;
+            }
         }
     }
 
@@ -1461,6 +1515,10 @@ void usage()
         "  -c, --clients=NUMBER           Number of clients per thread (default: 50)\n"
         "  -t, --threads=NUMBER           Number of threads (default: 4)\n"
         "      --test-time=SECS           Number of seconds to run the test\n"
+        "      --clients-start=NUMBER     Starting number of clients per thread for staircase ramp-up.\n"
+        "                                 Must be less than --clients. Requires --clients-step and --step-duration.\n"
+        "      --clients-step=NUMBER      Number of clients to add per step in staircase ramp-up.\n"
+        "      --step-duration=SECS       Duration in seconds of each step before adding more clients.\n"
         "      --ratio=RATIO              Set:Get ratio (default: 1:10)\n"
         "      --pipeline=NUMBER          Number of concurrent pipelined requests (default: 1)\n"
         "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
@@ -1606,7 +1664,8 @@ struct cg_thread
 
     int prepare(void)
     {
-        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients) return -1;
+        unsigned int initial = m_config->clients_start > 0 ? m_config->clients_start : m_config->clients;
+        if (m_cg->create_clients(initial) < (int) initial) return -1;
         return m_cg->prepare();
     }
 
@@ -1632,7 +1691,8 @@ struct cg_thread
         m_cg = new client_group(m_config, m_protocol, m_obj_gen);
 
         // Prepare new clients
-        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients) return -1;
+        unsigned int initial = m_config->clients_start > 0 ? m_config->clients_start : m_config->clients;
+        if (m_cg->create_clients(initial) < (int) initial) return -1;
         if (m_cg->prepare() < 0) return -1;
 
         // Reset state
@@ -1775,6 +1835,60 @@ static void print_all_threads_stack_trace(FILE *fp, int pid, const char *timestr
     }
 }
 
+static void print_staircase_pattern(int run_id, benchmark_config *cfg)
+{
+    unsigned int num_steps = (cfg->clients - cfg->clients_start + cfg->clients_step - 1) / cfg->clients_step;
+    unsigned int min_duration = num_steps * cfg->step_duration;
+    unsigned int max_bar = cfg->clients;
+
+    fprintf(stderr, "[RUN #%u] Client staircase pattern (per thread x %u threads):\n", run_id, cfg->threads);
+
+    for (unsigned int step = 0; step <= num_steps; step++) {
+        unsigned int clients = cfg->clients_start + step * cfg->clients_step;
+        if (clients > cfg->clients) clients = cfg->clients;
+
+        unsigned int t_start = step * cfg->step_duration;
+
+        // Don't show steps that can't start within test_time
+        if (t_start >= cfg->test_time && step > 0) break;
+
+        unsigned int t_end;
+        bool is_last = (clients >= cfg->clients);
+        if (is_last)
+            t_end = cfg->test_time;
+        else
+            t_end = (step + 1) * cfg->step_duration;
+
+        // Cap t_end at test_time
+        if (t_end > cfg->test_time) t_end = cfg->test_time;
+
+        // Scale bar: 2 chars per unit, proportional to max
+        unsigned int bar_len = (clients * 20 + max_bar - 1) / max_bar;
+        if (bar_len < 1) bar_len = 1;
+
+        fprintf(stderr, "  Step %u: %3us - %3us : %3u clients  ",
+                step, t_start, t_end, clients);
+        for (unsigned int b = 0; b < bar_len; b++)
+            fprintf(stderr, "\xe2\x96\x88"); // UTF-8 for full block character
+        if (is_last)
+            fprintf(stderr, "  (max)");
+        fprintf(stderr, "\n");
+
+        if (is_last) break;
+    }
+
+    unsigned int total_max = cfg->clients * cfg->threads;
+    fprintf(stderr, "  Total max connections: %u x %u = %u\n", cfg->clients, cfg->threads, total_max);
+
+    if (cfg->test_time >= min_duration) {
+        fprintf(stderr, "  Minimum time to reach max: %us (test_time: %us OK)\n", min_duration, cfg->test_time);
+    } else {
+        fprintf(stderr, "  WARNING: test_time (%us) < time to reach max clients (%us), max will not be reached\n",
+                cfg->test_time, min_duration);
+    }
+    fprintf(stderr, "\n");
+}
+
 run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj_gen)
 {
     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
@@ -1793,6 +1907,14 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         }
         threads.push_back(t);
     }
+
+    // Print staircase pattern if configured
+    if (cfg->clients_start > 0) {
+        print_staircase_pattern(run_id, cfg);
+    }
+
+    // Record benchmark start time (used for staircase global deadline)
+    gettimeofday(&cfg->benchmark_start_time, NULL);
 
     // launch threads
     fprintf(stderr, "[RUN #%u] Launching threads now...\n", run_id);
@@ -1905,9 +2027,18 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         size_to_str(bytes_sec, bytes_str, sizeof(bytes_str) - 1);
         size_to_str(cur_bytes_sec, cur_bytes_str, sizeof(cur_bytes_str) - 1);
 
+        // Calculate current client count for display
+        unsigned int display_clients = cfg->clients;
+        if (cfg->clients_start > 0) {
+            unsigned int elapsed_secs = (unsigned int)(duration / 1000000);
+            unsigned int steps_done = elapsed_secs / cfg->step_duration;
+            display_clients = cfg->clients_start + steps_done * cfg->clients_step;
+            if (display_clients > cfg->clients) display_clients = cfg->clients;
+        }
+
         double progress = 0;
         if (cfg->requests)
-            progress = 100.0 * total_ops / ((double) cfg->requests * cfg->clients * cfg->threads);
+            progress = 100.0 * total_ops / ((double) cfg->requests * display_clients * cfg->threads);
         else
             progress = 100.0 * (duration / 1000000.0) / cfg->test_time;
 
@@ -1916,14 +2047,14 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
             fprintf(stderr,
                     "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns %lu conn errors: %11lu ops, %7lu (avg: %7lu) "
                     "ops/sec, %s/sec (avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
-                    run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients,
+                    run_id, progress, (unsigned int) (duration / 1000000), active_threads, display_clients,
                     total_connection_errors, total_ops, cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency,
                     avg_latency);
         } else {
             fprintf(stderr,
                     "[RUN #%u %.0f%%, %3u secs] %2u threads %2u conns: %11lu ops, %7lu (avg: %7lu) ops/sec, %s/sec "
                     "(avg: %s/sec), %5.2f (avg: %5.2f) msec latency\r",
-                    run_id, progress, (unsigned int) (duration / 1000000), active_threads, cfg->clients, total_ops,
+                    run_id, progress, (unsigned int) (duration / 1000000), active_threads, display_clients, total_ops,
                     cur_ops_sec, ops_sec, cur_bytes_str, bytes_str, cur_latency, avg_latency);
         }
 
@@ -1935,7 +2066,7 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
             cfg->statsd->gauge("bytes_sec_avg", (long) bytes_sec);
             cfg->statsd->timing("latency_ms", cur_latency);
             cfg->statsd->timing("latency_avg_ms", avg_latency);
-            cfg->statsd->gauge("connections", (long) (cfg->clients * active_threads));
+            cfg->statsd->gauge("connections", (long) (display_clients * active_threads));
             cfg->statsd->gauge("progress_pct", progress);
             if (total_connection_errors > 0) {
                 cfg->statsd->gauge("connection_errors", (long) total_connection_errors);
@@ -2304,6 +2435,20 @@ int main(int argc, char *argv[])
     }
 
     config_init_defaults(&cfg);
+
+    // Validate staircase options (after defaults are applied)
+    if (cfg.clients_start > 0) {
+        if (cfg.clients_start >= cfg.clients) {
+            fprintf(stderr,
+                    "error: --clients-start (%u) must be less than --clients (%u).\n",
+                    cfg.clients_start, cfg.clients);
+            exit(1);
+        }
+        if (!cfg.test_time) {
+            fprintf(stderr, "error: --test-time is required when using client staircase mode.\n");
+            exit(1);
+        }
+    }
 
     // Validate jitter parameters
     if (cfg.thread_conn_start_min_jitter_micros > cfg.thread_conn_start_max_jitter_micros) {

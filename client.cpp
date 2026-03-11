@@ -249,7 +249,17 @@ int client::connect(void)
 bool client::finished(void)
 {
     if (m_config->requests > 0 && m_reqs_processed >= m_config->requests) return true;
-    if (m_config->test_time > 0 && m_stats.get_duration() >= m_config->test_time) return true;
+    if (m_config->test_time > 0) {
+        if (m_config->clients_start > 0) {
+            // Staircase mode: use global deadline so all clients stop together
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            unsigned int elapsed = now.tv_sec - m_config->benchmark_start_time.tv_sec;
+            if (elapsed >= m_config->test_time) return true;
+        } else {
+            if (m_stats.get_duration() >= m_config->test_time) return true;
+        }
+    }
     return false;
 }
 
@@ -800,7 +810,7 @@ bool verify_client::finished(void)
 ///////////////////////////////////////////////////////////////////////////
 
 client_group::client_group(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen) :
-        m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen)
+        m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen), m_staircase_timer(NULL)
 {
     m_base = event_base_new();
     assert(m_base != NULL);
@@ -811,6 +821,12 @@ client_group::client_group(benchmark_config *config, abstract_protocol *protocol
 
 client_group::~client_group(void)
 {
+    if (m_staircase_timer != NULL) {
+        event_del(m_staircase_timer);
+        event_free(m_staircase_timer);
+        m_staircase_timer = NULL;
+    }
+
     for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
         client *c = *i;
         delete c;
@@ -873,7 +889,78 @@ int client_group::prepare(void)
 
 void client_group::run(void)
 {
+    if (m_config->clients_start > 0) {
+        setup_staircase_timer();
+    }
     event_base_dispatch(m_base);
+}
+
+void client_group::staircase_timer_cb(evutil_socket_t fd, short what, void *arg)
+{
+    (void) fd;
+    (void) what;
+    client_group *cg = (client_group *) arg;
+    cg->handle_staircase_step();
+}
+
+void client_group::setup_staircase_timer(void)
+{
+    struct timeval interval = {(long) m_config->step_duration, 0};
+    m_staircase_timer = event_new(m_base, -1, EV_PERSIST, staircase_timer_cb, (void *) this);
+    event_add(m_staircase_timer, &interval);
+}
+
+void client_group::handle_staircase_step(void)
+{
+    unsigned int current = m_clients.size();
+    unsigned int target = current + m_config->clients_step;
+    if (target > m_config->clients) target = m_config->clients;
+    unsigned int to_add = target - current;
+
+    if (to_add == 0) {
+        // Already at max, remove the timer
+        if (m_staircase_timer != NULL) {
+            event_del(m_staircase_timer);
+            event_free(m_staircase_timer);
+            m_staircase_timer = NULL;
+        }
+        return;
+    }
+
+    for (unsigned int i = 0; i < to_add; i++) {
+        client *c;
+
+        if (m_config->cluster_mode)
+            c = new cluster_client(this);
+        else
+            c = new client(this);
+
+        if (!c->initialized()) {
+            benchmark_error_log("staircase: failed to initialize client.\n");
+            delete c;
+            break;
+        }
+
+        m_clients.push_back(c);
+
+        int ret = c->prepare();
+        if (ret < 0) {
+            benchmark_error_log("staircase: failed to connect client.\n");
+            break;
+        }
+    }
+
+    benchmark_debug_log("staircase: added %u clients, now at %u/%u per thread.\n",
+                        to_add, (unsigned int) m_clients.size(), m_config->clients);
+
+    // If we've reached max, remove the timer
+    if (m_clients.size() >= m_config->clients) {
+        if (m_staircase_timer != NULL) {
+            event_del(m_staircase_timer);
+            event_free(m_staircase_timer);
+            m_staircase_timer = NULL;
+        }
+    }
 }
 
 void client_group::interrupt(void)
