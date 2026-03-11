@@ -967,7 +967,7 @@ void client_group::handle_staircase_step(void)
                         m_config->clients);
 
     // If we've reached max, remove the timer
-    if (target >= m_config->clients) {
+    if (connected >= m_config->clients) {
         if (m_staircase_timer != NULL) {
             event_del(m_staircase_timer);
             event_free(m_staircase_timer);

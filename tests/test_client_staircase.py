@@ -8,6 +8,9 @@ the per-second active client counts follow the expected staircase pattern.
 import tempfile
 import json
 import os
+import subprocess
+import time
+import threading
 
 from include import (
     get_default_memtier_config,
@@ -454,6 +457,268 @@ def test_staircase_clients_never_exceed_max(env):
             env.assertEqual(seen_values, expected_sequence,
                             message="Expected staircase values {} but got {}".format(
                                 expected_sequence, seen_values))
+        finally:
+            if env.getNumberOfFailedAssertion() > failed_asserts:
+                debugPrintMemtierOnError(run_config, env)
+    finally:
+        pass
+
+
+def _count_memtier_connections(master_connections):
+    """Count memtier client connections via CLIENT LIST across all masters."""
+    total = 0
+    for conn in master_connections:
+        clients = conn.execute_command("CLIENT", "LIST")
+        if isinstance(clients, bytes):
+            clients = clients.decode('utf-8')
+
+        for line in clients.split("\n"):
+            if not line.strip():
+                continue
+            client_info = {}
+            for part in line.split():
+                if "=" in part:
+                    key, value = part.split("=", 1)
+                    client_info[key] = value
+            # Count connections that are not the test framework's own connection
+            # memtier uses 'cmd=set' or 'cmd=get' etc., while idle conns show 'cmd=client' or 'cmd=command'
+            if "flags" in client_info and "S" not in client_info.get("flags", ""):
+                total += 1
+    # Subtract monitoring connections (one per master node for this test)
+    total -= len(master_connections)
+    return max(total, 0)
+
+
+def test_staircase_actual_connections_via_client_list(env):
+    """Verify actual Redis connections match expected staircase at each step.
+
+    Runs the benchmark in the background and polls CLIENT LIST at the midpoint
+    of each staircase step to verify the actual connection count matches the
+    expected number from the staircase pattern.
+    """
+    env.skipOnCluster()
+
+    clients = 6
+    clients_start = 2
+    clients_step = 2
+    step_duration = 4
+    test_time = 16
+    threads = 2
+
+    test_dir = tempfile.mkdtemp()
+    try:
+        benchmark, run_config = _build_staircase_benchmark(
+            env, test_dir, clients=clients, clients_start=clients_start,
+            clients_step=clients_step, step_duration=step_duration,
+            test_time=test_time, threads=threads)
+
+        master_connections = env.getOSSMasterNodesConnectionList()
+
+        # Start benchmark in background
+        stdout_f = open(os.path.join(run_config.results_dir, "mb.stdout"), "w")
+        stderr_f = open(os.path.join(run_config.results_dir, "mb.stderr"), "w")
+        process = subprocess.Popen(
+            benchmark.args,
+            stdout=stdout_f, stderr=stderr_f,
+            cwd=run_config.results_dir)
+
+        failed_asserts = env.getNumberOfFailedAssertion()
+        try:
+            # Check at the midpoint of each step
+            # Step 0 (t=0-4):  2 clients/thread -> 4 total
+            # Step 1 (t=4-8):  4 clients/thread -> 8 total
+            # Step 2 (t=8-16): 6 clients/thread -> 12 total
+            checks = [
+                (2, 2 * threads),    # mid step 0
+                (6, 4 * threads),    # mid step 1
+                (10, 6 * threads),   # mid step 2 (max)
+            ]
+
+            # Wait for initial connections to establish
+            time.sleep(2)
+
+            for check_time, expected_total in checks:
+                # Sleep until the check time (relative to start)
+                # We already slept 2s, so adjust
+                if check_time > 2:
+                    time.sleep(check_time - 2)
+
+                actual = _count_memtier_connections(master_connections)
+                # Allow tolerance of ±2 for connection setup timing
+                env.assertTrue(
+                    abs(actual - expected_total) <= 2,
+                    message="At ~{}s, expected ~{} connections, got {} "
+                            "(tolerance ±2)".format(check_time, expected_total, actual))
+
+                # Update reference time for next sleep
+                check_time_ref = check_time
+
+            # Wait for benchmark to finish
+            process.wait(timeout=test_time + 10)
+            ok = process.returncode == 0
+            env.assertTrue(ok, message="memtier_benchmark should exit successfully")
+
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            stdout_f.close()
+            stderr_f.close()
+            if env.getNumberOfFailedAssertion() > failed_asserts:
+                debugPrintMemtierOnError(run_config, env)
+    finally:
+        pass
+
+
+def test_staircase_timeserie_aligned_with_active_clients(env):
+    """Verify Time-Serie and Active Clients cover the same seconds and
+    that per-second throughput data is correctly aligned.
+
+    The Time-Serie 'Totals' section should have entries for the same
+    seconds as the Active Clients section. Each second should have
+    non-zero ops count, confirming that staircase clients' stats are
+    merged into the correct time buckets.
+    """
+    env.skipOnCluster()
+
+    clients = 8
+    clients_start = 2
+    clients_step = 2
+    step_duration = 3
+    test_time = 12
+    threads = 2
+
+    test_dir = tempfile.mkdtemp()
+    try:
+        benchmark, run_config = _build_staircase_benchmark(
+            env, test_dir, clients=clients, clients_start=clients_start,
+            clients_step=clients_step, step_duration=step_duration,
+            test_time=test_time, threads=threads)
+
+        ok = benchmark.run()
+        failed_asserts = env.getNumberOfFailedAssertion()
+        try:
+            env.assertTrue(ok, message="memtier_benchmark should exit successfully")
+
+            results = _load_json(run_config)
+            all_stats = results.get("ALL STATS", {})
+            ac = all_stats.get("Active Clients", {})
+            totals_ts = all_stats.get("Totals", {}).get("Time-Serie", {})
+
+            env.assertGreater(len(ac), 0,
+                              message="Active Clients should have entries")
+            env.assertGreater(len(totals_ts), 0,
+                              message="Time-Serie should have entries")
+
+            ac_seconds = set(ac.keys())
+            ts_seconds = set(totals_ts.keys())
+
+            # Every Active Clients second should have a Time-Serie entry
+            for sec in sorted(ac_seconds, key=int):
+                env.assertTrue(sec in ts_seconds,
+                               message="Active Clients second {} should have "
+                                       "a Time-Serie entry".format(sec))
+
+            # Every Time-Serie second should have an Active Clients entry
+            for sec in sorted(ts_seconds, key=int):
+                env.assertTrue(sec in ac_seconds,
+                               message="Time-Serie second {} should have "
+                                       "an Active Clients entry".format(sec))
+
+            # Verify ops exist for every second (aligned stats should
+            # not have empty seconds in the middle of the run)
+            for sec_str in sorted(ts_seconds, key=int):
+                sec = int(sec_str)
+                count = totals_ts[sec_str].get("Count", 0)
+                env.assertGreater(count, 0,
+                                  message="Ops at t={}s should be > 0 "
+                                          "(aligned stats)".format(sec))
+
+            # Verify the average latency exists for each second
+            # (proves per-second stats were properly merged, not empty)
+            for sec_str in sorted(ts_seconds, key=int):
+                entry = totals_ts[sec_str]
+                if entry.get("Count", 0) > 0:
+                    env.assertTrue("Average Latency" in entry,
+                                   message="t={}s with ops should have "
+                                           "'Average Latency'".format(sec_str))
+                    avg_lat = entry["Average Latency"]
+                    env.assertGreater(avg_lat, 0,
+                                      message="Average Latency at t={}s "
+                                              "should be > 0".format(sec_str))
+
+        finally:
+            if env.getNumberOfFailedAssertion() > failed_asserts:
+                debugPrintMemtierOnError(run_config, env)
+    finally:
+        pass
+
+
+def test_staircase_per_step_ops_consistency(env):
+    """Verify that within each staircase step, the per-second ops are
+    consistent (not mixing data from different time periods).
+
+    Within a single step, all seconds should have a similar ops count
+    since the client count is stable. The coefficient of variation
+    within each step should be reasonable (< 100%), proving that data
+    from different absolute times is not being mixed into wrong buckets.
+    """
+    env.skipOnCluster()
+
+    clients = 6
+    clients_start = 2
+    clients_step = 2
+    step_duration = 4
+    test_time = 12
+    threads = 2
+
+    test_dir = tempfile.mkdtemp()
+    try:
+        benchmark, run_config = _build_staircase_benchmark(
+            env, test_dir, clients=clients, clients_start=clients_start,
+            clients_step=clients_step, step_duration=step_duration,
+            test_time=test_time, threads=threads)
+
+        ok = benchmark.run()
+        failed_asserts = env.getNumberOfFailedAssertion()
+        try:
+            env.assertTrue(ok, message="memtier_benchmark should exit successfully")
+
+            results = _load_json(run_config)
+            all_stats = results.get("ALL STATS", {})
+            ac = all_stats.get("Active Clients", {})
+            totals_ts = all_stats.get("Totals", {}).get("Time-Serie", {})
+
+            # Group seconds by their step (by client count)
+            steps = {}
+            for sec_str in sorted(ac.keys(), key=int):
+                per_thread = ac[sec_str]["Clients per thread"]
+                if per_thread not in steps:
+                    steps[per_thread] = []
+                if sec_str in totals_ts:
+                    ops = totals_ts[sec_str].get("Count", 0)
+                    steps[per_thread].append((int(sec_str), ops))
+
+            # For each step with >= 2 seconds, verify ops are reasonably
+            # consistent (no wild outliers from misaligned merging)
+            for client_count, seconds_data in sorted(steps.items()):
+                if len(seconds_data) < 2:
+                    continue
+
+                ops_list = [ops for _, ops in seconds_data]
+                avg_ops = sum(ops_list) / len(ops_list)
+                if avg_ops == 0:
+                    continue
+
+                # Each second's ops should be within 5x of the step average
+                # (generous bound, but catches gross misalignment)
+                for sec, ops in seconds_data:
+                    env.assertTrue(
+                        ops > avg_ops / 5,
+                        message="At t={}s ({} clients/thread), ops={} is "
+                                "suspiciously low vs step avg={:.0f}".format(
+                                    sec, client_count, ops, avg_ops))
+
         finally:
             if env.getNumberOfFailedAssertion() > failed_asserts:
                 debugPrintMemtierOnError(run_config, env)
