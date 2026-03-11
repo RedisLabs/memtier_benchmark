@@ -810,7 +810,12 @@ bool verify_client::finished(void)
 ///////////////////////////////////////////////////////////////////////////
 
 client_group::client_group(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen) :
-        m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen), m_staircase_timer(NULL)
+        m_base(NULL),
+        m_config(config),
+        m_protocol(protocol),
+        m_obj_gen(obj_gen),
+        m_staircase_timer(NULL),
+        m_staircase_active_clients(0)
 {
     m_base = event_base_new();
     assert(m_base != NULL);
@@ -875,16 +880,30 @@ int client_group::create_clients(int num)
 
 int client_group::prepare(void)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        client *c = *i;
-        int ret = c->prepare();
+    return prepare_count(m_clients.size());
+}
 
+int client_group::prepare_count(unsigned int count)
+{
+    if (count > m_clients.size()) count = m_clients.size();
+
+    for (unsigned int i = 0; i < count; i++) {
+        int ret = m_clients[i]->prepare();
         if (ret < 0) {
             return ret;
         }
     }
 
+    m_staircase_active_clients.store(count, std::memory_order_release);
     return 0;
+}
+
+unsigned int client_group::active_client_count(void)
+{
+    if (m_config->clients_start > 0) {
+        return m_staircase_active_clients.load(std::memory_order_acquire);
+    }
+    return m_clients.size();
 }
 
 void client_group::run(void)
@@ -912,12 +931,11 @@ void client_group::setup_staircase_timer(void)
 
 void client_group::handle_staircase_step(void)
 {
-    unsigned int current = m_clients.size();
+    unsigned int current = m_staircase_active_clients.load(std::memory_order_relaxed);
     unsigned int target = current + m_config->clients_step;
     if (target > m_config->clients) target = m_config->clients;
-    unsigned int to_add = target - current;
 
-    if (to_add == 0) {
+    if (current >= target) {
         // Already at max, remove the timer
         if (m_staircase_timer != NULL) {
             event_del(m_staircase_timer);
@@ -927,35 +945,22 @@ void client_group::handle_staircase_step(void)
         return;
     }
 
-    for (unsigned int i = 0; i < to_add; i++) {
-        client *c;
-
-        if (m_config->cluster_mode)
-            c = new cluster_client(this);
-        else
-            c = new client(this);
-
-        if (!c->initialized()) {
-            benchmark_error_log("staircase: failed to initialize client.\n");
-            delete c;
-            break;
-        }
-
-        int ret = c->prepare();
+    // Prepare (connect) pre-created clients from index 'current' to 'target'
+    for (unsigned int i = current; i < target && i < m_clients.size(); i++) {
+        int ret = m_clients[i]->prepare();
         if (ret < 0) {
-            benchmark_error_log("staircase: failed to connect client.\n");
-            delete c;
+            benchmark_error_log("staircase: failed to connect client %u.\n", i);
             break;
         }
-
-        m_clients.push_back(c);
     }
 
-    benchmark_debug_log("staircase: added %u clients, now at %u/%u per thread.\n", to_add,
-                        (unsigned int) m_clients.size(), m_config->clients);
+    m_staircase_active_clients.store(target, std::memory_order_release);
+
+    benchmark_debug_log("staircase: activated %u clients, now at %u/%u per thread.\n", target - current, target,
+                        m_config->clients);
 
     // If we've reached max, remove the timer
-    if (m_clients.size() >= m_config->clients) {
+    if (target >= m_config->clients) {
         if (m_staircase_timer != NULL) {
             event_del(m_staircase_timer);
             event_free(m_staircase_timer);
@@ -976,25 +981,26 @@ void client_group::interrupt(void)
 
 void client_group::finalize_all_clients(void)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        client *c = *i;
-        c->set_end_time();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        m_clients[i]->set_end_time();
     }
 }
 
 void client_group::set_all_clients_interrupted(void)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        client *c = *i;
-        c->get_stats()->set_interrupted(true);
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        m_clients[i]->get_stats()->set_interrupted(true);
     }
 }
 
 unsigned long int client_group::get_total_bytes(void)
 {
     unsigned long int total_bytes = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_bytes += (*i)->get_stats()->get_total_bytes();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_bytes += m_clients[i]->get_stats()->get_total_bytes();
     }
 
     return total_bytes;
@@ -1003,8 +1009,9 @@ unsigned long int client_group::get_total_bytes(void)
 unsigned long int client_group::get_total_ops(void)
 {
     unsigned long int total_ops = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_ops += (*i)->get_stats()->get_total_ops();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_ops += m_clients[i]->get_stats()->get_total_ops();
     }
 
     return total_ops;
@@ -1013,8 +1020,9 @@ unsigned long int client_group::get_total_ops(void)
 unsigned long int client_group::get_total_latency(void)
 {
     unsigned long int total_latency = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_latency += (*i)->get_stats()->get_total_latency();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_latency += m_clients[i]->get_stats()->get_total_latency();
     }
 
     return total_latency;
@@ -1024,9 +1032,10 @@ unsigned long int client_group::get_duration_usec(void)
 {
     unsigned long int duration = 0;
     unsigned int thread_counter = 1;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++, thread_counter++) {
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++, thread_counter++) {
         float factor = ((float) (thread_counter - 1) / thread_counter);
-        duration = factor * duration + (float) (*i)->get_stats()->get_duration_usec() / thread_counter;
+        duration = factor * duration + (float) m_clients[i]->get_stats()->get_duration_usec() / thread_counter;
     }
 
     return duration;
@@ -1035,8 +1044,9 @@ unsigned long int client_group::get_duration_usec(void)
 unsigned long int client_group::get_total_connection_errors(void)
 {
     unsigned long int total_errors = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_errors += (*i)->get_stats()->get_total_connection_errors();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_errors += m_clients[i]->get_stats()->get_total_connection_errors();
     }
 
     return total_errors;
@@ -1046,28 +1056,30 @@ void client_group::merge_run_stats(run_stats *target)
 {
     assert(target != NULL);
     unsigned int iteration_counter = 1;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        target->merge(*(*i)->get_stats(), iteration_counter++);
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        target->merge(*m_clients[i]->get_stats(), iteration_counter++);
     }
 }
 
 void client_group::aggregate_inst_histogram(hdr_histogram *target)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        (*i)->get_stats()->copy_inst_histogram(target);
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        m_clients[i]->get_stats()->copy_inst_histogram(target);
     }
 }
 
 
 void client_group::write_client_stats(const char *prefix)
 {
-    unsigned int client_id = 0;
+    unsigned int count = active_client_count();
 
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+    for (unsigned int i = 0; i < count; i++) {
         char filename[PATH_MAX];
 
-        snprintf(filename, sizeof(filename) - 1, "%s-%u.csv", prefix, client_id++);
-        if (!(*i)->get_stats()->save_csv(filename, m_config)) {
+        snprintf(filename, sizeof(filename) - 1, "%s-%u.csv", prefix, i);
+        if (!m_clients[i]->get_stats()->save_csv(filename, m_config)) {
             fprintf(stderr, "error: %s: failed to write client stats.\n", filename);
         }
     }

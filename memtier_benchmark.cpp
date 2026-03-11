@@ -1666,8 +1666,13 @@ struct cg_thread
 
     int prepare(void)
     {
-        unsigned int initial = m_config->clients_start > 0 ? m_config->clients_start : m_config->clients;
-        if (m_cg->create_clients(initial) < (int) initial) return -1;
+        // Always create ALL clients upfront to avoid concurrent vector modification
+        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients) return -1;
+
+        if (m_config->clients_start > 0) {
+            // Staircase mode: only connect the initial batch
+            return m_cg->prepare_count(m_config->clients_start);
+        }
         return m_cg->prepare();
     }
 
@@ -1692,10 +1697,13 @@ struct cg_thread
         // Create new client group
         m_cg = new client_group(m_config, m_protocol, m_obj_gen);
 
-        // Prepare new clients
-        unsigned int initial = m_config->clients_start > 0 ? m_config->clients_start : m_config->clients;
-        if (m_cg->create_clients(initial) < (int) initial) return -1;
-        if (m_cg->prepare() < 0) return -1;
+        // Create all clients upfront, prepare initial batch
+        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients) return -1;
+        if (m_config->clients_start > 0) {
+            if (m_cg->prepare_count(m_config->clients_start) < 0) return -1;
+        } else {
+            if (m_cg->prepare() < 0) return -1;
+        }
 
         // Reset state
         m_finished = false;
