@@ -936,6 +936,23 @@ void client_group::setup_staircase_timer(void)
 
 void client_group::handle_staircase_step(void)
 {
+    // Check if the test deadline has passed. Without this, the EV_PERSIST
+    // timer keeps event_base_dispatch alive even after all clients' finished()
+    // returns true, extending the run far beyond test_time.
+    if (m_config->test_time > 0) {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        unsigned int elapsed = now.tv_sec - m_config->benchmark_start_time.tv_sec;
+        if (elapsed >= m_config->test_time) {
+            if (m_staircase_timer != NULL) {
+                event_del(m_staircase_timer);
+                event_free(m_staircase_timer);
+                m_staircase_timer = NULL;
+            }
+            return;
+        }
+    }
+
     unsigned int current = m_staircase_active_clients.load(std::memory_order_relaxed);
     unsigned int target = current + m_config->clients_step;
     if (target > m_config->clients) target = m_config->clients;
