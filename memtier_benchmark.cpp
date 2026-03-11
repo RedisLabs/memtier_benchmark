@@ -1424,12 +1424,14 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
 
         if (has_start || has_step || has_dur) {
             if (!has_start || !has_step || !has_dur) {
-                fprintf(stderr,
-                        "error: --clients-start, --clients-step, and --step-duration must all be specified together.\n");
+                fprintf(
+                    stderr,
+                    "error: --clients-start, --clients-step, and --step-duration must all be specified together.\n");
                 return -1;
             }
             if (cfg->requests > 0) {
-                fprintf(stderr, "error: --requests cannot be used with client staircase mode. Use --test-time instead.\n");
+                fprintf(stderr,
+                        "error: --requests cannot be used with client staircase mode. Use --test-time instead.\n");
                 return -1;
             }
         }
@@ -1866,12 +1868,10 @@ static void print_staircase_pattern(int run_id, benchmark_config *cfg)
         unsigned int bar_len = (clients * 20 + max_bar - 1) / max_bar;
         if (bar_len < 1) bar_len = 1;
 
-        fprintf(stderr, "  Step %u: %3us - %3us : %3u clients  ",
-                step, t_start, t_end, clients);
+        fprintf(stderr, "  Step %u: %3us - %3us : %3u clients  ", step, t_start, t_end, clients);
         for (unsigned int b = 0; b < bar_len; b++)
             fprintf(stderr, "\xe2\x96\x88"); // UTF-8 for full block character
-        if (is_last)
-            fprintf(stderr, "  (max)");
+        if (is_last) fprintf(stderr, "  (max)");
         fprintf(stderr, "\n");
 
         if (is_last) break;
@@ -2030,7 +2030,7 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         // Calculate current client count for display
         unsigned int display_clients = cfg->clients;
         if (cfg->clients_start > 0) {
-            unsigned int elapsed_secs = (unsigned int)(duration / 1000000);
+            unsigned int elapsed_secs = (unsigned int) (duration / 1000000);
             unsigned int steps_done = elapsed_secs / cfg->step_duration;
             display_clients = cfg->clients_start + steps_done * cfg->clients_step;
             if (display_clients > cfg->clients) display_clients = cfg->clients;
@@ -2439,9 +2439,8 @@ int main(int argc, char *argv[])
     // Validate staircase options (after defaults are applied)
     if (cfg.clients_start > 0) {
         if (cfg.clients_start >= cfg.clients) {
-            fprintf(stderr,
-                    "error: --clients-start (%u) must be less than --clients (%u).\n",
-                    cfg.clients_start, cfg.clients);
+            fprintf(stderr, "error: --clients-start (%u) must be less than --clients (%u).\n", cfg.clients_start,
+                    cfg.clients);
             exit(1);
         }
         if (!cfg.test_time) {

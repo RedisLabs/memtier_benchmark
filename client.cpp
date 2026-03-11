@@ -950,8 +950,8 @@ void client_group::handle_staircase_step(void)
         }
     }
 
-    benchmark_debug_log("staircase: added %u clients, now at %u/%u per thread.\n",
-                        to_add, (unsigned int) m_clients.size(), m_config->clients);
+    benchmark_debug_log("staircase: added %u clients, now at %u/%u per thread.\n", to_add,
+                        (unsigned int) m_clients.size(), m_config->clients);
 
     // If we've reached max, remove the timer
     if (m_clients.size() >= m_config->clients) {

@@ -20,7 +20,6 @@
 #define _MEMTIER_BENCHMARK_H
 
 #include <vector>
-#include <atomic>
 #include <sys/time.h>
 #include "config_types.h"
 
@@ -72,7 +71,7 @@ struct benchmark_config
     bool print_all_runs;
     int distinct_client_seed;
     int randomize;
-    std::atomic<int> next_client_idx;
+    int next_client_idx;
     unsigned long long requests;
     unsigned int clients;
     unsigned int threads;
