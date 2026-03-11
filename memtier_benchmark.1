@@ -92,8 +92,26 @@ Don't print detailed latency histogram
 \fB\-\-print\-percentiles\fR
 Specify which percentiles info to print on the results table (by default prints percentiles: 50,99,99.9)
 .TP
+\fB\-\-print\-all\-runs\fR
+When performing multiple test iterations, print and save results for all iterations
+.TP
 \fB\-\-cluster\-mode\fR
 Run client in cluster mode
+.TP
+\fB\-\-statsd\-host\fR=\fI\,HOST\/\fR
+StatsD server hostname to send real\-time metrics (default: none, disabled)
+.TP
+\fB\-\-statsd\-port\fR=\fI\,PORT\/\fR
+StatsD server UDP port (default: 8125)
+.TP
+\fB\-\-statsd\-prefix\fR=\fI\,PREFIX\/\fR
+Prefix for StatsD metric names (default: memtier)
+.TP
+\fB\-\-statsd\-run\-label\fR=\fI\,LABEL\/\fR
+Label for this benchmark run, used to distinguish runs in dashboards (default: default)
+.TP
+\fB\-\-graphite\-port\fR=\fI\,PORT\/\fR
+Graphite HTTP port for event annotations (default: 8080 for host access; use 80 when running inside the Docker network)
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Display this help
@@ -189,6 +207,23 @@ Stats are reported separately for "SCAN 0" and "SCAN <cursor>".
 \fB\-\-scan\-incremental\-max\-iterations\fR=\fI\,NUMBER\/\fR
 Maximum number of continuation SCANs per iteration cycle
 (default: 0, follow cursor until it returns 0).
+.TP
+\fB\-\-monitor\-input\fR=\fI\,FILE\/\fR
+Read commands from Redis MONITOR output file.
+Commands can be referenced as __monitor_line1__, __monitor_line2__, etc.
+Use __monitor_line@__ to select commands from the file.
+By default, selection is sequential; use \fB\-\-monitor\-pattern\fR=R for random.
+For example: \fB\-\-monitor\-input\fR=monitor.txt \fB\-\-command\fR="__monitor_line1__"
+.TP
+\fB\-\-monitor\-pattern\fR=\fI\,S|R\/\fR
+Pattern for selecting monitor commands (default: S for Sequential).
+S for Sequential selection.
+R for Random selection.
+.TP
+\fB\-\-command\-stats\-breakdown\fR=\fI\,command|line\/\fR
+How to group command statistics in the output (default: command).
+command: aggregate by command name (first word, e.g., SET, GET).
+line: show each command line separately.
 .SS "Object Options:"
 .TP
 \fB\-d\fR  \fB\-\-data\-size\fR=\fI\,SIZE\/\fR
