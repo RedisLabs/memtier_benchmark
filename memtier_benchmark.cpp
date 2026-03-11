@@ -2030,7 +2030,9 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         // Calculate current client count for display
         unsigned int display_clients = cfg->clients;
         if (cfg->clients_start > 0) {
-            unsigned int elapsed_secs = (unsigned int) (duration / 1000000);
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            unsigned int elapsed_secs = now.tv_sec - cfg->benchmark_start_time.tv_sec;
             unsigned int steps_done = elapsed_secs / cfg->step_duration;
             display_clients = cfg->clients_start + steps_done * cfg->clients_step;
             if (display_clients > cfg->clients) display_clients = cfg->clients;
@@ -2039,7 +2041,13 @@ run_stats run_benchmark(int run_id, benchmark_config *cfg, object_generator *obj
         double progress = 0;
         if (cfg->requests)
             progress = 100.0 * total_ops / ((double) cfg->requests * display_clients * cfg->threads);
-        else
+        else if (cfg->clients_start > 0) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            double wall_elapsed = (now.tv_sec - cfg->benchmark_start_time.tv_sec) +
+                                  (now.tv_usec - cfg->benchmark_start_time.tv_usec) / 1000000.0;
+            progress = 100.0 * wall_elapsed / cfg->test_time;
+        } else
             progress = 100.0 * (duration / 1000000.0) / cfg->test_time;
 
         // Only show connection errors if there are any (backwards compatible output)

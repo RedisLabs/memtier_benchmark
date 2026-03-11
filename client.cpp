@@ -941,13 +941,14 @@ void client_group::handle_staircase_step(void)
             break;
         }
 
-        m_clients.push_back(c);
-
         int ret = c->prepare();
         if (ret < 0) {
             benchmark_error_log("staircase: failed to connect client.\n");
+            delete c;
             break;
         }
+
+        m_clients.push_back(c);
     }
 
     benchmark_debug_log("staircase: added %u clients, now at %u/%u per thread.\n", to_add,
