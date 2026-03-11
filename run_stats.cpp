@@ -152,6 +152,7 @@ void run_stats::set_start_time(struct timeval *start_time)
     }
 
     m_start_time = *start_time;
+    m_started.flag.store(true, std::memory_order_release);
 }
 
 void run_stats::set_end_time(struct timeval *end_time)
@@ -357,7 +358,7 @@ unsigned int run_stats::get_duration(void)
 
 unsigned long int run_stats::get_duration_usec(void)
 {
-    if (!m_start_time.tv_sec) return 0;
+    if (!m_started.flag.load(std::memory_order_acquire)) return 0;
     if (m_end_time.tv_sec > 0) {
         return ts_diff(m_start_time, m_end_time);
     } else {
