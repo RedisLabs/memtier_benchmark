@@ -1061,9 +1061,11 @@ unsigned long int client_group::get_duration_usec(void)
     unsigned long int duration = 0;
     unsigned int thread_counter = 1;
     unsigned int count = active_client_count();
-    for (unsigned int i = 0; i < count; i++, thread_counter++) {
+    for (unsigned int i = 0; i < count; i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
         float factor = ((float) (thread_counter - 1) / thread_counter);
         duration = factor * duration + (float) m_clients[i]->get_stats()->get_duration_usec() / thread_counter;
+        thread_counter++;
     }
 
     return duration;
@@ -1083,17 +1085,22 @@ unsigned long int client_group::get_total_connection_errors(void)
 void client_group::merge_run_stats(run_stats *target)
 {
     assert(target != NULL);
+    // Iterate ALL clients (not just active_client_count) to avoid dropping
+    // stats from clients that were prepare()-d but not yet counted in the
+    // atomic when the benchmark ended. Skip clients that never started
+    // (set_start_time never called) — merging their zeroed m_start_time
+    // would corrupt the factorial-averaged timestamps.
     unsigned int iteration_counter = 1;
-    unsigned int count = active_client_count();
-    for (unsigned int i = 0; i < count; i++) {
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
         target->merge(*m_clients[i]->get_stats(), iteration_counter++);
     }
 }
 
 void client_group::aggregate_inst_histogram(hdr_histogram *target)
 {
-    unsigned int count = active_client_count();
-    for (unsigned int i = 0; i < count; i++) {
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
         m_clients[i]->get_stats()->copy_inst_histogram(target);
     }
 }
@@ -1101,9 +1108,8 @@ void client_group::aggregate_inst_histogram(hdr_histogram *target)
 
 void client_group::write_client_stats(const char *prefix)
 {
-    unsigned int count = active_client_count();
-
-    for (unsigned int i = 0; i < count; i++) {
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
         char filename[PATH_MAX];
 
         snprintf(filename, sizeof(filename) - 1, "%s-%u.csv", prefix, i);

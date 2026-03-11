@@ -244,6 +244,10 @@ public:
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
     unsigned long int get_total_connection_errors(void);
+
+    // Returns true if set_start_time() was called, indicating the client
+    // produced (or was ready to produce) meaningful stats data.
+    bool has_started(void) const { return m_start_time.tv_sec != 0 || m_start_time.tv_usec != 0; }
 };
 
 #endif // MEMTIER_BENCHMARK_RUN_STATS_H
