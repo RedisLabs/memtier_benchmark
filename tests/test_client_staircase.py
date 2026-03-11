@@ -690,8 +690,14 @@ def test_staircase_per_step_ops_consistency(env):
             totals_ts = all_stats.get("Totals", {}).get("Time-Serie", {})
 
             # Group seconds by their step (by client count)
+            # Exclude the last second — the benchmark may finish mid-second,
+            # resulting in a partial count that would look like an outlier.
+            all_secs = sorted(ac.keys(), key=int)
+            last_sec = int(all_secs[-1]) if all_secs else -1
             steps = {}
-            for sec_str in sorted(ac.keys(), key=int):
+            for sec_str in all_secs:
+                if int(sec_str) == last_sec:
+                    continue
                 per_thread = ac[sec_str]["Clients per thread"]
                 if per_thread not in steps:
                     steps[per_thread] = []
