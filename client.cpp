@@ -276,10 +276,15 @@ bool client::all_connections_idle(void)
 
 void client::set_start_time()
 {
-    struct timeval now;
-
-    gettimeofday(&now, NULL);
-    m_stats.set_start_time(&now);
+    // In staircase mode, all clients use the global benchmark start time
+    // so per-second stats are aligned to the same absolute time origin.
+    if (m_config->clients_start > 0) {
+        m_stats.set_start_time(&m_config->benchmark_start_time);
+    } else {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        m_stats.set_start_time(&now);
+    }
 }
 
 void client::set_end_time()
@@ -946,17 +951,19 @@ void client_group::handle_staircase_step(void)
     }
 
     // Prepare (connect) pre-created clients from index 'current' to 'target'
+    unsigned int connected = current;
     for (unsigned int i = current; i < target && i < m_clients.size(); i++) {
         int ret = m_clients[i]->prepare();
         if (ret < 0) {
             benchmark_error_log("staircase: failed to connect client %u.\n", i);
             break;
         }
+        connected++;
     }
 
-    m_staircase_active_clients.store(target, std::memory_order_release);
+    m_staircase_active_clients.store(connected, std::memory_order_release);
 
-    benchmark_debug_log("staircase: activated %u clients, now at %u/%u per thread.\n", target - current, target,
+    benchmark_debug_log("staircase: activated %u clients, now at %u/%u per thread.\n", connected - current, connected,
                         m_config->clients);
 
     // If we've reached max, remove the timer
