@@ -988,16 +988,20 @@ void client_group::interrupt(void)
 
 void client_group::finalize_all_clients(void)
 {
-    unsigned int count = active_client_count();
-    for (unsigned int i = 0; i < count; i++) {
+    // Iterate ALL clients, not just active ones. During staircase mode,
+    // a client may have been prepare()-d but not yet counted in the atomic
+    // (race window in handle_staircase_step). Using m_clients.size() ensures
+    // no client is missed. Calling set_end_time() on never-started clients
+    // is harmless — they won't be included in merge (which uses active_client_count).
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
         m_clients[i]->set_end_time();
     }
 }
 
 void client_group::set_all_clients_interrupted(void)
 {
-    unsigned int count = active_client_count();
-    for (unsigned int i = 0; i < count; i++) {
+    // Iterate ALL clients for the same reason as finalize_all_clients.
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
         m_clients[i]->get_stats()->set_interrupted(true);
     }
 }

@@ -536,12 +536,12 @@ def test_staircase_actual_connections_via_client_list(env):
 
             # Wait for initial connections to establish
             time.sleep(2)
+            last_check_time = 2
 
             for check_time, expected_total in checks:
-                # Sleep until the check time (relative to start)
-                # We already slept 2s, so adjust
-                if check_time > 2:
-                    time.sleep(check_time - 2)
+                # Sleep the delta from the last check time
+                if check_time > last_check_time:
+                    time.sleep(check_time - last_check_time)
 
                 actual = _count_memtier_connections(master_connections)
                 # Allow tolerance of ±2 for connection setup timing
@@ -550,8 +550,7 @@ def test_staircase_actual_connections_via_client_list(env):
                     message="At ~{}s, expected ~{} connections, got {} "
                             "(tolerance ±2)".format(check_time, expected_total, actual))
 
-                # Update reference time for next sleep
-                check_time_ref = check_time
+                last_check_time = check_time
 
             # Wait for benchmark to finish
             process.wait(timeout=test_time + 10)
