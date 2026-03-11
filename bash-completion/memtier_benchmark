@@ -24,15 +24,24 @@ _memtier_completions()
                    "--key-minimum" "--key-maximum" "--reconnect-interval" "--multi-key-get" "--authenticate"\
                    "--select-db" "--wait-ratio" "--num-slaves" "--wait-timeout" "--json-out-file"\
                    "--command" "--command-ratio" "--scan-incremental-max-iterations"\
-                   "-s" "-p" "-S" "-o" "-x" "-c" "-n" "-t" "-d" "-a")
+                   "--clients-start" "--clients-step" "--step-duration"\
+                   "--statsd-host" "--statsd-port" "--statsd-prefix" "--statsd-run-label" "--graphite-port"\
+                   "--monitor-input" "--hdr-file-prefix"\
+                   "--max-reconnect-attempts" "--reconnect-backoff-factor" "--connection-timeout"\
+                   "--thread-conn-start-min-jitter-micros" "--thread-conn-start-max-jitter-micros"\
+                   "--print-percentiles" "--uri" "--sni"\
+                   "--cert" "--key" "--cacert" "--tls-protocols"\
+                   "-s" "-p" "-S" "-o" "-x" "-c" "-n" "-t" "-d" "-a" "-u")
 
   options_no_args=("--debug" "--show-config" "--hide-histogram" "--distinct-client-seed" "--randomize"\
                    "--random-data" "--data-verify" "--verify-only" "--generate-keys" "--key-stddev"\
                    "--key-median" "--key-zipf-exp" "--no-expiry" "--cluster-mode" "--scan-incremental-iteration"\
+                   "--print-all-runs" "--tls" "--tls-skip-verify" "--reconnect-on-error"\
                    "--help" "--version"\
-                   "-D" "-R" "-h" "-v")
+                   "-D" "-R" "-h" "-v" "-4" "-6")
 
-  options_comp=("--protocol" "-P" "--key-pattern" "--data-size-pattern" "--command-key-pattern")
+  options_comp=("--protocol" "-P" "--key-pattern" "--data-size-pattern" "--command-key-pattern"\
+                "--monitor-pattern" "--command-stats-breakdown")
 
   all_options="${options_no_comp[@]} ${options_no_args[@]} ${options_comp[@]}"
 
@@ -77,10 +86,22 @@ _memtier_completions()
       all_options="R S"
     ;;
     "--command-key-pattern=")
-      cur=${cur#"--data-size-pattern="}
+      cur=${cur#"--command-key-pattern="}
     ;&
     "--command-key-pattern")
       all_options="G R S P"
+    ;;
+    "--monitor-pattern=")
+      cur=${cur#"--monitor-pattern="}
+    ;&
+    "--monitor-pattern")
+      all_options="S R"
+    ;;
+    "--command-stats-breakdown=")
+      cur=${cur#"--command-stats-breakdown="}
+    ;&
+    "--command-stats-breakdown")
+      all_options="command line"
     ;;
     "--key-pattern=")
       cur=${cur#"--key-pattern="}
