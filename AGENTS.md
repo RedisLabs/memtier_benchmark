@@ -113,6 +113,8 @@ Every new CLI option **must** be added in **all** of these locations:
 8. Update bash completion (`bash-completion/memtier_benchmark`) — add to `options_no_comp` (takes a value) or `options_no_args` (flag)
 9. **Add tests** for the new option (see below)
 
+**Verification**: After adding a new flag, always confirm it appears in both `--help` output and `memtier_benchmark.1`. Run `./memtier_benchmark --help | grep <flag>` and `grep <flag> memtier_benchmark.1` to verify.
+
 ### Adding a new test
 1. Create Python test file in `tests/` following `tests_oss_simple_flow.py` pattern
 2. Use RLTest decorators and `mb.py` helper for running memtier_benchmark
