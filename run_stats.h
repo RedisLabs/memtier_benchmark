@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <atomic>
 #include <map>
 #include <vector>
 #include <string>
@@ -122,6 +123,20 @@ protected:
 
     struct timeval m_start_time;
     struct timeval m_end_time;
+    // Atomic flag set after m_start_time is fully written; guards cross-thread reads.
+    // std::atomic is not copyable, but run_stats needs to be (stored in std::vector).
+    // Copies occur only after threads join, so relaxed copy semantics are safe.
+    struct copyable_atomic_bool
+    {
+        std::atomic<bool> flag;
+        copyable_atomic_bool(bool v = false) : flag(v) {}
+        copyable_atomic_bool(const copyable_atomic_bool &o) : flag(o.flag.load(std::memory_order_relaxed)) {}
+        copyable_atomic_bool &operator=(const copyable_atomic_bool &o)
+        {
+            flag.store(o.flag.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            return *this;
+        }
+    } m_started;
     bool m_interrupted;
 
     totals m_totals;
@@ -244,6 +259,10 @@ public:
     unsigned long int get_total_ops(void);
     unsigned long int get_total_latency(void);
     unsigned long int get_total_connection_errors(void);
+
+    // Returns true if set_start_time() was called, indicating the client
+    // produced (or was ready to produce) meaningful stats data.
+    bool has_started(void) const { return m_started.flag.load(std::memory_order_acquire); }
 };
 
 #endif // MEMTIER_BENCHMARK_RUN_STATS_H

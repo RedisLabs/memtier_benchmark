@@ -152,6 +152,7 @@ void run_stats::set_start_time(struct timeval *start_time)
     }
 
     m_start_time = *start_time;
+    m_started.flag.store(true, std::memory_order_release);
 }
 
 void run_stats::set_end_time(struct timeval *end_time)
@@ -357,7 +358,7 @@ unsigned int run_stats::get_duration(void)
 
 unsigned long int run_stats::get_duration_usec(void)
 {
-    if (!m_start_time.tv_sec) return 0;
+    if (!m_started.flag.load(std::memory_order_acquire)) return 0;
     if (m_end_time.tv_sec > 0) {
         return ts_diff(m_start_time, m_end_time);
     } else {
@@ -1480,6 +1481,25 @@ void run_stats::print_json(json_handler *jsonhandler, arbitrary_command_list &co
                          m_totals.m_total_latency, m_totals.m_ops, m_totals.m_connection_errors_sec,
                          m_totals.m_connection_errors, quantiles_list, m_totals.latency_histogram, timestamps,
                          total_stats);
+
+    // Add per-second active client count when staircase mode is active
+    if (m_config->clients_start > 0 && jsonhandler != NULL) {
+        jsonhandler->open_nesting("Active Clients");
+        for (std::size_t i = 0; i < timestamps.size(); i++) {
+            char ts_str[16];
+            unsigned int ts = timestamps[i];
+            unsigned int steps_done = ts / m_config->step_duration;
+            unsigned int active = m_config->clients_start + steps_done * m_config->clients_step;
+            if (active > m_config->clients) active = m_config->clients;
+
+            snprintf(ts_str, sizeof(ts_str), "%u", ts);
+            jsonhandler->open_nesting(ts_str);
+            jsonhandler->write_obj("Clients per thread", "%u", active);
+            jsonhandler->write_obj("Total clients", "%u", active * m_config->threads);
+            jsonhandler->close_nesting();
+        }
+        jsonhandler->close_nesting();
+    }
 }
 
 void run_stats::print_histogram(FILE *out, json_handler *jsonhandler, arbitrary_command_list &command_list,

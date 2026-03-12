@@ -137,6 +137,16 @@ Number of threads (default: 4)
 \fB\-\-test\-time\fR=\fI\,SECS\/\fR
 Number of seconds to run the test
 .TP
+\fB\-\-clients\-start\fR=\fI\,NUMBER\/\fR
+Starting number of clients per thread for staircase ramp\-up.
+Must be less than \fB\-\-clients\fR. Requires \fB\-\-clients\-step\fR and \fB\-\-step\-duration\fR.
+.TP
+\fB\-\-clients\-step\fR=\fI\,NUMBER\/\fR
+Number of clients to add per step in staircase ramp\-up.
+.TP
+\fB\-\-step\-duration\fR=\fI\,SECS\/\fR
+Duration in seconds of each step before adding more clients.
+.TP
 \fB\-\-ratio\fR=\fI\,RATIO\/\fR
 Set:Get ratio (default: 1:10)
 .TP

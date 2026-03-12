@@ -26,6 +26,7 @@
 #include <sys/un.h>
 #include <vector>
 #include <queue>
+#include <atomic>
 #include <iterator>
 #include <event2/event.h>
 #include <event2/buffer.h>
@@ -230,12 +231,21 @@ protected:
     object_generator *m_obj_gen;
     std::vector<client *> m_clients;
 
+    // Client staircase ramp-up
+    struct event *m_staircase_timer;
+    std::atomic<unsigned int> m_staircase_active_clients;
+    void setup_staircase_timer(void);
+    void handle_staircase_step(void);
+    static void staircase_timer_cb(evutil_socket_t fd, short what, void *arg);
+    unsigned int active_client_count(void);
+
 public:
     client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator *obj_gen);
     ~client_group();
 
     int create_clients(int count);
     int prepare(void);
+    int prepare_count(unsigned int count);
     void run(void);
     void interrupt(void);
     void finalize_all_clients(void);

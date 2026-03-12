@@ -249,7 +249,17 @@ int client::connect(void)
 bool client::finished(void)
 {
     if (m_config->requests > 0 && m_reqs_processed >= m_config->requests) return true;
-    if (m_config->test_time > 0 && m_stats.get_duration() >= m_config->test_time) return true;
+    if (m_config->test_time > 0) {
+        if (m_config->clients_start > 0) {
+            // Staircase mode: use global deadline so all clients stop together
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            unsigned int elapsed = now.tv_sec - m_config->benchmark_start_time.tv_sec;
+            if (elapsed >= m_config->test_time) return true;
+        } else {
+            if (m_stats.get_duration() >= m_config->test_time) return true;
+        }
+    }
     return false;
 }
 
@@ -266,10 +276,15 @@ bool client::all_connections_idle(void)
 
 void client::set_start_time()
 {
-    struct timeval now;
-
-    gettimeofday(&now, NULL);
-    m_stats.set_start_time(&now);
+    // In staircase mode, all clients use the global benchmark start time
+    // so per-second stats are aligned to the same absolute time origin.
+    if (m_config->clients_start > 0) {
+        m_stats.set_start_time(&m_config->benchmark_start_time);
+    } else {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        m_stats.set_start_time(&now);
+    }
 }
 
 void client::set_end_time()
@@ -800,7 +815,12 @@ bool verify_client::finished(void)
 ///////////////////////////////////////////////////////////////////////////
 
 client_group::client_group(benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen) :
-        m_base(NULL), m_config(config), m_protocol(protocol), m_obj_gen(obj_gen)
+        m_base(NULL),
+        m_config(config),
+        m_protocol(protocol),
+        m_obj_gen(obj_gen),
+        m_staircase_timer(NULL),
+        m_staircase_active_clients(0)
 {
     m_base = event_base_new();
     assert(m_base != NULL);
@@ -811,6 +831,12 @@ client_group::client_group(benchmark_config *config, abstract_protocol *protocol
 
 client_group::~client_group(void)
 {
+    if (m_staircase_timer != NULL) {
+        event_del(m_staircase_timer);
+        event_free(m_staircase_timer);
+        m_staircase_timer = NULL;
+    }
+
     for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
         client *c = *i;
         delete c;
@@ -859,21 +885,112 @@ int client_group::create_clients(int num)
 
 int client_group::prepare(void)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        client *c = *i;
-        int ret = c->prepare();
+    return prepare_count(m_clients.size());
+}
 
+int client_group::prepare_count(unsigned int count)
+{
+    if (count > m_clients.size()) count = m_clients.size();
+
+    for (unsigned int i = 0; i < count; i++) {
+        int ret = m_clients[i]->prepare();
         if (ret < 0) {
             return ret;
         }
     }
 
+    m_staircase_active_clients.store(count, std::memory_order_release);
     return 0;
+}
+
+unsigned int client_group::active_client_count(void)
+{
+    if (m_config->clients_start > 0) {
+        return m_staircase_active_clients.load(std::memory_order_acquire);
+    }
+    return m_clients.size();
 }
 
 void client_group::run(void)
 {
+    if (m_config->clients_start > 0) {
+        setup_staircase_timer();
+    }
     event_base_dispatch(m_base);
+}
+
+void client_group::staircase_timer_cb(evutil_socket_t fd, short what, void *arg)
+{
+    (void) fd;
+    (void) what;
+    client_group *cg = (client_group *) arg;
+    cg->handle_staircase_step();
+}
+
+void client_group::setup_staircase_timer(void)
+{
+    struct timeval interval = {(long) m_config->step_duration, 0};
+    m_staircase_timer = event_new(m_base, -1, EV_PERSIST, staircase_timer_cb, (void *) this);
+    event_add(m_staircase_timer, &interval);
+}
+
+void client_group::handle_staircase_step(void)
+{
+    // Check if the test deadline has passed. Without this, the EV_PERSIST
+    // timer keeps event_base_dispatch alive even after all clients' finished()
+    // returns true, extending the run far beyond test_time.
+    if (m_config->test_time > 0) {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        unsigned int elapsed = now.tv_sec - m_config->benchmark_start_time.tv_sec;
+        if (elapsed >= m_config->test_time) {
+            if (m_staircase_timer != NULL) {
+                event_del(m_staircase_timer);
+                event_free(m_staircase_timer);
+                m_staircase_timer = NULL;
+            }
+            return;
+        }
+    }
+
+    unsigned int current = m_staircase_active_clients.load(std::memory_order_relaxed);
+    unsigned int target = current + m_config->clients_step;
+    if (target > m_config->clients) target = m_config->clients;
+
+    if (current >= target) {
+        // Already at max, remove the timer
+        if (m_staircase_timer != NULL) {
+            event_del(m_staircase_timer);
+            event_free(m_staircase_timer);
+            m_staircase_timer = NULL;
+        }
+        return;
+    }
+
+    // Prepare (connect) pre-created clients from index 'current' to 'target'
+    unsigned int connected = current;
+    for (unsigned int i = current; i < target && i < m_clients.size(); i++) {
+        int ret = m_clients[i]->prepare();
+        if (ret < 0) {
+            benchmark_error_log("staircase: failed to connect client %u.\n", i);
+            break;
+        }
+        connected++;
+    }
+
+    m_staircase_active_clients.store(connected, std::memory_order_release);
+
+    benchmark_debug_log("staircase: activated %u clients, now at %u/%u per thread.\n", connected - current, connected,
+                        m_config->clients);
+
+    // If we've reached max, remove the timer
+    if (connected >= m_config->clients) {
+        if (m_staircase_timer != NULL) {
+            event_del(m_staircase_timer);
+            event_free(m_staircase_timer);
+            m_staircase_timer = NULL;
+        }
+    }
 }
 
 void client_group::interrupt(void)
@@ -888,25 +1005,30 @@ void client_group::interrupt(void)
 
 void client_group::finalize_all_clients(void)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        client *c = *i;
-        c->set_end_time();
+    // Iterate ALL clients, not just active ones. During staircase mode,
+    // a client may have been prepare()-d but not yet counted in the atomic
+    // (race window in handle_staircase_step). Using m_clients.size() ensures
+    // no client is missed. Calling set_end_time() on never-started clients
+    // is harmless — they won't be included in merge (which uses active_client_count).
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        m_clients[i]->set_end_time();
     }
 }
 
 void client_group::set_all_clients_interrupted(void)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        client *c = *i;
-        c->get_stats()->set_interrupted(true);
+    // Iterate ALL clients for the same reason as finalize_all_clients.
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        m_clients[i]->get_stats()->set_interrupted(true);
     }
 }
 
 unsigned long int client_group::get_total_bytes(void)
 {
     unsigned long int total_bytes = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_bytes += (*i)->get_stats()->get_total_bytes();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_bytes += m_clients[i]->get_stats()->get_total_bytes();
     }
 
     return total_bytes;
@@ -915,8 +1037,9 @@ unsigned long int client_group::get_total_bytes(void)
 unsigned long int client_group::get_total_ops(void)
 {
     unsigned long int total_ops = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_ops += (*i)->get_stats()->get_total_ops();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_ops += m_clients[i]->get_stats()->get_total_ops();
     }
 
     return total_ops;
@@ -925,8 +1048,9 @@ unsigned long int client_group::get_total_ops(void)
 unsigned long int client_group::get_total_latency(void)
 {
     unsigned long int total_latency = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_latency += (*i)->get_stats()->get_total_latency();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_latency += m_clients[i]->get_stats()->get_total_latency();
     }
 
     return total_latency;
@@ -936,9 +1060,12 @@ unsigned long int client_group::get_duration_usec(void)
 {
     unsigned long int duration = 0;
     unsigned int thread_counter = 1;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++, thread_counter++) {
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
         float factor = ((float) (thread_counter - 1) / thread_counter);
-        duration = factor * duration + (float) (*i)->get_stats()->get_duration_usec() / thread_counter;
+        duration = factor * duration + (float) m_clients[i]->get_stats()->get_duration_usec() / thread_counter;
+        thread_counter++;
     }
 
     return duration;
@@ -947,8 +1074,9 @@ unsigned long int client_group::get_duration_usec(void)
 unsigned long int client_group::get_total_connection_errors(void)
 {
     unsigned long int total_errors = 0;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        total_errors += (*i)->get_stats()->get_total_connection_errors();
+    unsigned int count = active_client_count();
+    for (unsigned int i = 0; i < count; i++) {
+        total_errors += m_clients[i]->get_stats()->get_total_connection_errors();
     }
 
     return total_errors;
@@ -957,29 +1085,35 @@ unsigned long int client_group::get_total_connection_errors(void)
 void client_group::merge_run_stats(run_stats *target)
 {
     assert(target != NULL);
+    // Iterate ALL clients (not just active_client_count) to avoid dropping
+    // stats from clients that were prepare()-d but not yet counted in the
+    // atomic when the benchmark ended. Skip clients that never started
+    // (set_start_time never called) — merging their zeroed m_start_time
+    // would corrupt the factorial-averaged timestamps.
     unsigned int iteration_counter = 1;
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        target->merge(*(*i)->get_stats(), iteration_counter++);
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
+        target->merge(*m_clients[i]->get_stats(), iteration_counter++);
     }
 }
 
 void client_group::aggregate_inst_histogram(hdr_histogram *target)
 {
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
-        (*i)->get_stats()->copy_inst_histogram(target);
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
+        m_clients[i]->get_stats()->copy_inst_histogram(target);
     }
 }
 
 
 void client_group::write_client_stats(const char *prefix)
 {
-    unsigned int client_id = 0;
-
-    for (std::vector<client *>::iterator i = m_clients.begin(); i != m_clients.end(); i++) {
+    for (unsigned int i = 0; i < m_clients.size(); i++) {
+        if (!m_clients[i]->get_stats()->has_started()) continue;
         char filename[PATH_MAX];
 
-        snprintf(filename, sizeof(filename) - 1, "%s-%u.csv", prefix, client_id++);
-        if (!(*i)->get_stats()->save_csv(filename, m_config)) {
+        snprintf(filename, sizeof(filename) - 1, "%s-%u.csv", prefix, i);
+        if (!m_clients[i]->get_stats()->save_csv(filename, m_config)) {
             fprintf(stderr, "error: %s: failed to write client stats.\n", filename);
         }
     }

@@ -20,6 +20,7 @@
 #define _MEMTIER_BENCHMARK_H
 
 #include <vector>
+#include <sys/time.h>
 #include "config_types.h"
 
 #ifdef USE_TLS
@@ -124,6 +125,11 @@ struct benchmark_config
     unsigned int request_rate;
     unsigned int request_per_interval;
     unsigned int request_interval_microsecond;
+    // Client staircase ramp-up
+    unsigned int clients_start;
+    unsigned int clients_step;
+    unsigned int step_duration;
+    struct timeval benchmark_start_time;
     // StatsD metrics export
     const char *statsd_host;
     unsigned short statsd_port;
