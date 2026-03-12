@@ -47,6 +47,6 @@ jobs:
         if: ${{ github.event.release.tag_name != '' }}
         with:
           push: true
-          tags: ${{ vars.DOCKERHUB_REPO }}:${{ github.event.release.tag_name }}
+          tags: ${{ vars.DOCKERHUB_REPO }}:${{ github.event.release.tag_name }},${{ vars.DOCKERHUB_REPO }}:latest
           context: .
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
